@@ -2,10 +2,10 @@ import warnings
 from typing import List
 
 from langchain_community import document_loaders
-from hirag_mcp.loader.base_loader import BaseLoader
+from ..loader.base_loader import BaseLoader
 
-from hirag_mcp._utils import compute_mdhash_id
-from hirag_mcp.schema import File
+from .._utils import compute_mdhash_id
+from ..schema import File
 
 # Suppress PyPDF warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pypdf")

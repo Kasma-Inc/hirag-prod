@@ -1,8 +1,8 @@
 import random
 from typing import Callable, List
 
-from hirag_mcp._utils import decode_tokens_by_tiktoken, encode_string_by_tiktoken
-from hirag_mcp.prompt import PROMPTS
+from .._utils import decode_tokens_by_tiktoken, encode_string_by_tiktoken
+from ..prompt import PROMPTS
 
 from .base import BaseSummarizer
 

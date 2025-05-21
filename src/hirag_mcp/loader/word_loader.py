@@ -1,5 +1,5 @@
 from langchain_community import document_loaders
-from hirag_mcp.loader.base_loader import BaseLoader
+from ..loader.base_loader import BaseLoader
 
 
 class WordLoader(BaseLoader):

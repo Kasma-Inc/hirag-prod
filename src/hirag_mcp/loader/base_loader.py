@@ -5,8 +5,8 @@ from typing import List, Optional, Type
 
 from langchain_core.document_loaders import BaseLoader as LangchainBaseLoader
 
-from hirag_mcp._utils import compute_mdhash_id
-from hirag_mcp.schema import File
+from .._utils import compute_mdhash_id
+from ..schema import File
 
 
 class BaseLoader(ABC):

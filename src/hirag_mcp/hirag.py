@@ -3,11 +3,11 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-from hirag_mcp._llm import gpt_4o_mini_complete, openai_embedding
-from hirag_mcp.chunk import BaseChunk, FixTokenChunk
-from hirag_mcp.entity import BaseEntity, VanillaEntity
-from hirag_mcp.loader import load_document
-from hirag_mcp.storage import (
+from ._llm import gpt_4o_mini_complete, openai_embedding
+from .chunk import BaseChunk, FixTokenChunk
+from .entity import BaseEntity, VanillaEntity
+from .loader import load_document
+from .storage import (
     BaseGDB,
     BaseVDB,
     LanceDB,

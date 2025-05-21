@@ -3,8 +3,8 @@ from typing import List, Literal, Optional
 
 import lancedb
 
-from hirag_mcp._utils import EmbeddingFunc
-from hirag_mcp.storage.base_vdb import BaseVDB
+from .._utils import EmbeddingFunc
+from ..storage.base_vdb import BaseVDB
 
 from .retrieval_strategy_provider import RetrievalStrategyProvider
 

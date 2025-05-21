@@ -5,16 +5,16 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List
 
-from hirag_mcp._utils import (
+from .._utils import (
     _handle_single_entity_extraction,
     _handle_single_relationship_extraction,
     compute_mdhash_id,
     pack_user_ass_to_openai_messages,
     split_string_by_multi_markers,
 )
-from hirag_mcp.prompt import PROMPTS
-from hirag_mcp.schema import Chunk, Entity, Relation
-from hirag_mcp.summarization import BaseSummarizer, TrancatedAggregateSummarizer
+from ..prompt import PROMPTS
+from ..schema import Chunk, Entity, Relation
+from ..summarization import BaseSummarizer, TrancatedAggregateSummarizer
 
 from .base import BaseEntity
 
