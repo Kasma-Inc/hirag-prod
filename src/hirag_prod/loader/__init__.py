@@ -1,6 +1,5 @@
 from typing import List, Literal, Optional
 
-
 from hirag_prod.schema import File
 
 from .base_loader import BaseLoader
@@ -18,6 +17,7 @@ DEFAULT_LOADER_CONFIGS = {
             # TODO(tatiana): tune the args?
         },
         "init_args": {
+            "work_dir": "temp",
             "max_output_docs": 5,
         },
     },

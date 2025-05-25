@@ -40,4 +40,5 @@ dependencies = [
     "transformers==4.47.1",
     "umap-learn==0.5.6",
     "xxhash==3.5.0",
+    "PPTAgent@git+https://github.com/icip-cas/PPTAgent.git"
 ]
