@@ -1,3 +1,4 @@
+import os
 from typing import List, Literal, Optional
 
 from hirag_prod.schema import File
@@ -8,6 +9,7 @@ from .excel_loader import ExcelLoader
 from .html_loader import HTMLLoader
 from .pdf_loader import PDFLoader
 from .ppt_loader import PowerPointLoader
+from .ppt_parser import PPTParser
 from .word_loader import WordLoader
 
 DEFAULT_LOADER_CONFIGS = {
@@ -17,7 +19,6 @@ DEFAULT_LOADER_CONFIGS = {
             # TODO(tatiana): tune the args?
         },
         "init_args": {
-            "work_dir": "temp",
             "max_output_docs": 5,
         },
     },
@@ -99,13 +100,17 @@ MARKIFY2DEFAULT_LOADER_NAME_MAPPING = {
     "html": "text/html",
 }
 
+PPTAGENT_LOADER_CONFIGS = {
+    "pptx": {"loader": PPTParser, "init_args": {"work_dir": "temp"}},
+}
+
 
 def load_document(
     document_path: str,
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: Literal["mineru", "langchain"] = "mineru",
+    loader_type: Literal["mineru", "langchain", "pptagent"] = "mineru",
 ) -> List[File]:
     """Load a document from the given path and content type
 
@@ -126,6 +131,8 @@ def load_document(
     elif loader_configs is None and loader_type == "langchain":
         content_type = MARKIFY2DEFAULT_LOADER_NAME_MAPPING[content_type]
         loader_configs = DEFAULT_LOADER_CONFIGS
+    elif loader_configs is None and loader_type == "pptagent":
+        loader_configs = PPTAGENT_LOADER_CONFIGS
 
     if content_type not in loader_configs:
         raise ValueError(f"Unsupported document type: {content_type}")
@@ -142,9 +149,18 @@ def load_document(
             raw_docs = loader.load(document_path, document_meta)
     elif loader_type == "mineru":
         raw_docs = loader.load_markify(document_path, document_meta, "advanced")
+    elif loader_type == "pptagent":
+        # work_dir: document_path=.../xxx.pptx → .../ppt_templates/xxx
+        abs_doc_path = os.path.abspath(document_path)
+        doc_dir = os.path.dirname(abs_doc_path)
+        doc_name = os.path.splitext(os.path.basename(abs_doc_path))[0]
+        # work_dir = <doc_dir>/ppt_templates/<doc_name>
+        work_dir = os.path.join(doc_dir, "ppt_templates", doc_name)
+        loader = PPTParser(work_dir=work_dir)
+        raw_docs = loader.parse_pptx(document_path)
     else:
         raise ValueError(
-            f"Unsupported loader type: {loader_type}, should be one of ['mineru', 'langchain']"
+            f"Unsupported loader type: {loader_type}, should be one of ['mineru', 'langchain', 'pptagent']"
         )
     return raw_docs
 
@@ -157,4 +173,5 @@ __all__ = [
     "load_document",
     "HTMLLoader",
     "CSVLoader",
+    "PPTParser",
 ]

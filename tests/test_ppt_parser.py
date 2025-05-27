@@ -23,13 +23,13 @@ def test_ppt_parser(test_file_path, work_dir):
     """Test the basic functionality of PPTParser."""
     parser = PPTParser(work_dir)
 
-    presentation, ppt_image_folder = parser.parse_pptx(test_file_path)
+    presentation, ppt_image_folder = parser._parse_pptx(test_file_path)
 
     assert presentation is not None
     assert os.path.exists(ppt_image_folder)
     assert len(os.listdir(ppt_image_folder)) > 0
 
-    slide_induction = parser.analyze_slide_structure(presentation, ppt_image_folder)
+    slide_induction = parser._analyze_slide_structure(presentation, ppt_image_folder)
 
     assert slide_induction is not None
     assert os.path.exists(os.path.join(work_dir, "slide_induction.json"))

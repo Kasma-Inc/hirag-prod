@@ -1,9 +1,10 @@
+import hashlib
 import json
 import os
 import pickle
 import shutil
 from copy import deepcopy
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pptagent.induct as induct
 import torch
@@ -12,6 +13,8 @@ from pptagent.model_utils import ModelManager
 from pptagent.multimodal import ImageLabler
 from pptagent.presentation import Presentation
 from pptagent.utils import Config, get_logger, pjoin, ppt_to_images
+
+from hirag_prod.schema import File, FileMetadata
 
 # Configure logger
 logger = get_logger("PPTParser")
@@ -59,7 +62,28 @@ class PPTParser:
         # Create necessary directories
         os.makedirs(self.work_dir, exist_ok=True)
 
-    def parse_pptx(self, pptx_path: str) -> Tuple[Presentation, str]:
+    def get_work_dir_file(self) -> File:
+        """
+        Return the parser's work_dir as a File object, for unified downstream processing.
+
+        Returns:
+            File: A File object representing the work_dir.
+        """
+
+        id_ = "workdir-" + hashlib.md5(self.work_dir.encode("utf-8")).hexdigest()
+        return File(
+            id=id_,
+            page_content=self.work_dir,
+            metadata=FileMetadata(
+                type=None,
+                filename=None,
+                page_number=None,
+                uri=self.work_dir,
+                private=None,
+            ),
+        )
+
+    def _parse_pptx(self, pptx_path: str) -> Tuple[Presentation, str]:
         """
         Parse the PowerPoint template and extract slide information
 
@@ -146,7 +170,7 @@ class PPTParser:
 
         return presentation, ppt_image_folder
 
-    def analyze_slide_structure(
+    def _analyze_slide_structure(
         self, presentation: Presentation, ppt_image_folder: str
     ) -> Dict[str, Any]:
         """
@@ -231,3 +255,17 @@ class PPTParser:
         )
         logger.info(f"✓ Slide induction results saved to: {slide_induction_cache_path}")
         return slide_induction
+
+    def parse_pptx(self, pptx_path: str) -> List[File]:
+        """
+        Run the full PPT parsing and slide induction pipeline, then return work_dir as a File.
+
+        Args:
+            pptx_path (str): Path to the PowerPoint file.
+
+        Returns:
+            List[File]: A list with a single File object representing work_dir.
+        """
+        presentation, ppt_image_folder = self._parse_pptx(pptx_path)
+        self._analyze_slide_structure(presentation, ppt_image_folder)
+        return [self.get_work_dir_file()]
