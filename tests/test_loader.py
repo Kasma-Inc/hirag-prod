@@ -39,7 +39,7 @@ def test_parse_pptx():
         loader_configs,
         loader_type="pptagent",
     )
-    assert len(documents) == 1
+    assert len(documents) >= 1
     # work_dir is auto-detected as .../ppt_templates/Beamer
     abs_doc_path = os.path.abspath(document_path)
     doc_dir = os.path.dirname(abs_doc_path)

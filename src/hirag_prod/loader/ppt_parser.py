@@ -62,26 +62,40 @@ class PPTParser:
         # Create necessary directories
         os.makedirs(self.work_dir, exist_ok=True)
 
-    def get_work_dir_file(self) -> File:
+    def get_template_files(self) -> List[File]:
         """
-        Return the parser's work_dir as a File object, for unified downstream processing.
+        Return a list of File objects, each representing a template in parsed PPT.
 
         Returns:
-            File: A File object representing the work_dir.
+            List[File]: List of File objects, one per template in parsed PPT.
         """
+        slide_induction_path = os.path.join(self.work_dir, "slide_induction.json")
+        with open(slide_induction_path, "r", encoding="utf-8") as f:
+            slide_induction = json.load(f)
 
-        id_ = "workdir-" + hashlib.md5(self.work_dir.encode("utf-8")).hexdigest()
-        return File(
-            id=id_,
-            page_content=self.work_dir,
-            metadata=FileMetadata(
-                type=None,
-                filename=None,
-                page_number=None,
-                uri=self.work_dir,
-                private=None,
-            ),
-        )
+        templates = []
+        for key, template in slide_induction.items():
+            if key == "functional_keys":
+                continue
+            template_id = template.get("template_id")
+            slide_id = template.get("slides")[0]
+            if template_id is None:
+                continue
+            # Generate a unique id using template_id and work_dir
+            unique_str = f"{self.work_dir}-{template_id}"
+            unique_id = hashlib.md5(unique_str.encode("utf-8")).hexdigest()
+            template_obj = File(
+                id=unique_id,
+                page_content=json.dumps(template, ensure_ascii=False, indent=2),
+                metadata=FileMetadata(
+                    type="pptx",
+                    page_number=slide_id,
+                    uri=self.work_dir,
+                    private=False,
+                ),
+            )
+            templates.append(template_obj)
+        return templates
 
     def _parse_pptx(self, pptx_path: str) -> Tuple[Presentation, str]:
         """
@@ -268,4 +282,4 @@ class PPTParser:
         """
         presentation, ppt_image_folder = self._parse_pptx(pptx_path)
         self._analyze_slide_structure(presentation, ppt_image_folder)
-        return [self.get_work_dir_file()]
+        return self.get_template_files()
