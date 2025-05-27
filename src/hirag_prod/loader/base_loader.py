@@ -1,9 +1,11 @@
 #! /usr/bin/env python3
-
+import os
 from abc import ABC
 from typing import List, Optional, Type
 
 from langchain_core.document_loaders import BaseLoader as LangchainBaseLoader
+from pptagent.document import Document
+from pptagent.llms import LLM
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.schema import File, FileMetadata
@@ -115,3 +117,31 @@ class BaseLoader(ABC):
             )
             doc.metadata = metadata
         return docs
+
+    def to_file_content(self, docs: List[File], image_dir: str) -> dict:
+        """
+        Refine the document structure with language model assistance
+
+        Args:
+            docs (List[File]): The extracted text contents from input file
+            image_dir (str): The image directory of the input file
+
+        Returns:
+            dict: The refined document structure as a dictionary
+        """
+        text_content = "".join(
+            doc.page_content for doc in docs
+        )  # concate a list of markdown texts
+
+        api_base = os.environ.get("API_BASE", None)
+        language_model_name = os.environ.get("LANGUAGE_MODEL", "gpt-4.1")
+        vision_model_name = os.environ.get("VISION_MODEL", "gpt-4.1")
+
+        language_model = LLM(language_model_name, api_base)
+        vision_model = LLM(vision_model_name, api_base)
+
+        file_content = Document.from_markdown(
+            text_content, language_model, vision_model, image_dir
+        )
+
+        return file_content.to_dict()

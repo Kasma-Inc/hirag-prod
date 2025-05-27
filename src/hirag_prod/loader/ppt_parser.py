@@ -7,7 +7,6 @@ from copy import deepcopy
 from typing import Any, Dict, List, Tuple
 
 import pptagent.induct as induct
-import torch
 from pptagent.llms import LLM, AsyncLLM
 from pptagent.model_utils import ModelManager
 from pptagent.multimodal import ImageLabler
@@ -41,7 +40,6 @@ class PPTParser:
         language_model_name = os.environ.get("LANGUAGE_MODEL", "gpt-4.1")
         vision_model_name = os.environ.get("VISION_MODEL", "gpt-4.1")
         text_model_name = os.environ.get("TEXT_MODEL", "text-embedding-3-small")
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.language_model = (
             AsyncLLM(language_model_name, api_base)
