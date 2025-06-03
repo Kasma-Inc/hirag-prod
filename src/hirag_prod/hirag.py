@@ -7,8 +7,10 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from typing import Optional
 
+import pyarrow as pa
 
 from hirag_prod._llm import gpt_4o_mini_complete, openai_embedding
+from hirag_prod._utils import _limited_gather  # Concurrency Rate Limiting Tool
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
 from hirag_prod.loader import load_document
@@ -19,9 +21,6 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
-
-from hirag_prod._utils import _limited_gather  # Concurrency Rate Limiting Tool
-
 
 # Log Configuration
 logging.basicConfig(
@@ -55,15 +54,60 @@ class HiRAG:
         )
     )
 
-    async def initialize_tables(self):
-        self.chunks_table = await self.vdb.db.open_table("chunks")
-        self.entities_table = await self.vdb.db.open_table("entities")
-    
     # Parallel Pool & Concurrency Rate Limiting Parameters
     _chunk_pool: ProcessPoolExecutor | None = None
     chunk_upsert_concurrency: int = 4
     entity_upsert_concurrency: int = 4
     relation_upsert_concurrency: int = 2
+
+    async def initialize_tables(self):
+        # Initialize the chunks table
+        try:
+            self.chunks_table = await self.vdb.db.open_table("chunks")
+        except Exception as e:
+            if str(e) == "Table 'chunks' was not found":
+                self.chunks_table = await self.vdb.db.create_table(
+                    "chunks",
+                    schema=pa.schema(
+                        [
+                            pa.field("text", pa.string()),
+                            pa.field("document_key", pa.string()),
+                            pa.field("type", pa.string()),
+                            pa.field("filename", pa.string()),
+                            pa.field("page_number", pa.int8()),
+                            pa.field("uri", pa.string()),
+                            pa.field("private", pa.bool_()),
+                            pa.field(
+                                "chunk_idx", pa.int32()
+                            ),  # The index of the chunk in the document
+                            pa.field(
+                                "document_id", pa.string()
+                            ),  # The id of the document that the chunk is from
+                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                        ]
+                    ),
+                )
+            else:
+                raise e
+        try:
+            self.entities_table = await self.vdb.db.open_table("entities")
+        except Exception as e:
+            if str(e) == "Table 'entities' was not found":
+                self.entities_table = await self.vdb.db.create_table(
+                    "entities",
+                    schema=pa.schema(
+                        [
+                            pa.field("text", pa.string()),
+                            pa.field("document_key", pa.string()),
+                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field("entity_type", pa.string()),
+                            pa.field("description", pa.string()),
+                            pa.field("chunk_ids", pa.list_(pa.string())),
+                        ]
+                    ),
+                )
+            else:
+                raise e
 
     @classmethod
     async def create(cls, **kwargs):
@@ -77,8 +121,6 @@ class HiRAG:
         instance = cls(**kwargs)
         await instance.initialize_tables()
         return instance
-
-
 
     @classmethod
     def _get_pool(cls) -> ProcessPoolExecutor:
@@ -144,7 +186,7 @@ class HiRAG:
     ):
         # Load the document from the document path
         logger.info(f"Loading the document from the document path: {document_path}")
-        
+
         start_total = time.perf_counter()
         documents = await asyncio.to_thread(
             load_document,
@@ -155,7 +197,6 @@ class HiRAG:
             loader_type="mineru",
         )
         logger.info(f"Loaded {len(documents)} documents")
-
 
         # Concurrently process all documents
         tasks = [self._process_document(doc) for doc in documents]
@@ -189,7 +230,7 @@ class HiRAG:
     async def query_relations(self, query: str, topk: int = 10):
         # search the entities
         recall_entities = await self.query_entities(query, topk)
-        recall_entities = [entity['document_key'] for entity in recall_entities]
+        recall_entities = [entity["document_key"] for entity in recall_entities]
         # search the relations
         recall_neighbors = []
         recall_edges = []
@@ -198,7 +239,7 @@ class HiRAG:
             recall_neighbors.extend(neighbors)
             recall_edges.extend(edges)
         return recall_neighbors, recall_edges
-    
+
     async def query_all(self, query: str, topk: int = 10):
         # search chunks
         recall_chunks = await self.query_chunks(query, topk)

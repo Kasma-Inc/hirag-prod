@@ -323,6 +323,7 @@ async def _handle_single_relationship_extraction(
         source_id=chunk_key,
     )
 
+
 T = TypeVar("T")
 
 

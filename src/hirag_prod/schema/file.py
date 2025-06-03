@@ -5,20 +5,22 @@ from pydantic import BaseModel
 
 
 class FileMetadata(BaseModel):
-    type: Optional[Literal[
-        "pdf",
-        "docx",
-        "pptx",
-        "xlsx",
-        "jpg",
-        "png",
-        "zip",
-        "txt",
-        "csv",
-        "text",
-        "tsv",
-        "html",
-    ]] = None
+    type: Optional[
+        Literal[
+            "pdf",
+            "docx",
+            "pptx",
+            "xlsx",
+            "jpg",
+            "png",
+            "zip",
+            "txt",
+            "csv",
+            "text",
+            "tsv",
+            "html",
+        ]
+    ] = None
     filename: Optional[str] = None
     page_number: Optional[int] = None
     # The uri of the file

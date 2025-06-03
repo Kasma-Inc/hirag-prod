@@ -14,7 +14,9 @@ def test_chunk_documents():
         "uri": document_path,
         "private": False,
     }
-    documents = load_document(document_path, content_type, document_meta)
+    documents = load_document(
+        document_path, content_type, document_meta, loader_type="langchain"
+    )
 
     # Test chunking the loaded documents
     chunker = FixTokenChunk(chunk_size=500, chunk_overlap=50)

@@ -1,5 +1,7 @@
+import os
+
 import numpy as np
-from openai import APIConnectionError, AsyncAzureOpenAI, AsyncOpenAI, RateLimitError
+from openai import APIConnectionError, AsyncOpenAI, RateLimitError
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -9,6 +11,7 @@ from tenacity import (
 
 from ._utils import wrap_embedding_func_with_attrs
 
+# TODO: Kindly change the global variable to a lifespan manager
 global_openai_async_client = None
 global_azure_openai_async_client = None
 
@@ -16,15 +19,10 @@ global_azure_openai_async_client = None
 def get_openai_async_client_instance():
     global global_openai_async_client
     if global_openai_async_client is None:
+        assert os.getenv("OPENAI_API_KEY") is not None, "OPENAI_API_KEY is not set"
+        assert os.getenv("OPENAI_BASE_URL") is not None, "OPENAI_BASE_URL is not set"
         global_openai_async_client = AsyncOpenAI()
     return global_openai_async_client
-
-
-def get_azure_openai_async_client_instance():
-    global global_azure_openai_async_client
-    if global_azure_openai_async_client is None:
-        global_azure_openai_async_client = AsyncAzureOpenAI()
-    return global_azure_openai_async_client
 
 
 @retry(

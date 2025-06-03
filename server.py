@@ -3,14 +3,11 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
 from typing import AsyncIterator, Optional
 
-import numpy as np
-import yaml
-from hirag_prod import HiRAG
 from mcp.server.fastmcp import Context, FastMCP
-from openai import AsyncOpenAI
+
+from hirag_prod import HiRAG
 
 logging.basicConfig(
     level=logging.INFO,

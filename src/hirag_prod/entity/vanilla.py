@@ -1,4 +1,3 @@
-import asyncio
 import re
 import warnings
 from collections import Counter, defaultdict
