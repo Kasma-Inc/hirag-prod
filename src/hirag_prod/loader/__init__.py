@@ -47,57 +47,6 @@ DEFAULT_LOADER_CONFIGS = {
     },
 }
 
-# MARKIFY_LOADER_CONFIGS = {
-#     "pdf": {"loader": PDFLoader},
-#     "docx": {
-#         "loader": WordLoader,
-#     },
-#     "pptx": {
-#         "loader": PowerPointLoader,
-#     },
-#     "xlsx": {
-#         "loader": ExcelLoader,
-#     },
-#     "jpg": {
-#         "loader": BaseLoader,
-#     },
-#     "png": {
-#         "loader": BaseLoader,
-#     },
-#     "zip": {
-#         "loader": BaseLoader,
-#     },
-#     "txt": {
-#         "loader": BaseLoader,
-#     },
-#     "csv": {
-#         "loader": CSVLoader,
-#     },
-#     "text": {
-#         "loader": BaseLoader,
-#     },
-#     "tsv": {
-#         "loader": BaseLoader,
-#     },
-#     "html": {
-#         "loader": HTMLLoader,
-#     },
-# }
-
-# MARKIFY2DEFAULT_LOADER_NAME_MAPPING = {
-#     "pdf": "application/pdf",
-#     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-#     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-#     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-#     "jpg": "image/jpeg",
-#     "png": "image/png",
-#     "zip": "application/zip",
-#     "txt": "text/plain",
-#     "csv": "text/csv",
-#     "text": "text/plain",
-#     "tsv": "text/tab-separated-values",
-#     "html": "text/html",
-# }
 
 PPTAGENT_LOADER_CONFIGS = {
     "pptx": {"loader": PPTParser, "init_args": {"work_dir": "temp"}},
@@ -125,11 +74,6 @@ def load_document(
     Returns:
         List[File]: The loaded documents.
     """
-    # if loader_configs is None and loader_type == "mineru":
-    #     loader_configs = MARKIFY_LOADER_CONFIGS
-    # elif loader_configs is None and loader_type == "langchain":
-    #     # content_type = MARKIFY2DEFAULT_LOADER_NAME_MAPPING[content_type]
-    #     loader_configs = DEFAULT_LOADER_CONFIGS
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
     elif loader_configs is None and loader_type == "pptagent":
