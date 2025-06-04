@@ -157,3 +157,6 @@ class NetworkXGDB(BaseGDB):
     def load(cls, path: str):
         with open(path, "rb") as f:
             return pickle.load(f)
+
+    async def clean_up(self):
+        pass

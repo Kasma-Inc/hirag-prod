@@ -208,7 +208,7 @@ class HiRAG:
         total = time.perf_counter() - start_total
         logger.info(f"Total pipeline time: {total:.3f}s")
 
-    async def query_chunks(self, query: str, topk: int = 10):
+    async def query_chunks(self, query: str, topk: int = 10) -> list[dict]:
         return await self.vdb.query(
             query=query,
             table=self.chunks_table,
@@ -218,7 +218,7 @@ class HiRAG:
             distance_threshold=100,  # a very high threshold to ensure all results are returned
         )
 
-    async def query_entities(self, query: str, topk: int = 10):
+    async def query_entities(self, query: str, topk: int = 10) -> list[dict]:
         return await self.vdb.query(
             query=query,
             table=self.entities_table,
@@ -227,7 +227,9 @@ class HiRAG:
             distance_threshold=100,  # a very high threshold to ensure all results are returned
         )
 
-    async def query_relations(self, query: str, topk: int = 10):
+    async def query_relations(
+        self, query: str, topk: int = 10
+    ) -> tuple[list[dict], list[dict]]:
         # search the entities
         recall_entities = await self.query_entities(query, topk)
         recall_entities = [entity["document_key"] for entity in recall_entities]
@@ -240,7 +242,7 @@ class HiRAG:
             recall_edges.extend(edges)
         return recall_neighbors, recall_edges
 
-    async def query_all(self, query: str, topk: int = 10):
+    async def query_all(self, query: str, topk: int = 10) -> dict[str, list[dict]]:
         # search chunks
         recall_chunks = await self.query_chunks(query, topk)
         # search entities
@@ -254,3 +256,7 @@ class HiRAG:
             "neighbors": recall_neighbors,
             "edges": recall_edges,
         }
+
+    async def clean_up(self):
+        await self.gdb.clean_up()
+        await self.vdb.clean_up()

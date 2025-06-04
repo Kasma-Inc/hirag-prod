@@ -42,3 +42,6 @@ dependencies = [
     "xxhash==3.5.0",
     "PPTAgent@git+https://github.com/Dormiveglia-elf/PPTAgent.git"
 ]
+
+[project.scripts]
+mcp-hirag-tool = "hirag_prod.server:main"

@@ -132,3 +132,6 @@ class LanceDB(BaseVDB):
         table = await self.db.open_table(table_name)
         data = await table.to_arrow()
         return data
+
+    async def clean_up(self):
+        pass
