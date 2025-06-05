@@ -10,6 +10,7 @@ from .retrieval_strategy_provider import RetrievalStrategyProvider
 
 THRESHOLD_DISTANCE = 0.3
 TOPK = 5
+TOPN = 4
 
 
 @dataclass
@@ -86,6 +87,7 @@ class LanceDB(BaseVDB):
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = ["filename", "text"],
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
+        topn: Optional[int] = TOPN,
     ) -> List[dict]:
         """Search the chunk table by text and return the topk results
 
@@ -121,9 +123,20 @@ class LanceDB(BaseVDB):
         if distance_threshold is not None:
             query = query.distance_range(upper_bound=distance_threshold)
         query = query.select(columns_to_select).limit(topk)
-        query = self.strategy_provider.rerank_chunk_query(query, query_text)
 
-        return await query.to_list()
+        result_dict = {}
+        result_dict["query"] = await query.to_list()  # query before reranking
+
+        if topn is None:
+            topn = self.strategy_provider.default_topn
+        reranked_query = self.strategy_provider.rerank_chunk_query(
+            query, query_text, topn
+        )
+        result_dict["reranked_query"] = (
+            await reranked_query.to_list()
+        )  # query after reranking
+
+        return result_dict
 
     async def get_table(self, table_name: str) -> str:
         """Get a table from the database."""
