@@ -45,20 +45,11 @@ class HiRAG:
     )
 
     # Entity extraction
-    entity_extractor: BaseEntity = field(
-        # default_factory=lambda: VanillaEntity.create(extract_func=chat_service.complete)
-        default=None
-    )
+    entity_extractor: BaseEntity = field(default=None)
 
     # Storage
     vdb: BaseVDB = field(default=None)
-    gdb: BaseGDB = field(
-        # default_factory=lambda: NetworkXGDB.create(
-        #     path="kb/hirag.gpickle",
-        #     llm_func=self.chat_service.complete,
-        # )
-        default=None
-    )
+    gdb: BaseGDB = field(default=None)
 
     # Parallel Pool & Concurrency Rate Limiting Parameters
     _chunk_pool: ProcessPoolExecutor | None = None
