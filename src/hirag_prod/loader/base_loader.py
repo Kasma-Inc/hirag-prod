@@ -29,12 +29,7 @@ class BaseLoader(ABC):
             doc = File(
                 id=compute_mdhash_id(doc.page_content, prefix="doc-"),
                 page_content=doc.page_content,
-                metadata=FileMetadata(
-                    page_number=i,
-                    type=None,
-                    filename=None,
-                    uri=None,
-                ),
+                metadata=FileMetadata(page_number=i),
             )
             docs.append(doc)
         return docs
@@ -54,12 +49,7 @@ class BaseLoader(ABC):
             doc = File(
                 id=compute_mdhash_id(chunk.strip(), prefix="doc-"),
                 page_content=chunk,
-                metadata=FileMetadata(
-                    page_number=i,
-                    type=None,
-                    filename=None,
-                    uri=None,
-                ),
+                metadata=FileMetadata(page_number=i),
             )
             docs.append(doc)
 
@@ -108,12 +98,14 @@ class BaseLoader(ABC):
             # Keep the original page number
             page_number = doc.metadata.page_number
 
+            assert document_meta.get("private") is not None, "private is required"
             # Create metadata with all required fields
             metadata = FileMetadata(
                 page_number=page_number,
                 type=document_meta.get("type", "pdf"),  # Default to pdf
                 filename=document_meta.get("filename", ""),
                 uri=document_meta.get("uri", ""),
+                private=document_meta.get("private"),
             )
             doc.metadata = metadata
         return docs

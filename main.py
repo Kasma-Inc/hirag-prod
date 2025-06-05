@@ -1,3 +1,4 @@
+# This is a quickstart script for the HiRAG system.
 import asyncio
 import logging
 

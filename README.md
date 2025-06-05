@@ -11,13 +11,13 @@ HIRAG_PROD_DIR="." docker-compose -p hirag-prod-compose up -d
 ```
 Then use the following command to enter the container:
 ```bash
-docker exec -it $(whoami)_markify_service /bin/bash
+docker exec -it $(whoami)_hirag-prod /bin/bash
 ```
 or use VSCode to connect to the container.
 
 Then create the virtual environment and install dependencies using uv as below:
 ```bash
-uv venv
+uv venv --python 3.12
 source .venv/bin/activate
 uv pip install -e .
 ```

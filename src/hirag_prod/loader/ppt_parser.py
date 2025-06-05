@@ -37,8 +37,8 @@ class PPTParser:
         self.models = ModelManager()
 
         api_base = os.environ.get("API_BASE", None)
-        language_model_name = os.environ.get("LANGUAGE_MODEL", "gpt-4.1")
-        vision_model_name = os.environ.get("VISION_MODEL", "gpt-4.1")
+        language_model_name = os.environ.get("LANGUAGE_MODEL", "gpt-4.1-2025-04-14")
+        vision_model_name = os.environ.get("VISION_MODEL", "gpt-4.1-2025-04-14")
         text_model_name = os.environ.get("TEXT_MODEL", "text-embedding-3-small")
 
         self.language_model = (

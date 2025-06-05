@@ -46,7 +46,9 @@ def test_load_pdf_mineru():
 
 def test_parse_pptx():
     document_path = os.path.join(os.path.dirname(__file__), "Beamer.pptx")
-    content_type = "pptx"
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
     document_meta = {
         "type": "pptx",
         "filename": "Beamer.pptx",

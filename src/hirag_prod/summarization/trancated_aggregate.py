@@ -11,6 +11,7 @@ class TrancatedAggregateSummarizer(BaseSummarizer):
     def __init__(
         self,
         extract_func: Callable,
+        llm_model_name: str = "gpt-4o-mini",
         tiktoken_model_name: str = "gpt-4o-mini",
         input_max_tokens: int = 16000,
         output_max_tokens: int = 1000,
@@ -19,6 +20,7 @@ class TrancatedAggregateSummarizer(BaseSummarizer):
         self.input_max_tokens = input_max_tokens
         self.output_max_tokens = output_max_tokens
         self.extract_func = extract_func
+        self.llm_model_name = llm_model_name
 
     async def summarize_entity(
         self,
@@ -55,5 +57,9 @@ class TrancatedAggregateSummarizer(BaseSummarizer):
         }
 
         use_prompt = summary_prompt_template.format(**context_for_prompt)
-        summary = await self.extract_func(use_prompt, max_tokens=self.output_max_tokens)
+        summary = await self.extract_func(
+            model=self.llm_model_name,
+            prompt=use_prompt,
+            max_tokens=self.output_max_tokens,
+        )
         return summary

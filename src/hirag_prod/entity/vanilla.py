@@ -23,6 +23,7 @@ from .base import BaseEntity
 class VanillaEntity(BaseEntity):
     # === Common Components ===
     # Core function for LLM-based extraction
+    llm_model_name: str = field(default="gpt-4o-mini")
     extract_func: Callable
     # Summarizer for entity descriptions
     entity_description_summarizer: BaseSummarizer = field(default=None)
@@ -79,6 +80,7 @@ class VanillaEntity(BaseEntity):
     def __post_init__(self):
         if self.entity_description_summarizer is None:
             self.entity_description_summarizer = TrancatedAggregateSummarizer(
+                llm_model_name=self.llm_model_name,
                 extract_func=self.extract_func,
             )
 
@@ -96,7 +98,8 @@ class VanillaEntity(BaseEntity):
                 **self.entity_extract_context, input_text=content
             )  # fill in the parameter
             entity_string_result = await self.extract_func(
-                entity_extraction_prompt
+                model=self.llm_model_name,
+                prompt=entity_extraction_prompt,
             )  # feed into LLM with the prompt
 
             content_history = pack_user_ass_to_openai_messages(
@@ -106,7 +109,9 @@ class VanillaEntity(BaseEntity):
             # 2. continue to extract entities for higher quality entities entraction, normally we only need 1 iteration
             for glean_idx in range(self.entity_extract_max_gleaning):
                 glean_result = await self.extract_func(
-                    self.continue_prompt, history_messages=content_history
+                    model=self.llm_model_name,
+                    prompt=self.continue_prompt,
+                    history_messages=content_history,
                 )
 
                 content_history += pack_user_ass_to_openai_messages(
@@ -118,7 +123,8 @@ class VanillaEntity(BaseEntity):
 
                 entity_extraction_termination_str: str = (
                     await self.extract_func(  # judge if we still need the next iteration
-                        self.entity_extract_termination_prompt,
+                        model=self.llm_model_name,
+                        prompt=self.entity_extract_termination_prompt,
                         history_messages=content_history,
                     )
                 )
@@ -249,7 +255,8 @@ class VanillaEntity(BaseEntity):
                 input_text=content,
             )  # fill in the parameter
             relation_string_result = await self.extract_func(
-                relation_extract_prompt
+                model=self.llm_model_name,
+                prompt=relation_extract_prompt,
             )  # feed into LLM with the prompt
 
             content_history = pack_user_ass_to_openai_messages(
@@ -259,7 +266,9 @@ class VanillaEntity(BaseEntity):
             # 2. continue to extract relations for higher quality relations extraction, normally we only need 1 iteration
             for glean_idx in range(self.relation_extract_max_gleaning):
                 glean_result = await self.extract_func(
-                    self.continue_prompt, history_messages=content_history
+                    model=self.llm_model_name,
+                    prompt=self.continue_prompt,
+                    history_messages=content_history,
                 )
 
                 content_history += pack_user_ass_to_openai_messages(
@@ -271,7 +280,8 @@ class VanillaEntity(BaseEntity):
 
                 relation_extraction_termination_str: str = (
                     await self.extract_func(  # judge if we still need the next iteration
-                        self.relation_extraction_termination_prompt,
+                        model=self.llm_model_name,
+                        prompt=self.relation_extraction_termination_prompt,
                         history_messages=content_history,
                     )
                 )

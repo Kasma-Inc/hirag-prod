@@ -16,19 +16,32 @@ class NetworkXGDB(BaseGDB):
     path: str
     graph: nx.DiGraph
     llm_func: Callable
+    llm_model_name: str
     summarizer: Optional[BaseSummarizer]
 
     @classmethod
     def create(
-        cls, path: str, llm_func: Callable, summarizer: Optional[BaseSummarizer] = None
+        cls,
+        path: str,
+        llm_func: Callable,
+        llm_model_name: str = "gpt-4o-mini",
+        summarizer: Optional[BaseSummarizer] = None,
     ):
         if not os.path.exists(path):
             graph = nx.Graph()
         else:
             graph = cls.load(path)
         if summarizer is None:
-            summarizer = TrancatedAggregateSummarizer(extract_func=llm_func)
-        return cls(path=path, graph=graph, llm_func=llm_func, summarizer=summarizer)
+            summarizer = TrancatedAggregateSummarizer(
+                extract_func=llm_func, llm_model_name=llm_model_name
+            )
+        return cls(
+            path=path,
+            graph=graph,
+            llm_func=llm_func,
+            llm_model_name=llm_model_name,
+            summarizer=summarizer,
+        )
 
     async def _upsert_node(
         self, node: Entity, record_description: Optional[str] = None

@@ -1,13 +1,16 @@
 import pytest
 
-from hirag_prod._llm import gpt_4o_mini_complete
+from hirag_prod._llm import ChatCompletion
 from hirag_prod.entity.vanilla import VanillaEntity
 from hirag_prod.schema import Chunk, Entity, Relation
 
 
 @pytest.mark.asyncio
 async def test_vanilla_entity():
-    entity_handler = VanillaEntity.create(extract_func=gpt_4o_mini_complete)
+    entity_handler = VanillaEntity.create(
+        extract_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
+    )
 
     chunks = [
         Chunk(
@@ -116,7 +119,8 @@ async def test_vanilla_relation():
         ),
     ]
     entity_handler = VanillaEntity.create(
-        extract_func=gpt_4o_mini_complete,
+        extract_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
     )
     relations = await entity_handler.relation(chunks, entities)
     assert isinstance(relations[0], Relation)

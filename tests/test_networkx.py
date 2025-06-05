@@ -1,6 +1,6 @@
 import pytest
 
-from hirag_prod._llm import gpt_4o_mini_complete
+from hirag_prod._llm import ChatCompletion
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.networkx import NetworkXGDB
 
@@ -119,7 +119,11 @@ async def test_networkx_gdb():
         ),
     ]
 
-    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=gpt_4o_mini_complete)
+    gdb = NetworkXGDB.create(
+        path="test.gpickle",
+        llm_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
+    )
     for relation in relations:
         await gdb.upsert_relation(relation)
     await gdb.dump()
@@ -127,7 +131,11 @@ async def test_networkx_gdb():
 
 @pytest.mark.asyncio
 async def test_merge_node():
-    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=gpt_4o_mini_complete)
+    gdb = NetworkXGDB.create(
+        path="test.gpickle",
+        llm_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
+    )
     description1 = "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."
     description2 = "The medical system in the United States is a complex network of hospitals, clinics, and other healthcare providers that provide medical care to the population."
     node1 = Entity(
@@ -160,7 +168,7 @@ async def test_merge_node():
 
 @pytest.mark.asyncio
 async def test_query_one_hop():
-    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=gpt_4o_mini_complete)
+    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=ChatCompletion().complete)
 
     relations = [
         Relation(
@@ -299,7 +307,11 @@ async def test_query_one_hop():
         ),
     ]
 
-    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=gpt_4o_mini_complete)
+    gdb = NetworkXGDB.create(
+        path="test.gpickle",
+        llm_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
+    )
 
     for relation in relations:
         await gdb.upsert_relation(relation)

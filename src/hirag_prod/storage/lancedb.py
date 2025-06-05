@@ -100,7 +100,8 @@ class LanceDB(BaseVDB):
         Returns:
             List[dict]: _description_
         """
-        embedding = await self.embedding_func(query)
+        query_text = query
+        embedding = await self.embedding_func(query_text)
         embedding = embedding[0].tolist()
         if columns_to_select is None:
             columns_to_select = [
@@ -114,16 +115,13 @@ class LanceDB(BaseVDB):
             topk = self.strategy_provider.default_topk
 
         query = table.query().nearest_to(embedding)
-        query_df = await query.to_arrow()
         query = self.add_filter_by_document_keys(document_list, query)
         query = self.add_filter_by_require_access(require_access, query)
 
         if distance_threshold is not None:
             query = query.distance_range(upper_bound=distance_threshold)
-
         query = query.select(columns_to_select).limit(topk)
-
-        query = self.strategy_provider.rerank_chunk_query(query, query)
+        query = self.strategy_provider.rerank_chunk_query(query, query_text)
 
         return await query.to_list()
 

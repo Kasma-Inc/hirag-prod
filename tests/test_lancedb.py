@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from hirag_prod._llm import openai_embedding
+from hirag_prod._llm import EmbeddingService
 from hirag_prod.schema import Entity
 from hirag_prod.storage.lancedb import LanceDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
@@ -12,7 +12,7 @@ from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProv
 async def test_lancedb():
     strategy_provider = RetrievalStrategyProvider()
     lance_db = await LanceDB.create(
-        embedding_func=openai_embedding,
+        embedding_func=EmbeddingService().create_embeddings,
         db_url="kb/test.db",
         strategy_provider=strategy_provider,
     )
@@ -120,7 +120,7 @@ async def test_lancedb_with_entity():
     ]
     strategy_provider = RetrievalStrategyProvider()
     lance_db = await LanceDB.create(
-        embedding_func=openai_embedding,
+        embedding_func=EmbeddingService().create_embeddings,
         db_url="kb/test.db",
         strategy_provider=strategy_provider,
     )
