@@ -62,11 +62,11 @@ class LanceDB(BaseVDB):
             await table.add([properties], mode=mode)
             return table
 
-    def add_filter_by_document_keys(self, document_list: Optional[List[str]], query):
+    def add_filter_by_uri(self, uri_list: Optional[List[str]], query):
         filter_expr = None
-        if document_list is not None and len(document_list) > 0:
-            document_list = [f"'{doc}'" for doc in document_list]
-            filter_expr = f"document_key in ({','.join(document_list)})"
+        if uri_list is not None and len(uri_list) > 0:
+            uri_list = [f"'{uri}'" for uri in uri_list]
+            filter_expr = f"uri in ({','.join(uri_list)})"
             # prefilter before searching the nearest neighbors
             query = query.where(filter_expr)
         return query
@@ -83,7 +83,7 @@ class LanceDB(BaseVDB):
         query: str,
         table: lancedb.AsyncTable,
         topk: Optional[int] = TOPK,
-        document_list: Optional[List[str]] = None,
+        uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = ["filename", "text"],
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
@@ -95,7 +95,7 @@ class LanceDB(BaseVDB):
             query (str): The query string.
             table (Union[lancedb.AsyncTable, lancedb.table.Table]): The lancedb table to search.
             topk (Optional[int]): The number of results to return. Defaults to 10.
-            document_list (Optional[List[str]]): The list of documents (by document_key url) to search in.
+            uri_list (Optional[List[str]]): The list of documents (by uri) to search in.
             require_access (Optional[Literal["private", "public"]]): The access level of the documents to search in.
             columns_to_select (Optional[List[str]]): The columns to select from the table.
             distance_threshold (Optional[float]): The distance (cosine) threshold to use.
@@ -114,7 +114,7 @@ class LanceDB(BaseVDB):
         if columns_to_select is None:
             columns_to_select = [
                 "text",
-                "document_key",
+                "uri",
                 "filename",
                 "private",
             ]
@@ -124,7 +124,7 @@ class LanceDB(BaseVDB):
 
         # We use the cosine distance to calculate the distance between the query and the embeddings
         query = table.query().nearest_to(embedding).distance_type("cosine")
-        query = self.add_filter_by_document_keys(document_list, query)
+        query = self.add_filter_by_uri(uri_list, query)
         query = self.add_filter_by_require_access(require_access, query)
 
         if distance_threshold is not None:

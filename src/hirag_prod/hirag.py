@@ -165,7 +165,7 @@ class HiRAG:
                     **chunk.metadata.__dict__,
                 },
                 table_name="chunks",
-                mode="overwrite",
+                mode="append",
             )
             for chunk in chunks
         ]
@@ -183,7 +183,7 @@ class HiRAG:
                         **ent.metadata.__dict__,
                     },
                     table_name="entities",
-                    mode="overwrite",
+                    mode="append",
                 )
                 for ent in entities
             ]
@@ -204,6 +204,25 @@ class HiRAG:
     ):
         # Load the document from the document path
         logger.info(f"Loading the document from the document path: {document_path}")
+        # Check if document has already been chunked
+        uri = document_meta.get("uri") if document_meta else None
+        if uri:
+            try:
+                # Try to query existing chunks for this document
+                existing_chunks = await self.vdb.query(
+                    query="",  # Empty query to just filter by document_key
+                    table=self.chunks_table,
+                    uri_list=[uri],
+                    topk=1,  # We only need to check if any chunks exist
+                )
+                if existing_chunks:
+                    logger.info(
+                        f"Document {document_key} already exists in the knowledge base"
+                    )
+                    return
+            except Exception as e:
+                logger.warning(f"Error checking for existing chunks: {e}")
+                # Continue with processing if check fails
 
         start_total = time.perf_counter()
         documents = await asyncio.to_thread(
