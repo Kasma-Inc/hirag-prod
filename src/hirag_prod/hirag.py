@@ -209,11 +209,8 @@ class HiRAG:
         if uri:
             try:
                 # Try to query existing chunks for this document
-                existing_chunks = await self.vdb.query(
-                    query="",  # Empty query to just filter by document_key
-                    table=self.chunks_table,
-                    uri_list=[uri],
-                    topk=1,  # We only need to check if any chunks exist
+                existing_chunks = (
+                    await self.chunks_table.query().where(f"uri == '{uri}'").to_list()
                 )
                 if existing_chunks:
                     logger.info(
@@ -245,30 +242,42 @@ class HiRAG:
         total = time.perf_counter() - start_total
         logger.info(f"Total pipeline time: {total:.3f}s")
 
-    async def query_chunks(self, query: str, topk: int = 10) -> list[dict[str, Any]]:
+    async def query_chunks(
+        self, query: str, topk: int = 10, topn: int = 5
+    ) -> list[dict[str, Any]]:
         chunks = await self.vdb.query(
             query=query,
             table=self.chunks_table,
-            topk=topk,
-            require_access="public",
-            columns_to_select=["text", "document_key", "filename", "private"],
+            topk=topk,  # before reranking
+            topn=topn,  # after reranking
+            columns_to_select=[
+                "text",
+                "uri",
+                "filename",
+                "private",
+                "uploaded_at",
+                "document_key",
+            ],
         )
         return chunks
 
-    async def query_entities(self, query: str, topk: int = 10) -> list[dict[str, Any]]:
+    async def query_entities(
+        self, query: str, topk: int = 10, topn: int = 5
+    ) -> list[dict[str, Any]]:
         entities = await self.vdb.query(
             query=query,
             table=self.entities_table,
-            topk=topk,
+            topk=topk,  # before reranking
+            topn=topn,  # after reranking
             columns_to_select=["text", "document_key", "entity_type", "description"],
         )
         return entities
 
     async def query_relations(
-        self, query: str, topk: int = 10
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> tuple[list[str], list[str]]:
         # search the entities
-        recall_entities = await self.query_entities(query, topk)
+        recall_entities = await self.query_entities(query, topk, topn)
         recall_entities = [entity["document_key"] for entity in recall_entities]
         # search the relations
         recall_neighbors = []
@@ -279,13 +288,15 @@ class HiRAG:
             recall_edges.extend(edges)
         return recall_neighbors, recall_edges
 
-    async def query_all(self, query: str, topk: int = 10) -> dict[str, list[dict]]:
+    async def query_all(self, query: str) -> dict[str, list[dict]]:
         # search chunks
-        recall_chunks = await self.query_chunks(query, topk)
+        recall_chunks = await self.query_chunks(query, topk=10, topn=5)
         # search entities
-        recall_entities = await self.query_entities(query, topk)
+        recall_entities = await self.query_entities(query, topk=10, topn=5)
         # search relations
-        recall_neighbors, recall_edges = await self.query_relations(query, topk)
+        recall_neighbors, recall_edges = await self.query_relations(
+            query, topk=10, topn=5
+        )
         # merge the results
         # TODO: the recall results are not returned in the same format
         return {
