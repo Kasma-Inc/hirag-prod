@@ -8,7 +8,7 @@ from hirag_prod.storage.base_vdb import BaseVDB
 
 from .retrieval_strategy_provider import RetrievalStrategyProvider
 
-THRESHOLD_DISTANCE = 0.7
+THRESHOLD_DISTANCE = 1
 TOPK = 5
 TOPN = 4
 
