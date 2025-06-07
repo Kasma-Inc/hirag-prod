@@ -81,6 +81,7 @@ class HiRAG:
                                 "document_id", pa.string()
                             ),  # The id of the document that the chunk is from
                             pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field("uploaded_at", pa.timestamp("ms")),
                         ]
                     ),
                 )

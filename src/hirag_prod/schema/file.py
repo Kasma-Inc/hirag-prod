@@ -29,6 +29,7 @@ class FileMetadata(BaseModel):
     uri: Optional[str] = None
     # Whether the file is private
     private: Optional[bool] = None
+    uploaded_at: Optional[datetime] = None
 
 
 class File(Document, BaseModel):
