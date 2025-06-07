@@ -269,23 +269,10 @@ class HiRAG:
         # merge the results
         # TODO: the recall results are not returned in the same format
         return {
-            "chunks": [chunk["text"] for chunk in recall_chunks],
-            "entities": [
-                entity["text"] + ": " + entity["description"]
-                for entity in recall_entities
-            ],
-            "neighbors": [
-                neighbor.page_content + ": " + neighbor.metadata.description
-                for neighbor in recall_neighbors
-            ],
-            "relations": [
-                edge.source.page_content
-                + " -> "
-                + edge.target.page_content
-                + ": "
-                + edge.properties["description"]
-                for edge in recall_edges
-            ],
+            "chunks": recall_chunks,
+            "entities": recall_entities,
+            "neighbors": recall_neighbors,
+            "relations": recall_edges,
         }
 
     async def clean_up(self):
