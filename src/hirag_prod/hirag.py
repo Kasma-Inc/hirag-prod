@@ -116,13 +116,13 @@ class HiRAG:
         if kwargs.get("vdb") is None:
             lancedb = await LanceDB.create(
                 embedding_func=embedding_service.create_embeddings,
-                db_url="kb/hirag.db",
+                db_url="/kb/hirag.db",
                 strategy_provider=RetrievalStrategyProvider(),
             )
             kwargs["vdb"] = lancedb
         if kwargs.get("gdb") is None:
             gdb = NetworkXGDB.create(
-                path="kb/hirag.gpickle",
+                path="/kb/hirag.gpickle",
                 llm_func=chat_service.complete,
             )
             kwargs["gdb"] = gdb
