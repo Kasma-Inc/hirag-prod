@@ -47,27 +47,19 @@ async def test_reranker():
     )
     topk = 2
     topn = 1
-    recall_dict = await lance_db.query(
+    recall_query = await lance_db.query(
         query="tell me about bitcoin",
         table=async_table,
         topk=topk,
         document_list=["test"],
         require_access="private",
         columns_to_select=["text", "document_key", "filename", "private"],
-        distance_threshold=100,  # a very high threshold to ensure all results are returned
         topn=topn,
     )
-    assert recall_dict is not None
-    assert "query" in recall_dict.keys()
-    assert "reranked_query" in recall_dict.keys()
-    recall_query = recall_dict["query"]  # result before reranking
-    recall_reranked_query = recall_dict["reranked_query"]  # reranked result
     assert recall_query is not None
-    assert recall_reranked_query is not None
-    assert len(recall_query) == topk
-    assert len(recall_reranked_query) == topn
+    assert len(recall_query) == topn
 
-    for result in recall_reranked_query:
+    for result in recall_query:
         assert "text" in result.keys()
         assert result["text"] is not None
         assert "_relevance_score" in result.keys()
@@ -163,28 +155,20 @@ async def test_reranker_with_chunked_documents():
     document_list.append("test_append")
     topk = 10
     topn = 5
-    recall_dict = await lance_db.query(
+    recall_query = await lance_db.query(
         query="tell me about bitcoin",
         table=async_table,
         topk=topk,
         document_list=document_list,
         require_access="private",
         columns_to_select=["text", "document_key", "filename", "private"],
-        distance_threshold=100,  # a very high threshold to ensure all results are returned
         topn=topn,
     )
 
-    assert recall_dict is not None
-    assert "query" in recall_dict.keys()
-    assert "reranked_query" in recall_dict.keys()
-    recall_query = recall_dict["query"]  # result before reranking
-    recall_reranked_query = recall_dict["reranked_query"]  # reranked result
     assert recall_query is not None
-    assert recall_reranked_query is not None
-    assert len(recall_query) == topk
-    assert len(recall_reranked_query) == topn
+    assert len(recall_query) == topn
 
-    for result in recall_reranked_query:
+    for result in recall_query:
         assert "text" in result.keys()
         assert result["text"] is not None
         assert "_relevance_score" in result.keys()

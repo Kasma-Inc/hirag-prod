@@ -232,7 +232,6 @@ class HiRAG:
             topk=topk,
             require_access="public",
             columns_to_select=["text", "document_key", "filename", "private"],
-            distance_threshold=100,  # a very high threshold to ensure all results are returned
         )
         return chunks
 
@@ -242,7 +241,6 @@ class HiRAG:
             table=self.entities_table,
             topk=topk,
             columns_to_select=["text", "document_key", "entity_type", "description"],
-            distance_threshold=100,  # a very high threshold to ensure all results are returned
         )
         return entities
 
