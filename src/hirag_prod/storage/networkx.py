@@ -128,11 +128,10 @@ class NetworkXGDB(BaseGDB):
 
     async def upsert_relation(self, relation: Relation):
         try:
-            await self.upsert_node(relation.source)
-            await self.upsert_node(relation.target)
-            self.graph.add_edge(
-                relation.source.id, relation.target.id, **relation.properties
-            )
+            # TODO: Handle the case where the source or target is not in the graph
+            # await self.upsert_node(relation.source)
+            # await self.upsert_node(relation.target)
+            self.graph.add_edge(relation.source, relation.target, **relation.properties)
         except Exception as e:
             # TODO: handle the exception
             raise e
@@ -148,8 +147,8 @@ class NetworkXGDB(BaseGDB):
     async def query_edge(self, edge_id: str) -> Relation:
         edge = self.graph.edges[edge_id]
         return Relation(
-            source=await self.query_node(edge_id[0]),
-            target=await self.query_node(edge_id[1]),
+            source=edge_id[0],
+            target=edge_id[1],
             properties=edge,
         )
 

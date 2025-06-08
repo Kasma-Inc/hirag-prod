@@ -1,12 +1,15 @@
 import os
 
 import pytest
+from dotenv import load_dotenv
 
 from hirag_prod._llm import EmbeddingService
 from hirag_prod.chunk import FixTokenChunk
 from hirag_prod.loader import load_document
 from hirag_prod.storage.lancedb import LanceDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
+
+load_dotenv(override=True)
 
 
 @pytest.mark.asyncio
@@ -51,9 +54,6 @@ async def test_reranker():
         query="tell me about bitcoin",
         table=async_table,
         topk=topk,
-        document_list=["test"],
-        require_access="private",
-        columns_to_select=["text", "document_key", "filename", "private"],
         topn=topn,
     )
     assert recall_query is not None
@@ -159,9 +159,6 @@ async def test_reranker_with_chunked_documents():
         query="tell me about bitcoin",
         table=async_table,
         topk=topk,
-        document_list=document_list,
-        require_access="private",
-        columns_to_select=["text", "document_key", "filename", "private"],
         topn=topn,
     )
 

@@ -1,11 +1,14 @@
 import os
 
 import pytest
+from dotenv import load_dotenv
 
 from hirag_prod._llm import EmbeddingService
 from hirag_prod.schema import Entity
 from hirag_prod.storage.lancedb import LanceDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
+
+load_dotenv(override=True)
 
 
 @pytest.mark.asyncio
@@ -68,10 +71,9 @@ async def test_lancedb():
         query="tell me about bitcoin",
         table=async_table,
         topk=3,
-        document_list=["test"],
-        require_access="private",
         columns_to_select=["text", "document_key", "filename", "private"],
         distance_threshold=100,  # a very high threshold to ensure all results are returned
+        topn=2,
     )
     assert len(recall) == 2
     assert recall[0]["text"] == test_to_embed
