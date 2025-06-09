@@ -1,8 +1,11 @@
 import pytest
+from dotenv import load_dotenv
 
 from hirag_prod._llm import ChatCompletion
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.networkx import NetworkXGDB
+
+load_dotenv(override=True)
 
 
 @pytest.mark.asyncio
@@ -167,3 +170,36 @@ async def test_query_one_hop():
         "ent-3ff39c0f9a2e36a5d47ded059ba14673",
         "ent-2a422318fc58c5302a5ba9365bcbc0be",
     }
+
+
+@pytest.mark.asyncio
+async def test_merge_nodes():
+    gdb = NetworkXGDB.create(
+        path="test.gpickle",
+        llm_func=ChatCompletion().complete,
+        llm_model_name="gpt-4o-mini",
+    )
+    description1 = "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."
+    description2 = "The medical system in the United States is a complex network of hospitals, clinics, and other healthcare providers that provide medical care to the population."
+    node1 = Entity(
+        id="ent-3ff39c0f9a2e36a5d47ded059ba14673",
+        page_content="UNITED STATES",
+        metadata={
+            "entity_type": "GEO",
+            "description": description1,
+            "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
+        },
+    )
+    node2 = Entity(
+        id="ent-3ff39c0f9a2e36a5d47ded059ba14673",
+        page_content="UNITED STATES",
+        metadata={
+            "entity_type": "GEO",
+            "description": description2,
+            "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
+        },
+    )
+    await gdb.upsert_nodes([node1, node2])
+    node = await gdb.query_node(node1.id)
+    breakpoint()
+    assert node.metadata.description == description1

@@ -333,8 +333,8 @@ class VanillaEntity(BaseEntity):
                         )
                         continue
                     relation = Relation(
-                        source=source,
-                        target=target,
+                        source=source.id,
+                        target=target.id,
                         properties={
                             "description": relation["description"],
                             "weight": relation["weight"],

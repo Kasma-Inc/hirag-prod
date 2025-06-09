@@ -153,8 +153,12 @@ class HiRAG:
         loop = asyncio.get_running_loop()
         pool = self._get_pool()
         # Chunking executed in process pool
+        start_chunking = time.perf_counter()
         chunks = await loop.run_in_executor(pool, self.chunker.chunk, document)
+        chunking_time = time.perf_counter() - start_chunking
+        logger.info(f"Chunking time: {chunking_time:.3f}s")
 
+        start_upsert_chunks = time.perf_counter()
         # Concurrently upsert chunks
         chunk_coros = [
             self.vdb.upsert_text(
@@ -170,10 +174,17 @@ class HiRAG:
             for chunk in chunks
         ]
         await _limited_gather(chunk_coros, self.chunk_upsert_concurrency)
+        upsert_chunks_time = time.perf_counter() - start_upsert_chunks
+        logger.info(f"Upsert chunks time: {upsert_chunks_time:.3f}s")
 
         if with_graph:
             # Entity extraction & upsert
+            start_entity_extraction = time.perf_counter()
             entities = await self.entity_extractor.entity(chunks)
+            entity_extraction_time = time.perf_counter() - start_entity_extraction
+            logger.info(f"Entity extraction time: {entity_extraction_time:.3f}s")
+
+            start_upsert_entities = time.perf_counter()
             entity_coros = [
                 self.vdb.upsert_text(
                     text_to_embed=ent.metadata.description,
@@ -188,11 +199,25 @@ class HiRAG:
                 for ent in entities
             ]
             await _limited_gather(entity_coros, self.entity_upsert_concurrency)
+            upsert_entities_time = time.perf_counter() - start_upsert_entities
+            logger.info(f"Upsert entities time: {upsert_entities_time:.3f}s")
+
+            start_upsert_graph = time.perf_counter()
+            await self.gdb.upsert_nodes(entities)
+            upsert_graph_time = time.perf_counter() - start_upsert_graph
+            logger.info(f"Upsert nodes time: {upsert_graph_time:.3f}s")
 
             # Relation extraction & upsert
+            start_relation_extraction = time.perf_counter()
             relations = await self.entity_extractor.relation(chunks, entities)
+            relation_extraction_time = time.perf_counter() - start_relation_extraction
+            logger.info(f"Relation extraction time: {relation_extraction_time:.3f}s")
+
+            start_upsert_relations = time.perf_counter()
             relation_coros = [self.gdb.upsert_relation(rel) for rel in relations]
             await _limited_gather(relation_coros, self.relation_upsert_concurrency)
+            upsert_relations_time = time.perf_counter() - start_upsert_relations
+            logger.info(f"Upsert relations time: {upsert_relations_time:.3f}s")
 
     async def insert_to_kb(
         self,
@@ -213,9 +238,7 @@ class HiRAG:
                     await self.chunks_table.query().where(f"uri == '{uri}'").to_list()
                 )
                 if existing_chunks:
-                    logger.info(
-                        f"Document {document_key} already exists in the knowledge base"
-                    )
+                    logger.info(f"Document {uri} already exists in the knowledge base")
                     return
             except Exception as e:
                 logger.warning(f"Error checking for existing chunks: {e}")
