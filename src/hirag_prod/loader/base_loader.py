@@ -10,14 +10,14 @@ from pptagent.llms import LLM
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.schema import File, FileMetadata
 
-from .markify_loader import MarkifyClient
+from .doc2x_loader import Doc2XClient
 
 
 class BaseLoader(ABC):
     """Base class for all loaders"""
 
     loader_type: Type[LangchainBaseLoader]
-    loader_markify: Type[MarkifyClient]
+    loader_doc2x: Type[Doc2XClient]
     # additional metadata to add to the loaded raw documents
     page_number_key: str = "page_number"
 
@@ -34,24 +34,8 @@ class BaseLoader(ABC):
             docs.append(doc)
         return docs
 
-    def _load_markify(self, document_path: str, mode="advanced") -> List[File]:
-        raw_text = self.loader_markify.convert_pdf(file_path=document_path, mode=mode)
-
-        # Split text into chunks based on token limit
-        text_chunks = self.loader_markify.split_text_by_tokens(
-            raw_text, max_tokens=6000
-        )
-
-        # Create Document objects for each chunk
-        docs = []
-        for i, chunk in enumerate(text_chunks, start=1):
-            # Only set page number and doc hash here
-            doc = File(
-                id=compute_mdhash_id(chunk.strip(), prefix="doc-"),
-                page_content=chunk,
-                metadata=FileMetadata(page_number=i),
-            )
-            docs.append(doc)
+    def _load_doc2x(self, document_path: str) -> List[File]:
+        docs = self.loader_doc2x.convert_and_split_pdf(file_path=document_path)
 
         return docs
 
@@ -74,22 +58,21 @@ class BaseLoader(ABC):
         self._set_doc_metadata(raw_docs, document_meta)
         return raw_docs
 
-    def load_markify(
-        self, document_path: str, document_meta: Optional[dict] = None, mode="advanced"
+    def load_doc2x(
+        self, document_path: str, document_meta: Optional[dict] = None
     ) -> List[File]:
-        """Load document with markify(MinerU) and set the metadata of the output
+        """Load document with Doc2X and set the metadata of the output
 
         Args:
-            document_path (str): The document path for markify loader to use.
+            document_path (str): The document path for Doc2X loader to use.
             document_meta (Optional[dict]): The document metadata to set to the output.
-            mode (str): The mode for the markify loader.
 
         Returns:
             list[File]: Raw documents.
         """
         if document_meta is None:
             document_meta = {}
-        raw_docs = self._load_markify(document_path, mode)
+        raw_docs = self._load_doc2x(document_path)
         self._set_doc_metadata(raw_docs, document_meta)
         return raw_docs
 

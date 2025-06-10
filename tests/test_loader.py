@@ -26,7 +26,7 @@ def test_load_pdf_langchain():
     assert documents[0].id.startswith("doc-")
 
 
-def test_load_pdf_mineru():
+def test_load_pdf_doc2x():
     document_path = f"{os.path.dirname(__file__)}/agent.pdf"
     content_type = "application/pdf"
     document_meta = {
@@ -36,7 +36,7 @@ def test_load_pdf_mineru():
         "private": False,
     }
     documents = load_document(
-        document_path, content_type, document_meta, loader_type="mineru"
+        document_path, content_type, document_meta, loader_type="doc2x"
     )
     assert len(documents) > 0
     assert documents[0].page_content is not None

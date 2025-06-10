@@ -42,6 +42,7 @@ dependencies = [
     "xxhash==3.5.0",
     "PPTAgent@git+https://github.com/Dormiveglia-elf/PPTAgent.git",
     "voyageai==0.3.2",
+    "pdfdeal==1.0.2",
 ]
 
 [project.scripts]

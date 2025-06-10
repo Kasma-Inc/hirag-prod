@@ -1,13 +1,14 @@
 import os
 import re
 from typing import Optional
-
 from urllib.request import urlopen
 
 IMAGE_PATTERN = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<url>[^)]+)\)")
 
 
-def store_markdown_images(markdown: str, image_dir: str, base_url: Optional[str] = None) -> str:
+def store_markdown_images(
+    markdown: str, image_dir: str, base_url: Optional[str] = None
+) -> str:
     """Download images referenced in markdown and update the links.
 
     Parameters
@@ -39,7 +40,9 @@ def store_markdown_images(markdown: str, image_dir: str, base_url: Optional[str]
             data = resp.read()
         with open(local_path, "wb") as f:
             f.write(data)
-        updated_link = f"![{alt}]({os.path.join(os.path.basename(image_dir), filename)})"
+        updated_link = (
+            f"![{alt}]({os.path.join(os.path.basename(image_dir), filename)})"
+        )
         updated = updated.replace(match.group(0), updated_link)
 
     return updated

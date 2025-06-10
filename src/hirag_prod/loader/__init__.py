@@ -58,7 +58,7 @@ def load_document(
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: Literal["mineru", "langchain", "pptagent"] = "mineru",
+    loader_type: Literal["doc2x", "langchain", "pptagent"] = "langchain",
 ) -> List[File]:
     """Load a document from the given path and content type
 
@@ -92,8 +92,8 @@ def load_document(
             raw_docs = loader.load(document_path, document_meta, **loader_conf["args"])
         else:
             raw_docs = loader.load(document_path, document_meta)
-    elif loader_type == "mineru":
-        raw_docs = loader.load_markify(document_path, document_meta, "advanced")
+    elif loader_type == "doc2x":
+        raw_docs = loader.load_doc2x(document_path, document_meta)
     elif loader_type == "pptagent":
         # work_dir: document_path=.../xxx.pptx → .../ppt_templates/xxx
         abs_doc_path = os.path.abspath(document_path)
@@ -105,7 +105,7 @@ def load_document(
         raw_docs = loader.parse_pptx(document_path)
     else:
         raise ValueError(
-            f"Unsupported loader type: {loader_type}, should be one of ['mineru', 'langchain', 'pptagent']"
+            f"Unsupported loader type: {loader_type}, should be one of ['doc2x', 'langchain', 'pptagent']"
         )
     return raw_docs
 

@@ -1,7 +1,6 @@
+import importlib.util
 from pathlib import Path
 from unittest.mock import patch
-import importlib.util
-import sys
 
 # Load module without executing hirag_prod __init__
 module_path = Path(__file__).resolve().parents[1] / "src/hirag_prod/markdown_utils.py"
