@@ -1,7 +1,9 @@
+import asyncio
 import os
 import zipfile
+from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 import tiktoken
 from dotenv import load_dotenv
@@ -56,6 +58,16 @@ class Doc2XClient:
 
         return chunks
 
+    def convert_pdf(
+        self, file_path: Path, doc_output_dir: Path, base_name: str
+    ) -> Tuple[List[str], List[dict], bool]:
+        return self.client.pdf2file(
+            pdf_file=str(file_path),
+            output_path=str(doc_output_dir),
+            output_names=[f"{base_name}.zip"],
+            output_format="md",
+        )
+
     def convert_and_split_pdf(
         self, file_path: str, max_tokens: int = 8000
     ) -> List[File]:
@@ -68,12 +80,21 @@ class Doc2XClient:
         doc_output_dir.mkdir(exist_ok=True)
 
         # Convert PDF
-        zip_paths, failed_info, flag = self.client.pdf2file(
-            pdf_file=str(file_path),
-            output_path=str(doc_output_dir),
-            output_names=[f"{base_name}.zip"],
-            output_format="md",
-        )
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            with ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    self.convert_pdf, file_path, doc_output_dir, base_name
+                )
+                zip_paths, failed_info, flag = future.result()
+        else:
+            zip_paths, failed_info, flag = self.convert_pdf(
+                file_path, doc_output_dir, base_name
+            )
 
         if flag:
             raise RuntimeError(f"Doc2X conversion failed: {failed_info}")
