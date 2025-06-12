@@ -1,8 +1,15 @@
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from openai import APIConnectionError, AsyncOpenAI, RateLimitError
+import tiktoken
+from openai import (
+    APIConnectionError,
+    AsyncOpenAI,
+    BadRequestError,
+    RateLimitError,
+)
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -83,7 +90,7 @@ class ChatCompletion:
         Returns:
             The completion response as a string
         """
-        messages = []
+        messages: List[Dict[str, str]] = []
 
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -105,22 +112,77 @@ class EmbeddingService:
 
     def __init__(self):
         self.client = OpenAIClient().client
+        # Semaphore to ensure that embedding requests run one at a time
+        self._sem = asyncio.Semaphore(5)
 
     @api_retry
     async def create_embeddings(
-        self, texts: List[str], model: str = "text-embedding-3-small"
+        self,
+        texts: List[str] | str,
+        model: str = "text-embedding-3-small",
+        *,
+        max_tokens: int = 100,
+        batch_size: int = 2,
     ) -> np.ndarray:
         """
         Create embeddings for the given texts.
 
+        This helper splits long texts into smaller chunks, batches them,
+        retries on service limits, and uses a semaphore to serialize calls.
+
         Args:
-            texts: List of texts to embed
-            model: The embedding model to use
+            texts: Text or list of texts to embed.
+            model: The embedding model to use.
+            max_tokens: Maximum tokens allowed per chunk.
+            batch_size: Number of chunks per API request.
 
         Returns:
-            Numpy array of embeddings
+            Numpy array of embeddings corresponding to the original inputs.
         """
-        response = await self.client.embeddings.create(
-            model=model, input=texts, encoding_format="float"
-        )
-        return np.array([dp.embedding for dp in response.data])
+        async with self._sem:
+            if isinstance(texts, str):
+                texts = [texts]
+
+            encoding = tiktoken.get_encoding("cl100k_base")
+            split_texts: List[str] = []
+            mapping: List[List[int]] = []
+
+            # Split each text into chunks of up to max_tokens
+            for text in texts:
+                tokens = encoding.encode(text)
+                indices: List[int] = []
+                for i in range(0, len(tokens), max_tokens):
+                    chunk = encoding.decode(tokens[i : i + max_tokens])
+                    split_texts.append(chunk)
+                    indices.append(len(split_texts) - 1)
+                mapping.append(indices)
+
+            embeddings: List[List[float]] = []
+            i = 0
+
+            # Process batches sequentially
+            while i < len(split_texts):
+                batch = split_texts[i : i + batch_size]
+                try:
+                    response = await self.client.embeddings.create(
+                        model=model, input=batch, encoding_format="float"
+                    )
+                    embeddings.extend([dp.embedding for dp in response.data])
+                    i += batch_size
+                except BadRequestError as e:
+                    # Reduce batch_size if context length is exceeded
+                    msg = str(e).lower()
+                    if "too many" in msg or "maximum context" in msg:
+                        if batch_size == 1:
+                            raise
+                        batch_size = max(1, batch_size // 2)
+                    else:
+                        raise
+
+            # Aggregate chunk embeddings back to full-text embeddings
+            final_embeds: List[np.ndarray] = []
+            for indices in mapping:
+                parts = [embeddings[j] for j in indices]
+                final_embeds.append(np.mean(np.array(parts), axis=0))
+
+            return np.array(final_embeds)
