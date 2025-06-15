@@ -6,6 +6,7 @@ from typing import Callable, List, Optional
 
 import networkx as nx
 
+from hirag_prod._utils import _limited_gather
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.base_gdb import BaseGDB
 from hirag_prod.summarization import BaseSummarizer, TrancatedAggregateSummarizer
@@ -123,8 +124,12 @@ class NetworkXGDB(BaseGDB):
                 node = await self._merge_node(node, latest_description)
                 record_description = latest_description
 
-    async def upsert_nodes(self, nodes: List[Entity]):
-        await asyncio.gather(*[self.upsert_node(node) for node in nodes])
+    async def upsert_nodes(self, nodes: List[Entity], concurrency: int | None = None):
+        coros = [self.upsert_node(node) for node in nodes]
+        if concurrency is None:
+            await asyncio.gather(*coros)
+        else:
+            await _limited_gather(coros, concurrency)
 
     async def upsert_relation(self, relation: Relation):
         try:
