@@ -7,7 +7,6 @@ import tiktoken
 from openai import (
     APIConnectionError,
     AsyncOpenAI,
-    BadRequestError,
     RateLimitError,
 )
 from tenacity import (
@@ -57,7 +56,7 @@ class OpenAIClient:
 # Retry decorator for API calls
 api_retry = retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 
@@ -112,7 +111,7 @@ class EmbeddingService:
 
     def __init__(self):
         self.client = OpenAIClient().client
-        # Semaphore to ensure that embedding requests run one at a time
+        # Semaphore to ensure the limit of embedding requests
         self._sem = asyncio.Semaphore(5)
 
     @api_retry
@@ -121,20 +120,22 @@ class EmbeddingService:
         texts: List[str] | str,
         model: str = "text-embedding-3-small",
         *,
-        max_tokens: int = 100,
+        max_tokens: int = 1200,
         batch_size: int = 2,
     ) -> np.ndarray:
         """
         Create embeddings for the given texts.
 
-        This helper splits long texts into smaller chunks, batches them,
-        retries on service limits, and uses a semaphore to serialize calls.
+        This version assumes `texts` have already been truncated so that each
+        entry does not exceed `max_tokens` tokens. If any text is longer than
+        `max_tokens` an exception is raised instead of automatically
+        splitting.
 
         Args:
             texts: Text or list of texts to embed.
             model: The embedding model to use.
-            max_tokens: Maximum tokens allowed per chunk.
-            batch_size: Number of chunks per API request.
+            max_tokens: Maximum tokens allowed for each text.
+            batch_size: Number of texts per API request.
 
         Returns:
             Numpy array of embeddings corresponding to the original inputs.
@@ -147,42 +148,22 @@ class EmbeddingService:
             split_texts: List[str] = []
             mapping: List[List[int]] = []
 
-            # Split each text into chunks of up to max_tokens
+            # Ensure none of the inputs exceed the token limit
             for text in texts:
-                tokens = encoding.encode(text)
-                indices: List[int] = []
-                for i in range(0, len(tokens), max_tokens):
-                    chunk = encoding.decode(tokens[i : i + max_tokens])
-                    split_texts.append(chunk)
-                    indices.append(len(split_texts) - 1)
-                mapping.append(indices)
+                if len(encoding.encode(text)) > max_tokens:
+                    raise ValueError(
+                        f"Text exceeds the allowed {max_tokens} token limit"
+                    )
 
             embeddings: List[List[float]] = []
-            i = 0
-
             # Process batches sequentially
-            while i < len(split_texts):
-                batch = split_texts[i : i + batch_size]
-                try:
-                    response = await self.client.embeddings.create(
-                        model=model, input=batch, encoding_format="float"
-                    )
-                    embeddings.extend([dp.embedding for dp in response.data])
-                    i += batch_size
-                except BadRequestError as e:
-                    # Reduce batch_size if context length is exceeded
-                    msg = str(e).lower()
-                    if "too many" in msg or "maximum context" in msg:
-                        if batch_size == 1:
-                            raise
-                        batch_size = max(1, batch_size // 2)
-                    else:
-                        raise
+            i = 0
+            while i < len(texts):
+                batch = texts[i : i + batch_size]
+                response = await self.client.embeddings.create(
+                    model=model, input=batch, encoding_format="float"
+                )
+                embeddings.extend([dp.embedding for dp in response.data])
+                i += batch_size
 
-            # Aggregate chunk embeddings back to full-text embeddings
-            final_embeds: List[np.ndarray] = []
-            for indices in mapping:
-                parts = [embeddings[j] for j in indices]
-                final_embeds.append(np.mean(np.array(parts), axis=0))
-
-            return np.array(final_embeds)
+            return np.array(embeddings)
