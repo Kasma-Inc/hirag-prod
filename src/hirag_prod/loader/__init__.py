@@ -9,8 +9,8 @@ from .html_loader import HTMLLoader
 from .pdf_loader import PDFLoader
 from .ppt_loader import PowerPointLoader
 from .ppt_parser import PPTParser
-from .word_loader import WordLoader
 from .txt_loader import TxtLoader
+from .word_loader import WordLoader
 
 DEFAULT_LOADER_CONFIGS = {
     "application/pdf": {

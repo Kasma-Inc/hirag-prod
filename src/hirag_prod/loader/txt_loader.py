@@ -1,12 +1,14 @@
 from typing import List, Optional
+
 from langchain_community import document_loaders
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
+from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.loader.base_loader import BaseLoader
 from hirag_prod.schema import File, FileMetadata
-from hirag_prod._utils import compute_mdhash_id
 
 SEPARATOR = "=+=+=+=+=+=+=+=+="
+
 
 class TxtLoader(BaseLoader):
     """Specialized loader for txt documents, using langchain's TextLoader and RecursiveCharacterTextSplitter"""
@@ -26,11 +28,11 @@ class TxtLoader(BaseLoader):
             separators (Optional[List[str]]): separators for splitting, default is SEPARATOR
         """
         self.loader_type = document_loaders.TextLoader
-        
+
         # set default separators
         if separators is None:
             separators = [SEPARATOR]
-            
+
         # create text splitter
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
@@ -52,10 +54,10 @@ class TxtLoader(BaseLoader):
         """
         # use TextLoader to load the document
         loader = self.loader_type(document_path, **loader_args)
-        
+
         # use text_splitter to split the document
         raw_docs = loader.load_and_split(text_splitter=self.text_splitter)
-        
+
         # convert to File object
         docs = []
         for i, doc in enumerate(raw_docs, start=1):
@@ -65,6 +67,5 @@ class TxtLoader(BaseLoader):
                 metadata=FileMetadata(page_number=i),
             )
             docs.append(file_doc)
-        
+
         return docs
-        

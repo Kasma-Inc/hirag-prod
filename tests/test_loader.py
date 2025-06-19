@@ -78,6 +78,7 @@ def test_parse_pptx():
     assert os.path.isdir(os.path.join(work_dir, "images"))
     assert os.path.isdir(os.path.join(work_dir, "template_images"))
 
+
 def test_load_txt_langchain():
     document_path = os.path.join(os.path.dirname(__file__), "test.txt")
     content_type = "text/plain"
