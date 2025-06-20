@@ -15,7 +15,7 @@ def test_store_markdown_images(tmp_path):
     image_data = b"dummy"
 
     def fake_open(url):
-        assert url == "http://markify:20926/images/sample.png"
+        assert url == "http://localhost:8000/images/sample.png"
 
         class Resp:
             def __enter__(self_inner):
@@ -30,7 +30,7 @@ def test_store_markdown_images(tmp_path):
         return Resp()
 
     with patch.object(markdown_utils, "urlopen", fake_open):
-        out = store_markdown_images(md, str(tmp_path), base_url="http://markify:20926")
+        out = store_markdown_images(md, str(tmp_path), base_url="http://localhost:8000")
 
     expected_path = Path(tmp_path) / "sample.png"
     assert expected_path.exists()

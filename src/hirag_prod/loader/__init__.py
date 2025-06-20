@@ -9,6 +9,7 @@ from .html_loader import HTMLLoader
 from .pdf_loader import PDFLoader
 from .ppt_loader import PowerPointLoader
 from .ppt_parser import PPTParser
+from .txt_loader import TxtLoader
 from .word_loader import WordLoader
 
 DEFAULT_LOADER_CONFIGS = {
@@ -43,6 +44,10 @@ DEFAULT_LOADER_CONFIGS = {
     },
     "text/csv": {
         "loader": CSVLoader,
+        "args": {},
+    },
+    "text/plain": {
+        "loader": TxtLoader,
         "args": {},
     },
 }
@@ -119,4 +124,5 @@ __all__ = [
     "HTMLLoader",
     "CSVLoader",
     "PPTParser",
+    "TxtLoader",
 ]

@@ -77,3 +77,26 @@ def test_parse_pptx():
     assert os.path.isdir(os.path.join(work_dir, "slide_images"))
     assert os.path.isdir(os.path.join(work_dir, "images"))
     assert os.path.isdir(os.path.join(work_dir, "template_images"))
+
+
+def test_load_txt_langchain():
+    document_path = os.path.join(os.path.dirname(__file__), "test.txt")
+    content_type = "text/plain"
+    document_meta = {
+        "type": "txt",
+        "filename": "test.txt",
+        "uri": document_path,
+        "private": False,
+    }
+    loader_configs = None
+    documents = load_document(
+        document_path,
+        content_type,
+        document_meta,
+        loader_configs,
+        loader_type="langchain",
+    )
+    assert len(documents) > 0
+    assert documents[0].page_content is not None
+    assert documents[0].metadata is not None
+    assert documents[0].id.startswith("doc-")

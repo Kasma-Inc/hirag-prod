@@ -12,17 +12,7 @@ services:
       - ${HIRAG_PROD_DIR}:/chatbot
     cap_add:
       - SYS_ADMIN
-    depends_on:
-      - markify
     command: ["tail", "-f", "/dev/null"]  # keep docker running
     restart: unless-stopped
-    networks:
-      - app-network
-
-  markify:
-    image: sagicuhk/markify:latest
-    container_name: "${USER}_markify_hirag_service"
-    entrypoint: ["/bin/sh", "/markify/preprocess.sh"]  # just restart to update quickly without rebuilding
-    command: ["tail", "-f", "/dev/null"]  # keep docker running
     networks:
       - app-network

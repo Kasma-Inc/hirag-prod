@@ -7,7 +7,7 @@ Run the following command to start the container, before that you should install
 ```bash
 git clone https://github.com/Kasma-Inc/hirag-prod
 cd hirag-prod
-HIRAG_PROD_DIR="." docker-compose -p hirag-prod-compose up -d
+HIRAG_PROD_DIR="." docker compose -p hirag-prod-compose up -d
 ```
 Then use the following command to enter the container:
 ```bash
