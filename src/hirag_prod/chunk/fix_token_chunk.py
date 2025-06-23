@@ -1,5 +1,4 @@
-from langchain_text_splitters import Tokenizer
-from langchain_text_splitters.base import split_text_on_tokens
+import tiktoken
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.schema import Chunk, File
@@ -8,23 +7,27 @@ from .base_chunk import BaseChunk
 
 
 class FixTokenChunk(BaseChunk):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(
+        self, chunk_size: int, chunk_overlap: int, encoding_name="cl100k_base"
+    ):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.encoding = tiktoken.get_encoding(encoding_name)
 
     def chunk(self, document: File) -> list[Chunk]:
-        tokenizer = Tokenizer(
-            tokens_per_chunk=self.chunk_size,
-            chunk_overlap=self.chunk_overlap,
-            decode=(lambda it: "".join(chr(i) for i in it)),
-            encode=(lambda it: [ord(c) for c in it]),
-        )
-        chunks = split_text_on_tokens(
-            text=document.page_content,
-            tokenizer=tokenizer,
-        )
+        text = document.page_content
         metadata = document.metadata
         document_id = document.id
+
+        tokens = self.encoding.encode(text)
+        chunks = []
+        start = 0
+        while start < len(tokens):
+            end = min(start + self.chunk_size, len(tokens))
+            chunk_tokens = tokens[start:end]
+            chunk_text = self.encoding.decode(chunk_tokens)
+            chunks.append(chunk_text)
+            start += self.chunk_size - self.chunk_overlap
 
         return [
             Chunk(

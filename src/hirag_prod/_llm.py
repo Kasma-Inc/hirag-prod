@@ -1,8 +1,14 @@
+import asyncio
 import os
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-from openai import APIConnectionError, AsyncOpenAI, RateLimitError
+import tiktoken
+from openai import (
+    APIConnectionError,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -50,7 +56,7 @@ class OpenAIClient:
 # Retry decorator for API calls
 api_retry = retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 
@@ -83,7 +89,7 @@ class ChatCompletion:
         Returns:
             The completion response as a string
         """
-        messages = []
+        messages: List[Dict[str, str]] = []
 
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -105,22 +111,57 @@ class EmbeddingService:
 
     def __init__(self):
         self.client = OpenAIClient().client
+        # Semaphore to ensure the limit of embedding requests
+        self._sem = asyncio.Semaphore(5)
 
     @api_retry
     async def create_embeddings(
-        self, texts: List[str], model: str = "text-embedding-3-small"
+        self,
+        texts: List[str] | str,
+        model: str = "text-embedding-3-small",
+        *,
+        max_tokens: int = 1200,
+        batch_size: int = 2,
     ) -> np.ndarray:
         """
         Create embeddings for the given texts.
 
+        This version assumes `texts` have already been truncated so that each
+        entry does not exceed `max_tokens` tokens. If any text is longer than
+        `max_tokens` an exception is raised instead of automatically
+        splitting.
+
         Args:
-            texts: List of texts to embed
-            model: The embedding model to use
+            texts: Text or list of texts to embed.
+            model: The embedding model to use.
+            max_tokens: Maximum tokens allowed for each text.
+            batch_size: Number of texts per API request.
 
         Returns:
-            Numpy array of embeddings
+            Numpy array of embeddings corresponding to the original inputs.
         """
-        response = await self.client.embeddings.create(
-            model=model, input=texts, encoding_format="float"
-        )
-        return np.array([dp.embedding for dp in response.data])
+        async with self._sem:
+            if isinstance(texts, str):
+                texts = [texts]
+
+            encoding = tiktoken.get_encoding("cl100k_base")
+
+            # Ensure none of the inputs exceed the token limit
+            for text in texts:
+                if len(encoding.encode(text)) > max_tokens:
+                    raise ValueError(
+                        f"Text exceeds the allowed {max_tokens} token limit"
+                    )
+
+            embeddings: List[List[float]] = []
+            # Process batches sequentially
+            i = 0
+            while i < len(texts):
+                batch = texts[i : i + batch_size]
+                response = await self.client.embeddings.create(
+                    model=model, input=batch, encoding_format="float"
+                )
+                embeddings.extend([dp.embedding for dp in response.data])
+                i += batch_size
+
+            return np.array(embeddings)

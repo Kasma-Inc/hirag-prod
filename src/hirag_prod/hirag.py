@@ -55,7 +55,13 @@ class HiRAG:
     _chunk_pool: ProcessPoolExecutor | None = None
     chunk_upsert_concurrency: int = 4
     entity_upsert_concurrency: int = 4
+    graph_node_upsert_concurrency: int = 4
     relation_upsert_concurrency: int = 2
+
+    @staticmethod
+    def _chunk_list(lst: list, size: int):
+        for i in range(0, len(lst), size):
+            yield lst[i : i + size]
 
     async def initialize_tables(self):
         # Initialize the chunks table
@@ -159,21 +165,26 @@ class HiRAG:
         logger.info(f"Chunking time: {chunking_time:.3f}s")
 
         start_upsert_chunks = time.perf_counter()
-        # Concurrently upsert chunks
+        # Rate-limited chunks upsert
         chunk_coros = [
-            self.vdb.upsert_text(
-                text_to_embed=chunk.page_content,
-                properties={
-                    "document_key": chunk.id,
-                    "text": chunk.page_content,
-                    **chunk.metadata.__dict__,
-                },
+            self.vdb.upsert_texts(
+                texts_to_embed=[chunk.page_content],
+                properties_list=[
+                    {
+                        "document_key": chunk.id,
+                        "text": chunk.page_content,
+                        **chunk.metadata.__dict__,
+                    }
+                ],
                 table=self.chunks_table,
                 mode="append",
             )
             for chunk in chunks
         ]
-        await _limited_gather(chunk_coros, self.chunk_upsert_concurrency)
+        await _limited_gather(
+            chunk_coros,
+            self.chunk_upsert_concurrency,
+        )
         upsert_chunks_time = time.perf_counter() - start_upsert_chunks
         logger.info(f"Upsert chunks time: {upsert_chunks_time:.3f}s")
 
@@ -185,26 +196,37 @@ class HiRAG:
             logger.info(f"Entity extraction time: {entity_extraction_time:.3f}s")
 
             start_upsert_entities = time.perf_counter()
-            ent_coros = [
-                self.vdb.upsert_text(
-                    text_to_embed=ent.metadata.description,
-                    properties={
-                        "document_key": ent.id,
-                        "text": ent.page_content,
-                        **ent.metadata.__dict__,
-                    },
+            # Rate-limited entity upsert
+            entity_coros = [
+                self.vdb.upsert_texts(
+                    texts_to_embed=[ent.metadata.description],
+                    properties_list=[
+                        {
+                            "document_key": ent.id,
+                            "text": ent.page_content,
+                            **ent.metadata.__dict__,
+                        }
+                    ],
                     table=self.entities_table,
                     mode="append",
                 )
                 for ent in entities
             ]
-            await _limited_gather(ent_coros, self.entity_upsert_concurrency)
+            await _limited_gather(
+                entity_coros,
+                self.entity_upsert_concurrency,
+            )
             upsert_entities_time = time.perf_counter() - start_upsert_entities
             logger.info(f"Upsert entities time: {upsert_entities_time:.3f}s")
 
             start_upsert_graph = time.perf_counter()
-            await self.gdb.upsert_nodes(
-                entities, concurrency=self.entity_upsert_concurrency
+            # Rate-limited graph node upsert
+            node_coros = [
+                self.gdb.upsert_nodes(batch) for batch in self._chunk_list(entities, 50)
+            ]
+            await _limited_gather(
+                node_coros,
+                self.graph_node_upsert_concurrency,
             )
             upsert_graph_time = time.perf_counter() - start_upsert_graph
             logger.info(f"Upsert nodes time: {upsert_graph_time:.3f}s")
@@ -247,13 +269,14 @@ class HiRAG:
                 # Continue with processing if check fails
 
         start_total = time.perf_counter()
+        loader_type = "doc2x" if content_type == "application/pdf" else "langchain"
         documents = await asyncio.to_thread(
             load_document,
             document_path,
             content_type,
             document_meta,
             loader_configs,
-            loader_type="doc2x",
+            loader_type=loader_type,
         )
         logger.info(f"Loaded {len(documents)} documents")
 
