@@ -3,10 +3,9 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Protocol, Tuple
-from datetime import datetime
 from functools import wraps
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 import pyarrow as pa
 
@@ -15,6 +14,7 @@ from hirag_prod._utils import _limited_gather
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
 from hirag_prod.loader import load_document
+from hirag_prod.schema import Entity
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -22,7 +22,6 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
-from hirag_prod.schema import Entity
 
 # Configure Logging
 logging.basicConfig(
@@ -37,50 +36,53 @@ logger = logging.getLogger("HiRAG")
 # Exception Definitions
 # ============================================================================
 
+
 class HiRAGException(Exception):
     """HiRAG base exception class"""
-    pass
+
 
 
 class DocumentProcessingError(HiRAGException):
     """Document processing exception"""
-    pass
+
 
 
 class EntityExtractionError(HiRAGException):
     """Entity extraction exception"""
-    pass
+
 
 
 class StorageError(HiRAGException):
     """Storage exception"""
-    pass
+
 
 
 # ============================================================================
 # Configuration Management
 # ============================================================================
 
+
 @dataclass
 class HiRAGConfig:
     """HiRAG system configuration"""
+
     # Database configuration
     db_url: str = "kb/hirag.db"
     graph_db_path: str = "kb/hirag.gpickle"
     resume_tracker_db_path: str = "kb/resume_tracker.db"
-    
+
     # Model configuration
     llm_model_name: str = "gpt-4o-mini"
-    
+
     # Chunking configuration
     chunk_size: int = 1200
     chunk_overlap: int = 200
-    
+
     # Batch processing configuration
     embedding_batch_size: int = 1000
     entity_upsert_concurrency: int = 32
     relation_upsert_concurrency: int = 32
-    
+
     # Retry configuration
     max_retries: int = 3
     retry_delay: float = 1.0
@@ -90,16 +92,18 @@ class HiRAGConfig:
 # Metrics and Monitoring
 # ============================================================================
 
+
 @dataclass
 class ProcessingMetrics:
     """Processing metrics"""
+
     total_chunks: int = 0
     processed_chunks: int = 0
     total_entities: int = 0
     total_relations: int = 0
     processing_time: float = 0.0
     error_count: int = 0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_chunks": self.total_chunks,
@@ -113,11 +117,11 @@ class ProcessingMetrics:
 
 class MetricsCollector:
     """Metrics collector"""
-    
+
     def __init__(self):
         self.metrics = ProcessingMetrics()
         self.operation_times: Dict[str, float] = {}
-    
+
     @asynccontextmanager
     async def track_operation(self, operation: str):
         """Track operation execution time"""
@@ -139,8 +143,10 @@ class MetricsCollector:
 # Utility Functions
 # ============================================================================
 
+
 def retry_async(max_retries: int = 3, delay: float = 1.0):
     """Async retry decorator"""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
@@ -152,10 +158,14 @@ def retry_async(max_retries: int = 3, delay: float = 1.0):
                     last_exception = e
                     if attempt == max_retries - 1:
                         break
-                    logger.warning(f"Attempt {attempt + 1} failed: {e}, retrying in {delay}s")
+                    logger.warning(
+                        f"Attempt {attempt + 1} failed: {e}, retrying in {delay}s"
+                    )
                     await asyncio.sleep(delay)
             raise last_exception
+
         return wrapper
+
     return decorator
 
 
@@ -163,10 +173,10 @@ def validate_input(document_path: str, content_type: str) -> None:
     """Validate input parameters"""
     if not document_path or not isinstance(document_path, str):
         raise ValueError("document_path must be a non-empty string")
-    
+
     if not Path(document_path).exists():
         raise FileNotFoundError(f"Document not found: {document_path}")
-    
+
     if not content_type or not isinstance(content_type, str):
         raise ValueError("content_type must be a non-empty string")
 
@@ -175,20 +185,21 @@ def validate_input(document_path: str, content_type: str) -> None:
 # Storage Manager
 # ============================================================================
 
+
 class StorageManager:
     """Unified manager for vector database and graph database operations"""
-    
+
     def __init__(self, vdb: BaseVDB, gdb: BaseGDB):
         self.vdb = vdb
         self.gdb = gdb
         self.chunks_table = None
         self.entities_table = None
-    
+
     async def initialize(self) -> None:
         """Initialize storage tables"""
         await self._initialize_chunks_table()
         await self._initialize_entities_table()
-    
+
     async def _initialize_chunks_table(self) -> None:
         """Initialize chunks table"""
         try:
@@ -197,23 +208,25 @@ class StorageManager:
             if "was not found" in str(e):
                 self.chunks_table = await self.vdb.db.create_table(
                     "chunks",
-                    schema=pa.schema([
-                        pa.field("text", pa.string()),
-                        pa.field("document_key", pa.string()),
-                        pa.field("type", pa.string()),
-                        pa.field("filename", pa.string()),
-                        pa.field("page_number", pa.int32()),
-                        pa.field("uri", pa.string()),
-                        pa.field("private", pa.bool_()),
-                        pa.field("chunk_idx", pa.int32()),
-                        pa.field("document_id", pa.string()),
-                        pa.field("vector", pa.list_(pa.float32(), 1536)),
-                        pa.field("uploaded_at", pa.timestamp("ms")),
-                    ])
+                    schema=pa.schema(
+                        [
+                            pa.field("text", pa.string()),
+                            pa.field("document_key", pa.string()),
+                            pa.field("type", pa.string()),
+                            pa.field("filename", pa.string()),
+                            pa.field("page_number", pa.int32()),
+                            pa.field("uri", pa.string()),
+                            pa.field("private", pa.bool_()),
+                            pa.field("chunk_idx", pa.int32()),
+                            pa.field("document_id", pa.string()),
+                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field("uploaded_at", pa.timestamp("ms")),
+                        ]
+                    ),
                 )
             else:
                 raise StorageError(f"Failed to initialize chunks table: {e}")
-    
+
     async def _initialize_entities_table(self) -> None:
         """Initialize entities table"""
         try:
@@ -222,26 +235,32 @@ class StorageManager:
             if "was not found" in str(e):
                 self.entities_table = await self.vdb.db.create_table(
                     "entities",
-                    schema=pa.schema([
-                        pa.field("text", pa.string()),
-                        pa.field("document_key", pa.string()),
-                        pa.field("vector", pa.list_(pa.float32(), 1536)),
-                        pa.field("entity_type", pa.string()),
-                        pa.field("description", pa.list_(pa.string())),
-                        pa.field("chunk_ids", pa.list_(pa.string())),
-                        pa.field("extraction_timestamp", pa.timestamp("ms"), nullable=True),
-                        pa.field("source_document_id", pa.string(), nullable=True),
-                    ])
+                    schema=pa.schema(
+                        [
+                            pa.field("text", pa.string()),
+                            pa.field("document_key", pa.string()),
+                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field("entity_type", pa.string()),
+                            pa.field("description", pa.list_(pa.string())),
+                            pa.field("chunk_ids", pa.list_(pa.string())),
+                            pa.field(
+                                "extraction_timestamp",
+                                pa.timestamp("ms"),
+                                nullable=True,
+                            ),
+                            pa.field("source_document_id", pa.string(), nullable=True),
+                        ]
+                    ),
                 )
             else:
                 raise StorageError(f"Failed to initialize entities table: {e}")
-    
+
     @retry_async(max_retries=3, delay=1.0)
     async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
         """Batch insert chunks"""
         if not chunks:
             return
-        
+
         try:
             if len(chunks) == 1:
                 chunk = chunks[0]
@@ -265,7 +284,7 @@ class StorageManager:
                     }
                     for chunk in chunks
                 ]
-                
+
                 await self.vdb.upsert_texts(
                     texts_to_embed=texts_to_embed,
                     properties_list=properties_list,
@@ -274,13 +293,13 @@ class StorageManager:
                 )
         except Exception as e:
             raise StorageError(f"Failed to upsert chunks: {e}")
-    
+
     @retry_async(max_retries=3, delay=1.0)
     async def upsert_entities(self, entities: List[Entity]) -> None:
         """Batch insert entities"""
         if not entities:
             return
-        
+
         try:
             if len(entities) == 1:
                 entity = entities[0]
@@ -301,7 +320,11 @@ class StorageManager:
                 )
             else:
                 texts_to_embed = [
-                    " | ".join(entity.metadata.description) if entity.metadata.description else ""
+                    (
+                        " | ".join(entity.metadata.description)
+                        if entity.metadata.description
+                        else ""
+                    )
                     for entity in entities
                 ]
                 properties_list = [
@@ -312,7 +335,7 @@ class StorageManager:
                     }
                     for entity in entities
                 ]
-                
+
                 await self.vdb.upsert_texts(
                     texts_to_embed=texts_to_embed,
                     properties_list=properties_list,
@@ -321,57 +344,65 @@ class StorageManager:
                 )
         except Exception as e:
             raise StorageError(f"Failed to upsert entities: {e}")
-    
+
     async def get_existing_chunks(self, uri: str) -> List[str]:
         """Get existing chunk IDs"""
         try:
-            existing_data = await self.chunks_table.query().where(f"uri == '{uri}'").to_list()
+            existing_data = (
+                await self.chunks_table.query().where(f"uri == '{uri}'").to_list()
+            )
             return [chunk["document_key"] for chunk in existing_data]
         except Exception as e:
             logger.warning(f"Failed to get existing chunks: {e}")
             return []
-    
-    async def get_existing_entities_for_chunks(self, chunk_ids: List[str]) -> List[Dict[str, Any]]:
+
+    async def get_existing_entities_for_chunks(
+        self, chunk_ids: List[str]
+    ) -> List[Dict[str, Any]]:
         """Get existing entities for specified chunks"""
         if not chunk_ids:
             return []
-        
+
         try:
             # Limit query conditions to avoid overly long queries
             limited_chunk_ids = chunk_ids[:10]
-            chunk_conditions = " OR ".join([
-                f"array_contains(chunk_ids, '{chunk_id}')" 
-                for chunk_id in limited_chunk_ids
-            ])
-            
+            chunk_conditions = " OR ".join(
+                [
+                    f"array_contains(chunk_ids, '{chunk_id}')"
+                    for chunk_id in limited_chunk_ids
+                ]
+            )
+
             if chunk_conditions:
-                existing_entities = await self.entities_table.query().where(chunk_conditions).to_list()
+                existing_entities = (
+                    await self.entities_table.query().where(chunk_conditions).to_list()
+                )
                 return existing_entities
             return []
         except Exception as e:
             logger.warning(f"Failed to get existing entities: {e}")
             return []
-    
+
     async def health_check(self) -> Dict[str, bool]:
         """Health check"""
         health = {}
-        
+
         try:
             # Check vector database
             await self.vdb.db.table_names()
             health["vdb"] = True
         except Exception:
             health["vdb"] = False
-        
+
         try:
             # Check graph database
             await self.gdb.health_check() if hasattr(self.gdb, "health_check") else None
             health["gdb"] = True
         except Exception:
             health["gdb"] = False
-        
+
         return health
-    
+
     async def cleanup(self) -> None:
         """Clean up resources"""
         try:
@@ -385,9 +416,10 @@ class StorageManager:
 # Document processor
 # ============================================================================
 
+
 class DocumentProcessor:
     """Document processor for handling document ingestion pipeline"""
-    
+
     def __init__(
         self,
         storage: StorageManager,
@@ -403,10 +435,10 @@ class DocumentProcessor:
         self.resume_tracker = resume_tracker
         self.config = config or HiRAGConfig()
         self.metrics = metrics or MetricsCollector()
-    
+
     async def process_document(
-        self, 
-        document_path: str, 
+        self,
+        document_path: str,
         content_type: str,
         with_graph: bool = True,
         document_meta: Optional[Dict] = None,
@@ -414,43 +446,45 @@ class DocumentProcessor:
     ) -> ProcessingMetrics:
         """Process a single document"""
         validate_input(document_path, content_type)
-        
+
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
             chunks = await self._load_and_chunk_document(
                 document_path, content_type, document_meta, loader_configs
             )
-            
+
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
                 return self.metrics.metrics
-            
+
             self.metrics.metrics.total_chunks = len(chunks)
-            
+
             # Register with resume tracker
             if self.resume_tracker:
                 document_id = chunks[0].metadata.document_id
                 document_uri = chunks[0].metadata.uri
                 self.resume_tracker.register_chunks(chunks, document_id, document_uri)
-                
+
                 if self.resume_tracker.is_document_complete(document_id):
                     logger.info("🎉 Document already fully processed!")
                     return self.metrics.metrics
-            
+
             # Process chunks
             await self._process_chunks(chunks)
-            
+
             # Process graph data
             if with_graph:
                 entities = await self._process_entities(chunks)
                 await self._process_relations(chunks, entities)
-            
+
             # Mark as complete
             if self.resume_tracker:
-                self.resume_tracker.mark_document_completed(chunks[0].metadata.document_id)
-            
+                self.resume_tracker.mark_document_completed(
+                    chunks[0].metadata.document_id
+                )
+
             return self.metrics.metrics
-    
+
     async def _load_and_chunk_document(
         self,
         document_path: str,
@@ -469,97 +503,102 @@ class DocumentProcessor:
                     loader_configs,
                     loader_type="langchain",
                 )
-                
+
                 chunks = []
                 for doc in documents:
                     chunks.extend(self.chunker.chunk(doc))
-                
-                logger.info(f"📄 Created {len(chunks)} chunks from {len(documents)} documents")
+
+                logger.info(
+                    f"📄 Created {len(chunks)} chunks from {len(documents)} documents"
+                )
                 return chunks
-            
+
             except Exception as e:
-                raise DocumentProcessingError(f"Failed to load document {document_path}: {e}")
-    
+                raise DocumentProcessingError(
+                    f"Failed to load document {document_path}: {e}"
+                )
+
     async def _process_chunks(self, chunks: List[BaseChunk]) -> None:
         """Process chunks for vector storage"""
         async with self.metrics.track_operation("process_chunks"):
             # Get chunks that need processing
             pending_chunks = await self._get_pending_chunks(chunks)
-            
+
             if not pending_chunks:
                 logger.info("⏭️ All chunks already processed")
                 return
-            
+
             logger.info(f"📤 Processing {len(pending_chunks)} pending chunks...")
-            
+
             # Batch storage
             await self.storage.upsert_chunks(pending_chunks)
             self.metrics.metrics.processed_chunks += len(pending_chunks)
-            
+
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
-    
+
     async def _get_pending_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
         """Get chunks that need processing"""
         if not chunks:
             return []
-        
+
         if self.resume_tracker:
             # Check for existing chunks in vector database
             uri = chunks[0].metadata.uri
             existing_chunk_ids = await self.storage.get_existing_chunks(uri)
             return [chunk for chunk in chunks if chunk.id not in existing_chunk_ids]
-        
+
         return chunks
-    
+
     async def _process_entities(self, chunks: List[BaseChunk]) -> List[Entity]:
         """Process entity extraction and storage"""
         async with self.metrics.track_operation("process_entities"):
             # Get chunks that need entity processing
             pending_chunks = self._get_pending_entity_chunks(chunks)
-            
+
             if not pending_chunks:
                 logger.info("⏭️ All chunks already have entities extracted")
                 return []
-            
+
             logger.info(f"🔍 Extracting entities from {len(pending_chunks)} chunks...")
-            
+
             # Mark start
             if self.resume_tracker:
                 self.resume_tracker.mark_entity_extraction_started(pending_chunks)
-            
+
             try:
                 # Extract entities
                 entities = await self.entity_extractor.entity(pending_chunks)
-                
+
                 if entities:
                     # Store to vector database
                     await self.storage.upsert_entities(entities)
-                    
+
                     # Store to graph database
                     await self.storage.gdb.upsert_nodes(
-                        entities, 
-                        concurrency=self.config.entity_upsert_concurrency
+                        entities, concurrency=self.config.entity_upsert_concurrency
                     )
-                    
+
                     self.metrics.metrics.total_entities += len(entities)
-                    
+
                     # Mark complete
                     if self.resume_tracker:
                         entity_counts = self._count_entities_per_chunk(entities)
-                        await self._mark_entity_extraction_complete(pending_chunks, entity_counts)
-                
+                        await self._mark_entity_extraction_complete(
+                            pending_chunks, entity_counts
+                        )
+
                 logger.info(f"✅ Extracted and stored {len(entities)} entities")
                 return entities
-                
+
             except Exception as e:
                 raise EntityExtractionError(f"Failed to extract entities: {e}")
-    
+
     def _get_pending_entity_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
         """Get chunks that need entity extraction"""
         if self.resume_tracker:
             return self.resume_tracker.get_pending_entity_chunks(chunks)
         return chunks
-    
+
     def _count_entities_per_chunk(self, entities: List[Entity]) -> Dict[str, int]:
         """Count entities per chunk"""
         counts = {}
@@ -567,104 +606,110 @@ class DocumentProcessor:
             for chunk_id in entity.metadata.chunk_ids:
                 counts[chunk_id] = counts.get(chunk_id, 0) + 1
         return counts
-    
+
     async def _mark_entity_extraction_complete(
-        self, 
-        chunks: List[BaseChunk], 
-        entity_counts: Dict[str, int]
+        self, chunks: List[BaseChunk], entity_counts: Dict[str, int]
     ) -> None:
         """Mark entity extraction complete"""
         try:
             if self.resume_tracker:
-                self.resume_tracker.mark_entity_extraction_completed(chunks, entity_counts)
+                self.resume_tracker.mark_entity_extraction_completed(
+                    chunks, entity_counts
+                )
         except Exception as e:
             logger.warning(f"Failed to mark entity extraction complete: {e}")
-    
+
     async def _process_relations(
-        self, 
-        chunks: List[BaseChunk], 
-        new_entities: List[Entity]
+        self, chunks: List[BaseChunk], new_entities: List[Entity]
     ) -> None:
         """Process relation extraction and storage"""
         async with self.metrics.track_operation("process_relations"):
             # Get chunks that need relation processing
             pending_chunks = self._get_pending_relation_chunks(chunks)
-            
+
             if not pending_chunks:
                 logger.info("⏭️ No chunks need relation extraction")
                 return
-            
+
             logger.info(f"🔗 Extracting relations from {len(pending_chunks)} chunks...")
-            
+
             # Mark start
             if self.resume_tracker:
                 self.resume_tracker.mark_relation_extraction_started(pending_chunks)
-            
+
             try:
                 # Get all related entities
-                all_entities = await self._get_all_entities_for_chunks(pending_chunks, new_entities)
-                
+                all_entities = await self._get_all_entities_for_chunks(
+                    pending_chunks, new_entities
+                )
+
                 # Extract relations
-                relations = await self.entity_extractor.relation(pending_chunks, all_entities)
-                
+                relations = await self.entity_extractor.relation(
+                    pending_chunks, all_entities
+                )
+
                 if relations:
                     # Store relations
                     relation_coros = [
                         self.storage.gdb.upsert_relation(rel) for rel in relations
                     ]
-                    await _limited_gather(relation_coros, self.config.relation_upsert_concurrency)
-                    
+                    await _limited_gather(
+                        relation_coros, self.config.relation_upsert_concurrency
+                    )
+
                     self.metrics.metrics.total_relations += len(relations)
-                    
+
                     logger.info(f"✅ Extracted and stored {len(relations)} relations")
                 else:
                     logger.info("ℹ️ No relations extracted")
-                
+
                 # Mark as complete
                 relation_counts = self._count_relations_per_chunk(relations)
-                await self._mark_relation_extraction_complete(pending_chunks, relation_counts)
-                
+                await self._mark_relation_extraction_complete(
+                    pending_chunks, relation_counts
+                )
+
             except Exception as e:
                 logger.error(f"Failed to extract relations: {e}")
                 # Still mark as complete to avoid duplicate processing
                 await self._mark_relation_extraction_complete(pending_chunks, {})
-    
+
     def _get_pending_relation_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
         """Get chunks that need relation extraction"""
         if self.resume_tracker:
             return self.resume_tracker.get_pending_relation_chunks(chunks)
         return chunks
-    
+
     async def _get_all_entities_for_chunks(
-        self, 
-        chunks: List[BaseChunk], 
-        new_entities: List[Entity]
+        self, chunks: List[BaseChunk], new_entities: List[Entity]
     ) -> List[Entity]:
         """Get all entities for chunks"""
         all_entities = list(new_entities)
-        
+
         # Get existing entities
         chunk_ids = [chunk.id for chunk in chunks]
-        existing_entities_data = await self.storage.get_existing_entities_for_chunks(chunk_ids)
-        
+        existing_entities_data = await self.storage.get_existing_entities_for_chunks(
+            chunk_ids
+        )
+
         # Convert to entity objects
         for ent_data in existing_entities_data:
             if ent_data["document_key"] not in [e.id for e in new_entities]:
                 from .schema.entity import EntityMetadata
-                
+
                 entity_obj = Entity(
                     id=ent_data["document_key"],
                     page_content=ent_data["text"],
                     metadata=EntityMetadata(
                         entity_type=ent_data.get("entity_type", ""),
                         description=ent_data.get("description", []),
-                        chunk_ids=ent_data.get("chunk_ids", [])
-                    )
+                        chunk_ids=ent_data.get("chunk_ids", []),
+                    ),
                 )
                 all_entities.append(entity_obj)
-        
+
         return all_entities
-    
+
     def _count_relations_per_chunk(self, relations: List) -> Dict[str, int]:
         """Count relations per chunk"""
         counts = {}
@@ -673,16 +718,16 @@ class DocumentProcessor:
             if chunk_id:
                 counts[chunk_id] = counts.get(chunk_id, 0) + 1
         return counts
-    
+
     async def _mark_relation_extraction_complete(
-        self, 
-        chunks: List[BaseChunk], 
-        relation_counts: Dict[str, int]
+        self, chunks: List[BaseChunk], relation_counts: Dict[str, int]
     ) -> None:
         """Mark relation extraction complete"""
         try:
             if self.resume_tracker:
-                self.resume_tracker.mark_relation_extraction_completed(chunks, relation_counts)
+                self.resume_tracker.mark_relation_extraction_completed(
+                    chunks, relation_counts
+                )
         except Exception as e:
             logger.warning(f"Failed to mark relation extraction complete: {e}")
 
@@ -691,17 +736,15 @@ class DocumentProcessor:
 # Query Service
 # ============================================================================
 
+
 class QueryService:
     """Query service"""
-    
+
     def __init__(self, storage: StorageManager):
         self.storage = storage
-    
+
     async def query_chunks(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> List[Dict[str, Any]]:
         """Query chunks"""
         return await self.storage.vdb.query(
@@ -710,16 +753,17 @@ class QueryService:
             topk=topk,
             topn=topn,
             columns_to_select=[
-                "text", "uri", "filename", "private", 
-                "uploaded_at", "document_key"
+                "text",
+                "uri",
+                "filename",
+                "private",
+                "uploaded_at",
+                "document_key",
             ],
         )
-    
+
     async def query_entities(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> List[Dict[str, Any]]:
         """Query entities"""
         return await self.storage.vdb.query(
@@ -729,34 +773,33 @@ class QueryService:
             topn=topn,
             columns_to_select=["text", "document_key", "entity_type", "description"],
         )
-    
+
     async def query_relations(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> Tuple[List[str], List[str]]:
         """Query relations"""
         # Search related entities
         entities = await self.query_entities(query, topk, topn)
         entity_ids = [entity["document_key"] for entity in entities]
-        
+
         # Search relations
         neighbors = []
         edges = []
         for entity_id in entity_ids:
-            entity_neighbors, entity_edges = await self.storage.gdb.query_one_hop(entity_id)
+            entity_neighbors, entity_edges = await self.storage.gdb.query_one_hop(
+                entity_id
+            )
             neighbors.extend(entity_neighbors)
             edges.extend(entity_edges)
-        
+
         return neighbors, edges
-    
+
     async def query_all(self, query: str) -> Dict[str, Any]:
         """Query all"""
         chunks = await self.query_chunks(query, topk=10, topn=5)
         entities = await self.query_entities(query, topk=10, topn=5)
         neighbors, relations = await self.query_relations(query, topk=10, topn=5)
-        
+
         return {
             "chunks": chunks,
             "entities": entities,
@@ -769,33 +812,35 @@ class QueryService:
 # Main HiRAG class
 # ============================================================================
 
+
 @dataclass
 class HiRAG:
     """
     Hierarchical Retrieval-Augmented Generation (HiRAG) system
-    
+
     Simplified main interface, coordinating the work of all components
     """
+
     config: HiRAGConfig = field(default_factory=HiRAGConfig)
-    
+
     # Components (lazy initialization)
     _storage: Optional[StorageManager] = field(default=None, init=False)
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
-    
+
     # Services
     chat_service: Optional[ChatCompletion] = field(default=None, init=False)
     embedding_service: Optional[EmbeddingService] = field(default=None, init=False)
-    
+
     @classmethod
-    async def create(cls, config: Optional[HiRAGConfig] = None, **kwargs) -> 'HiRAG':
+    async def create(cls, config: Optional[HiRAGConfig] = None, **kwargs) -> "HiRAG":
         """Create HiRAG instance"""
         config = config or HiRAGConfig()
         instance = cls(config=config)
         await instance._initialize(**kwargs)
         return instance
-    
+
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
         # Initialize services
@@ -803,7 +848,7 @@ class HiRAG:
         self.embedding_service = EmbeddingService(
             default_batch_size=self.config.embedding_batch_size
         )
-        
+
         # Initialize storage
         if kwargs.get("vdb") is None:
             vdb = await LanceDB.create(
@@ -813,7 +858,7 @@ class HiRAG:
             )
         else:
             vdb = kwargs["vdb"]
-        
+
         if kwargs.get("gdb") is None:
             gdb = NetworkXGDB.create(
                 path=self.config.graph_db_path,
@@ -821,27 +866,27 @@ class HiRAG:
             )
         else:
             gdb = kwargs["gdb"]
-        
+
         self._storage = StorageManager(vdb, gdb)
         await self._storage.initialize()
-        
+
         # Initialize other components
         chunker = FixTokenChunk(
-            chunk_size=self.config.chunk_size,
-            chunk_overlap=self.config.chunk_overlap
+            chunk_size=self.config.chunk_size, chunk_overlap=self.config.chunk_overlap
         )
-        
+
         entity_extractor = VanillaEntity.create(
             extract_func=self.chat_service.complete,
             llm_model_name=self.config.llm_model_name,
         )
-        
+
         # Initialize resume tracker
         resume_tracker = kwargs.get("resume_tracker")
         if resume_tracker is None:
             from .resume_tracker import ChunkResumeTracker
+
             resume_tracker = ChunkResumeTracker(self.config.resume_tracker_db_path)
-        
+
         # Initialize components
         self._metrics = MetricsCollector()
         self._processor = DocumentProcessor(
@@ -853,11 +898,11 @@ class HiRAG:
             metrics=self._metrics,
         )
         self._query_service = QueryService(self._storage)
-    
+
     # ========================================================================
     # Public interface methods
     # ========================================================================
-    
+
     async def insert_to_kb(
         self,
         document_path: str,
@@ -868,23 +913,23 @@ class HiRAG:
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
-        
+
         Args:
             document_path: document path
             content_type: document type
             with_graph: whether to process graph data (entities and relations)
             document_meta: document metadata
             loader_configs: loader configurations
-            
+
         Returns:
             ProcessingMetrics: processing metrics
         """
         if not self._processor:
             raise HiRAGException("HiRAG instance not properly initialized")
-        
+
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
-        
+
         try:
             metrics = await self._processor.process_document(
                 document_path=document_path,
@@ -893,132 +938,123 @@ class HiRAG:
                 document_meta=document_meta,
                 loader_configs=loader_configs,
             )
-            
+
             # Save graph state
             if with_graph and self._storage:
                 await self._storage.gdb.dump()
-            
+
             total_time = time.perf_counter() - start_time
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
-            
+
             return metrics
-            
+
         except Exception as e:
             total_time = time.perf_counter() - start_time
             logger.error(f"❌ Document processing failed after {total_time:.3f}s: {e}")
             raise
-    
+
     async def query_chunks(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> List[Dict[str, Any]]:
         """Query document chunks"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
-        
+
         return await self._query_service.query_chunks(query, topk, topn)
-    
+
     async def query_entities(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> List[Dict[str, Any]]:
         """Query entities"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
-        
+
         return await self._query_service.query_entities(query, topk, topn)
-    
+
     async def query_relations(
-        self, 
-        query: str, 
-        topk: int = 10, 
-        topn: int = 5
+        self, query: str, topk: int = 10, topn: int = 5
     ) -> Tuple[List[str], List[str]]:
         """Query relations"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
-        
+
         return await self._query_service.query_relations(query, topk, topn)
-    
+
     async def query_all(self, query: str) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
-        
+
         return await self._query_service.query_all(query)
-    
+
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
         if not self._storage:
             return {"status": "not_initialized"}
-        
+
         health = await self._storage.health_check()
-        
+
         return {
             "status": "healthy" if all(health.values()) else "unhealthy",
             "components": health,
             "metrics": self._metrics.metrics.to_dict() if self._metrics else {},
         }
-    
+
     async def get_processing_metrics(self) -> Dict[str, Any]:
         """Get processing metrics"""
         if not self._metrics:
             return {}
-        
+
         return {
             "metrics": self._metrics.metrics.to_dict(),
             "operation_times": self._metrics.operation_times,
         }
-    
+
     async def clean_up(self) -> None:
         """Clean up resources"""
         logger.info("🧹 Cleaning up HiRAG resources...")
-        
+
         try:
             if self._storage:
                 await self._storage.cleanup()
-            
+
             logger.info("✅ Cleanup completed")
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Cleanup failed: {e}")
-    
+
     # ========================================================================
     # Context manager support
     # ========================================================================
-    
+
     async def __aenter__(self):
         """Async context manager entry"""
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.clean_up()
-    
+
     # ========================================================================
     # Backward compatibility property accessors
     # ========================================================================
-    
+
     @property
     def chunks_table(self):
         """Backward compatibility: access chunks table"""
         return self._storage.chunks_table if self._storage else None
-    
+
     @property
     def entities_table(self):
         """Backward compatibility: access entities table"""
         return self._storage.entities_table if self._storage else None
-    
+
     @property
     def vdb(self):
         """Backward compatibility: access vector database"""
         return self._storage.vdb if self._storage else None
-    
+
     @property
     def gdb(self):
         """Backward compatibility: access graph database"""

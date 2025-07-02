@@ -3,9 +3,8 @@ import json
 import logging
 import statistics
 import time
-import warnings
 from collections import defaultdict
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List
 
 from hirag_prod import HiRAG
 
@@ -13,7 +12,7 @@ from hirag_prod import HiRAG
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    datefmt="%H:%M:%S"
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
@@ -75,20 +74,17 @@ def calculate_metrics(
 
 
 async def extract_chunk_ids_from_graph_retrieval(
-    index: HiRAG, 
-    entities: List[Dict], 
-    neighbors: List[str], 
-    relations: List[str]
+    index: HiRAG, entities: List[Dict], neighbors: List[str], relations: List[str]
 ) -> List[str]:
     """
     Extract chunk IDs from retrieved entities and relations
-    
+
     Args:
         index: HiRAG instance (for logging context)
         entities: Retrieved entities from query_entities
-        neighbors: Neighbor entities from query_relations  
+        neighbors: Neighbor entities from query_relations
         relations: Edge relations from query_relations
-        
+
     Returns:
         List of unique chunk IDs associated with entities and relations
     """
@@ -101,124 +97,145 @@ async def extract_chunk_ids_from_graph_retrieval(
                 entity_chunk_ids.update(chunk_ids)
             elif isinstance(chunk_ids, str):
                 entity_chunk_ids.add(chunk_ids)
-        
-        logger.debug(f"Found {len(entity_chunk_ids)} chunk IDs from {len(entities)} entities")
-        
+
+        logger.debug(
+            f"Found {len(entity_chunk_ids)} chunk IDs from {len(entities)} entities"
+        )
+
         # Extract chunk IDs from neighbor entities
         neighbor_chunk_ids = set()
         for neighbor in neighbors:
-            if hasattr(neighbor, 'metadata') and hasattr(neighbor.metadata, 'chunk_ids'):
+            if hasattr(neighbor, "metadata") and hasattr(
+                neighbor.metadata, "chunk_ids"
+            ):
                 chunk_ids = neighbor.metadata.chunk_ids
                 if isinstance(chunk_ids, list):
                     neighbor_chunk_ids.update(chunk_ids)
                 elif isinstance(chunk_ids, str):
                     neighbor_chunk_ids.add(chunk_ids)
-        
-        logger.debug(f"Found {len(neighbor_chunk_ids)} chunk IDs from {len(neighbors)} neighbor entities")
-        
+
+        logger.debug(
+            f"Found {len(neighbor_chunk_ids)} chunk IDs from {len(neighbors)} neighbor entities"
+        )
+
         # Extract chunk IDs from relations
         relation_chunk_ids = set()
         for relation in relations:
-            if hasattr(relation, 'properties') and 'chunk_id' in relation.properties:
-                chunk_id = relation.properties['chunk_id']
+            if hasattr(relation, "properties") and "chunk_id" in relation.properties:
+                chunk_id = relation.properties["chunk_id"]
                 if chunk_id:
                     relation_chunk_ids.add(chunk_id)
-        
-        logger.debug(f"Found {len(relation_chunk_ids)} chunk IDs from {len(relations)} relations")
-        
+
+        logger.debug(
+            f"Found {len(relation_chunk_ids)} chunk IDs from {len(relations)} relations"
+        )
+
         # Combine all unique chunk IDs
         all_chunk_ids = entity_chunk_ids | neighbor_chunk_ids | relation_chunk_ids
         logger.debug(f"Total unique chunk IDs: {len(all_chunk_ids)}")
-        
+
         return list(all_chunk_ids)
-                
+
     except Exception as e:
         logger.error(f"Error extracting chunk IDs from graph retrieval: {e}")
         return []
 
 
 async def rerank_chunks_with_query(
-    index: HiRAG, 
-    chunk_ids: List[str], 
-    query: str, 
-    topn: int = 5
+    index: HiRAG, chunk_ids: List[str], query: str, topn: int = 5
 ) -> List[str]:
     """
     Rerank retrieved chunks using the same VoyageAI reranker as the system
     Uses existing chunks in LanceDB, no need to recreate embeddings
-    
+
     Args:
         index: HiRAG instance
         chunk_ids: List of chunk document_keys to rerank
         query: Original query for reranking
         topn: Number of top chunks to return after reranking
-        
+
     Returns:
         List of reranked chunk texts (top N)
     """
     if not chunk_ids:
         return []
-    
+
     if len(chunk_ids) <= topn:
         # If we have few chunks, get their texts and return them
         try:
-            conditions = " OR ".join([f"document_key == '{chunk_id}'" for chunk_id in chunk_ids])
+            conditions = " OR ".join(
+                [f"document_key == '{chunk_id}'" for chunk_id in chunk_ids]
+            )
             results = await index.chunks_table.query().where(conditions).to_list()
             return [result["text"] for result in results]
         except Exception as e:
             logger.warning(f"Failed to get chunk texts: {e}")
             return []
-    
+
     try:
         # Suppress Lance warnings during reranking
         lance_logger = logging.getLogger("lance")
         original_level = lance_logger.level
         lance_logger.setLevel(logging.ERROR)
-        
+
         try:
             # Create query filter to only consider the retrieved chunks
-            conditions = " OR ".join([f"document_key == '{chunk_id}'" for chunk_id in chunk_ids])
-            
+            conditions = " OR ".join(
+                [f"document_key == '{chunk_id}'" for chunk_id in chunk_ids]
+            )
+
             # Get query embedding for vector search
             query_embeddings = await index.embedding_service.create_embeddings([query])
             query_embedding = query_embeddings[0].tolist()
-            
+
             # Create vector query on existing chunks table
-            vector_query = index.chunks_table.query().nearest_to(query_embedding).distance_type("cosine")
-            
+            vector_query = (
+                index.chunks_table.query()
+                .nearest_to(query_embedding)
+                .distance_type("cosine")
+            )
+
             # Set nprobes to avoid warnings
             if hasattr(vector_query, "nprobes"):
                 vector_query = vector_query.nprobes(20)
-            
+
             # Filter to only the chunks we want to rerank
             vector_query = vector_query.where(conditions)
-            
+
             # Select needed columns and limit
-            vector_query = vector_query.select(["text", "document_key"]).limit(len(chunk_ids))
-            
+            vector_query = vector_query.select(["text", "document_key"]).limit(
+                len(chunk_ids)
+            )
+
             # Apply the same reranker as the system
             reranked_query = index.vdb.strategy_provider.rerank_chunk_query(
                 vector_query, query, topn
             )
-            
+
             # Get reranked results
             reranked_results = await reranked_query.to_list()
-            
+
             # Extract texts in reranked order
             reranked_texts = [result["text"] for result in reranked_results]
-            
-            logger.debug(f"Successfully reranked {len(chunk_ids)} chunks to top {len(reranked_texts)} using VoyageAI reranker")
+
+            logger.debug(
+                f"Successfully reranked {len(chunk_ids)} chunks to top {len(reranked_texts)} using VoyageAI reranker"
+            )
             return reranked_texts[:topn]
-            
+
         finally:
             # Restore original logging level
             lance_logger.setLevel(original_level)
-        
+
     except Exception as e:
-        logger.warning(f"VoyageAI reranking failed, falling back to text extraction: {e}")
+        logger.warning(
+            f"VoyageAI reranking failed, falling back to text extraction: {e}"
+        )
         # Fallback: just get the text of the chunks without reranking
         try:
-            conditions = " OR ".join([f"document_key == '{chunk_id}'" for chunk_id in chunk_ids[:topn]])
+            conditions = " OR ".join(
+                [f"document_key == '{chunk_id}'" for chunk_id in chunk_ids[:topn]]
+            )
             results = await index.chunks_table.query().where(conditions).to_list()
             return [result["text"] for result in results]
         except Exception as fallback_e:
@@ -231,62 +248,70 @@ async def evaluate_single_question_graphrag(
 ) -> Dict[str, Any]:
     """
     Evaluate a single question using GraphRAG (entity + relation) retrieval
-    
+
     Args:
         index: HiRAG instance
         question_data: Question and supporting facts
         question_idx: Current question index (for logging)
         total_questions: Total number of questions (for logging)
-        
+
     Returns:
         Evaluation results dictionary
     """
     question = question_data["question"]
     supporting_facts = question_data["supporting_facts"]
-    
-    logger.info(f"[{question_idx + 1}/{total_questions}] Processing: {question[:100]}...")
-    
+
+    logger.info(
+        f"[{question_idx + 1}/{total_questions}] Processing: {question[:100]}..."
+    )
+
     # Measure retrieval time
     start_time = time.time()
-    
+
     try:
         # Suppress LanceDB warnings during retrieval
         lance_logger = logging.getLogger("lance")
         original_level = lance_logger.level
         lance_logger.setLevel(logging.ERROR)
-        
+
         try:
             # Perform entity and relation retrieval
             logger.debug(f"[{question_idx + 1}] Retrieving entities...")
             entities = await index.query_entities(question, topk=10, topn=5)
             logger.debug(f"[{question_idx + 1}] Retrieved {len(entities)} entities")
-            
+
             logger.debug(f"[{question_idx + 1}] Retrieving relations...")
-            neighbors, relations = await index.query_relations(question, topk=10, topn=5)
-            logger.debug(f"[{question_idx + 1}] Retrieved {len(neighbors)} neighbors, {len(relations)} relations")
+            neighbors, relations = await index.query_relations(
+                question, topk=10, topn=5
+            )
+            logger.debug(
+                f"[{question_idx + 1}] Retrieved {len(neighbors)} neighbors, {len(relations)} relations"
+            )
         finally:
             # Restore original logging level
             lance_logger.setLevel(original_level)
-        
+
         # Extract chunk IDs associated with entities and relations
         logger.debug(f"[{question_idx + 1}] Extracting associated chunk IDs...")
         chunk_ids = await extract_chunk_ids_from_graph_retrieval(
             index, entities, neighbors, relations
         )
         logger.debug(f"[{question_idx + 1}] Extracted {len(chunk_ids)} chunk IDs")
-        
+
         # Rerank chunks using the same reranker as the system
         logger.debug(f"[{question_idx + 1}] Reranking chunks...")
         retrieved_chunks = await rerank_chunks_with_query(
             index, chunk_ids, question, topn=5
         )
-        
+
         retrieval_time = time.time() - start_time
-        logger.debug(f"[{question_idx + 1}] Retrieved {len(retrieved_chunks)} reranked chunks in {retrieval_time:.3f}s")
-        
+        logger.debug(
+            f"[{question_idx + 1}] Retrieved {len(retrieved_chunks)} reranked chunks in {retrieval_time:.3f}s"
+        )
+
         # Calculate metrics
         metrics = calculate_metrics(retrieved_chunks, supporting_facts)
-        
+
         result = {
             "question": question,
             "retrieval_time": retrieval_time,
@@ -299,13 +324,15 @@ async def evaluate_single_question_graphrag(
             "supporting_facts_count": len(supporting_facts),
             "success": True,
         }
-        
+
         # Log metrics for this question
         recall_at_5 = metrics.get("recall@5", 0)
         precision_at_5 = metrics.get("precision@5", 0)
         mrr = metrics.get("mrr", 0)
-        logger.info(f"[{question_idx + 1}] Metrics - R@5: {recall_at_5:.3f}, P@5: {precision_at_5:.3f}, MRR: {mrr:.3f}")
-        
+        logger.info(
+            f"[{question_idx + 1}] Metrics - R@5: {recall_at_5:.3f}, P@5: {precision_at_5:.3f}, MRR: {mrr:.3f}"
+        )
+
         return result
 
     except Exception as e:
@@ -331,7 +358,7 @@ async def evaluate_graphrag(
 ):
     """
     Evaluate GraphRAG retrieval performance on benchmark questions
-    
+
     Args:
         benchmark_file: Path to JSON file containing benchmark questions
         n_questions: Number of questions to evaluate (from the beginning)
@@ -345,7 +372,7 @@ async def evaluate_graphrag(
     logger.info(f"  Questions to evaluate: {n_questions}")
     logger.info(f"  Max concurrent requests: {max_concurrent}")
     logger.info(f"  Evaluation type: Entity + Relation retrieval with reranking")
-    
+
     # Initialize HiRAG index
     logger.info("Initializing HiRAG index...")
     index = await HiRAG.create()
@@ -392,20 +419,23 @@ async def evaluate_graphrag(
     # Process all questions concurrently
     logger.info("Starting concurrent evaluation...")
     start_time = time.time()
-    
+
     # Add progress logging for long evaluations
     async def log_progress():
         while True:
             await asyncio.sleep(60)  # Log every minute
             elapsed = time.time() - start_time
             logger.info(f"Evaluation in progress... {elapsed:.1f}s elapsed")
-    
+
     # Start progress logging task
     progress_task = asyncio.create_task(log_progress())
-    
+
     try:
         results = await asyncio.gather(
-            *[evaluate_with_semaphore(q_data, idx) for idx, q_data in enumerate(questions_data)]
+            *[
+                evaluate_with_semaphore(q_data, idx)
+                for idx, q_data in enumerate(questions_data)
+            ]
         )
     finally:
         # Cancel progress logging
@@ -414,7 +444,7 @@ async def evaluate_graphrag(
             await progress_task
         except asyncio.CancelledError:
             pass
-    
+
     total_time = time.time() - start_time
     logger.info(f"Evaluation completed in {total_time:.2f} seconds")
 
@@ -446,7 +476,7 @@ async def evaluate_graphrag(
         relation_counts.append(result["num_relations"])
         chunk_id_counts.append(result["num_chunk_ids"])
         chunk_counts.append(result["num_retrieved_chunks"])
-        
+
         for metric, value in result["metrics"].items():
             aggregate_metrics[metric].append(value)
 
@@ -478,7 +508,9 @@ async def evaluate_graphrag(
     print(f"  Average neighbors per query: {statistics.mean(neighbor_counts):.1f}")
     print(f"  Average relations per query: {statistics.mean(relation_counts):.1f}")
     print(f"  Average chunk IDs per query: {statistics.mean(chunk_id_counts):.1f}")
-    print(f"  Average final chunks per query (after rerank): {statistics.mean(chunk_counts):.1f}")
+    print(
+        f"  Average final chunks per query (after rerank): {statistics.mean(chunk_counts):.1f}"
+    )
 
     print(f"\nRetrieval Metrics:")
     k_values = [1, 3, 5, 10]
@@ -518,7 +550,7 @@ async def evaluate_graphrag(
                 "mean_chunk_ids": statistics.mean(chunk_id_counts),
                 "mean_final_chunks": statistics.mean(chunk_counts),
                 "rerank_enabled": True,
-            }
+            },
         },
         "individual_results": results,
     }
@@ -539,9 +571,9 @@ if __name__ == "__main__":
     # Run GraphRAG evaluation
     # Parameters:
     # - benchmark_file: path to your JSON benchmark file
-    # - n_questions: number of questions to evaluate  
+    # - n_questions: number of questions to evaluate
     # - max_concurrent: maximum concurrent requests to avoid overwhelming the system
-    
+
     try:
         asyncio.run(
             evaluate_graphrag(
@@ -554,4 +586,4 @@ if __name__ == "__main__":
         logger.info("Evaluation interrupted by user")
     except Exception as e:
         logger.error(f"Evaluation failed with error: {e}")
-        raise 
+        raise

@@ -1,13 +1,12 @@
 import asyncio
 import logging
 import os
-import weakref
-from abc import ABC, abstractmethod
-from enum import Enum
-from functools import wraps
-from typing import Any, Dict, List, Optional, Tuple, Union
-from dataclasses import dataclass
 import threading
+import weakref
+from abc import ABC
+from dataclasses import dataclass
+from functools import wraps
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from aiolimiter import AsyncLimiter
@@ -23,8 +22,10 @@ from tenacity import (
 # Constants
 # ============================================================================
 
+
 class APIConstants:
     """API configuration constants"""
+
     DEFAULT_RETRY_ATTEMPTS = 5
     DEFAULT_RETRY_MIN_WAIT = 1
     DEFAULT_RETRY_MAX_WAIT = 4
@@ -32,11 +33,11 @@ class APIConstants:
     DEFAULT_RATE_PERIOD = 1
     DEFAULT_BATCH_SIZE = 1000
     DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
-    
+
     # Error keywords for batch size reduction
     BATCH_SIZE_ERROR_KEYWORDS = [
         "invalid_request_error",
-        "too large", 
+        "too large",
         "limit exceeded",
         "input invalid",
         "request too large",
@@ -45,6 +46,7 @@ class APIConstants:
 
 class LoggerNames:
     """Logger name constants"""
+
     TOKEN_USAGE = "HiRAG.TokenUsage"
     EMBEDDING = "HiRAG.Embedding"
 
@@ -53,13 +55,15 @@ class LoggerNames:
 # Data Classes
 # ============================================================================
 
+
 @dataclass
 class TokenUsage:
     """Token usage information from OpenAI API response"""
+
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
-    
+
     def __str__(self) -> str:
         return f"Tokens - Prompt: {self.prompt_tokens}, Completion: {self.completion_tokens}, Total: {self.total_tokens}"
 
@@ -67,20 +71,21 @@ class TokenUsage:
 @dataclass
 class APIConfig:
     """Base configuration for OpenAI APIs"""
+
     api_key: str
     base_url: str
-    
+
     @classmethod
-    def from_env(cls, api_key_env: str, base_url_env: str) -> 'APIConfig':
+    def from_env(cls, api_key_env: str, base_url_env: str) -> "APIConfig":
         """Create config from environment variables"""
         api_key = os.getenv(api_key_env)
         base_url = os.getenv(base_url_env)
-        
+
         if not api_key:
             raise ValueError(f"{api_key_env} environment variable is not set")
         if not base_url:
             raise ValueError(f"{base_url_env} environment variable is not set")
-            
+
         return cls(api_key=api_key, base_url=base_url)
 
 
@@ -88,11 +93,14 @@ class APIConfig:
 # Rate Limiting
 # ============================================================================
 
+
 class RateLimiterManager:
     """Manages rate limiters for async operations"""
-    
+
     @staticmethod
-    def get_or_create_limiter(instance, limiter_attr: str, max_rate: int, time_period: int) -> AsyncLimiter:
+    def get_or_create_limiter(
+        instance, limiter_attr: str, max_rate: int, time_period: int
+    ) -> AsyncLimiter:
         """Get existing limiter or create new one for current event loop"""
         loop_attr = f"{limiter_attr}_loop"
 
@@ -127,6 +135,7 @@ class RateLimiterManager:
 
 def rate_limited(max_rate: int, time_period: int, limiter_attr: str):
     """Decorator for rate limiting async methods"""
+
     def decorator(func):
         @wraps(func)
         async def wrapper(self, *args, **kwargs):
@@ -135,7 +144,9 @@ def rate_limited(max_rate: int, time_period: int, limiter_attr: str):
             )
             async with limiter:
                 return await func(self, *args, **kwargs)
+
         return wrapper
+
     return decorator
 
 
@@ -143,9 +154,9 @@ def rate_limited(max_rate: int, time_period: int, limiter_attr: str):
 api_retry = retry(
     stop=stop_after_attempt(APIConstants.DEFAULT_RETRY_ATTEMPTS),
     wait=wait_exponential(
-        multiplier=1, 
-        min=APIConstants.DEFAULT_RETRY_MIN_WAIT, 
-        max=APIConstants.DEFAULT_RETRY_MAX_WAIT
+        multiplier=1,
+        min=APIConstants.DEFAULT_RETRY_MIN_WAIT,
+        max=APIConstants.DEFAULT_RETRY_MAX_WAIT,
     ),
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
@@ -155,8 +166,10 @@ api_retry = retry(
 # Base Classes
 # ============================================================================
 
+
 class SingletonABCMeta(type(ABC)):
     """Thread-safe singleton metaclass that works with ABC"""
+
     _instances = {}
     _lock = threading.Lock()
 
@@ -170,6 +183,7 @@ class SingletonABCMeta(type(ABC)):
 
 class SingletonMeta(type):
     """Thread-safe singleton metaclass"""
+
     _instances = {}
     _lock = threading.Lock()
 
@@ -183,9 +197,9 @@ class SingletonMeta(type):
 
 class BaseAPIClient(ABC, metaclass=SingletonABCMeta):
     """Base class for API clients with singleton pattern"""
-    
+
     def __init__(self, config: APIConfig):
-        if not hasattr(self, '_initialized'):
+        if not hasattr(self, "_initialized"):
             self._client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
             self._initialized = True
 
@@ -198,21 +212,24 @@ class BaseAPIClient(ABC, metaclass=SingletonABCMeta):
 # Client Implementations
 # ============================================================================
 
+
 class ChatClient(BaseAPIClient):
     """Singleton wrapper for OpenAI async client for Chat"""
-    
+
     def __init__(self):
-        if not hasattr(self, '_initialized'):
+        if not hasattr(self, "_initialized"):
             config = APIConfig.from_env("OPENAI_API_KEY", "OPENAI_BASE_URL")
             super().__init__(config)
 
 
 class EmbeddingClient(BaseAPIClient):
     """Singleton wrapper for OpenAI async client for Embedding"""
-    
+
     def __init__(self):
-        if not hasattr(self, '_initialized'):
-            config = APIConfig.from_env("OPENAI_EMBEDDING_API_KEY", "OPENAI_EMBEDDING_BASE_URL")
+        if not hasattr(self, "_initialized"):
+            config = APIConfig.from_env(
+                "OPENAI_EMBEDDING_API_KEY", "OPENAI_EMBEDDING_BASE_URL"
+            )
             super().__init__(config)
 
 
@@ -220,9 +237,10 @@ class EmbeddingClient(BaseAPIClient):
 # Token Usage Tracking
 # ============================================================================
 
+
 class TokenUsageTracker:
     """Handles token usage tracking and statistics"""
-    
+
     def __init__(self):
         self._total_prompt_tokens = 0
         self._total_completion_tokens = 0
@@ -235,7 +253,7 @@ class TokenUsageTracker:
         token_usage = TokenUsage(
             prompt_tokens=usage_data.prompt_tokens,
             completion_tokens=usage_data.completion_tokens,
-            total_tokens=usage_data.total_tokens
+            total_tokens=usage_data.total_tokens,
         )
 
         # Update cumulative usage
@@ -252,7 +270,9 @@ class TokenUsageTracker:
             f"Completion: {self._total_completion_tokens}, "
             f"Total: {self._total_tokens}"
         )
-        self._logger.debug(f"📝 Prompt preview: {prompt_preview[:100]}{'...' if len(prompt_preview) > 100 else ''}")
+        self._logger.debug(
+            f"📝 Prompt preview: {prompt_preview[:100]}{'...' if len(prompt_preview) > 100 else ''}"
+        )
 
         return token_usage
 
@@ -263,7 +283,11 @@ class TokenUsageTracker:
             "total_prompt_tokens": self._total_prompt_tokens,
             "total_completion_tokens": self._total_completion_tokens,
             "total_tokens": self._total_tokens,
-            "avg_tokens_per_request": round(self._total_tokens / self._request_count, 2) if self._request_count > 0 else 0
+            "avg_tokens_per_request": (
+                round(self._total_tokens / self._request_count, 2)
+                if self._request_count > 0
+                else 0
+            ),
         }
 
     def reset_stats(self) -> None:
@@ -282,9 +306,13 @@ class TokenUsageTracker:
             self._logger.info("🏁 FINAL TOKEN USAGE SUMMARY")
             self._logger.info(f"📝 Total Requests: {stats['request_count']}")
             self._logger.info(f"🔤 Total Prompt Tokens: {stats['total_prompt_tokens']}")
-            self._logger.info(f"💬 Total Completion Tokens: {stats['total_completion_tokens']}")
+            self._logger.info(
+                f"💬 Total Completion Tokens: {stats['total_completion_tokens']}"
+            )
             self._logger.info(f"📊 Total Tokens: {stats['total_tokens']}")
-            self._logger.info(f"📈 Average Tokens per Request: {stats['avg_tokens_per_request']}")
+            self._logger.info(
+                f"📈 Average Tokens per Request: {stats['avg_tokens_per_request']}"
+            )
             self._logger.info("=" * 60)
         else:
             self._logger.info("ℹ️ No API calls were made, no token usage to report")
@@ -294,20 +322,21 @@ class TokenUsageTracker:
 # Main Service Classes
 # ============================================================================
 
+
 class ChatCompletion(metaclass=SingletonMeta):
     """Singleton handler for OpenAI chat completions"""
 
     def __init__(self):
-        if not hasattr(self, '_initialized'):
+        if not hasattr(self, "_initialized"):
             self.client = ChatClient().client
             self._completion_limiter = None
             self._token_tracker = TokenUsageTracker()
             self._initialized = True
 
     @rate_limited(
-        max_rate=APIConstants.DEFAULT_RATE_LIMIT, 
-        time_period=APIConstants.DEFAULT_RATE_PERIOD, 
-        limiter_attr="_completion_limiter"
+        max_rate=APIConstants.DEFAULT_RATE_LIMIT,
+        time_period=APIConstants.DEFAULT_RATE_PERIOD,
+        limiter_attr="_completion_limiter",
     )
     @api_retry
     async def complete(
@@ -343,10 +372,10 @@ class ChatCompletion(metaclass=SingletonMeta):
         return response.choices[0].message.content
 
     def _build_messages(
-        self, 
-        system_prompt: Optional[str], 
-        history_messages: Optional[List[Dict[str, str]]], 
-        prompt: str
+        self,
+        system_prompt: Optional[str],
+        history_messages: Optional[List[Dict[str, str]]],
+        prompt: str,
     ) -> List[Dict[str, str]]:
         """Build messages list for API call"""
         messages = []
@@ -377,21 +406,20 @@ class ChatCompletion(metaclass=SingletonMeta):
 # Embedding Service
 # ============================================================================
 
+
 class BatchProcessor:
     """Handles batch processing logic for embeddings"""
-    
+
     def __init__(self, logger: logging.Logger):
         self._logger = logger
 
     async def process_with_adaptive_batching(
-        self,
-        texts: List[str],
-        batch_size: int,
-        process_func,
-        model: str
+        self, texts: List[str], batch_size: int, process_func, model: str
     ) -> np.ndarray:
         """Process texts with adaptive batch sizing"""
-        self._logger.info(f"🔄 Processing {len(texts)} texts in batches of {batch_size}")
+        self._logger.info(
+            f"🔄 Processing {len(texts)} texts in batches of {batch_size}"
+        )
 
         all_embeddings = []
         current_batch_size = batch_size
@@ -417,7 +445,9 @@ class BatchProcessor:
                 # Reset batch size to original after successful batch
                 if current_batch_size < batch_size:
                     current_batch_size = min(batch_size, current_batch_size * 2)
-                    self._logger.info(f"📈 Increasing batch size back to {current_batch_size}")
+                    self._logger.info(
+                        f"📈 Increasing batch size back to {current_batch_size}"
+                    )
 
             except Exception as e:
                 current_batch_size = self._handle_batch_error(
@@ -428,12 +458,16 @@ class BatchProcessor:
 
         return np.concatenate(all_embeddings, axis=0)
 
-    def _handle_batch_error(self, error: Exception, current_batch_size: int, sample_text: str) -> int:
+    def _handle_batch_error(
+        self, error: Exception, current_batch_size: int, sample_text: str
+    ) -> int:
         """Handle batch processing errors with adaptive sizing"""
         error_msg = str(error).lower()
 
         # Check if error is related to input size/limits
-        if any(keyword in error_msg for keyword in APIConstants.BATCH_SIZE_ERROR_KEYWORDS):
+        if any(
+            keyword in error_msg for keyword in APIConstants.BATCH_SIZE_ERROR_KEYWORDS
+        ):
             if current_batch_size > 1:
                 # Reduce batch size and retry
                 new_batch_size = max(1, current_batch_size // 2)
@@ -444,18 +478,22 @@ class BatchProcessor:
                 return new_batch_size
             else:
                 # Even single text fails, this is a different issue
-                self._logger.error("❌ Even single text embedding failed, this may be a content issue")
+                self._logger.error(
+                    "❌ Even single text embedding failed, this may be a content issue"
+                )
                 self._logger.error(f"❌ Failed text preview: {sample_text[:200]}...")
                 raise error
         else:
             # Different type of error, don't retry
-            self._logger.error(f"❌ Non-batch-size related error in batch processing: {error}")
+            self._logger.error(
+                f"❌ Non-batch-size related error in batch processing: {error}"
+            )
             raise error
 
 
 class TextValidator:
     """Validates and cleans text inputs for embedding"""
-    
+
     @staticmethod
     def validate_and_clean(texts: List[str]) -> List[str]:
         """Validate and clean texts for embedding"""
@@ -471,7 +509,9 @@ class TextValidator:
 
             cleaned_text = text.strip()
             if not cleaned_text:
-                raise ValueError(f"Text at index {i} is empty after stripping whitespace")
+                raise ValueError(
+                    f"Text at index {i} is empty after stripping whitespace"
+                )
 
             valid_texts.append(cleaned_text)
 
@@ -482,7 +522,7 @@ class EmbeddingService(metaclass=SingletonMeta):
     """Singleton handler for OpenAI embeddings"""
 
     def __init__(self, default_batch_size: int = APIConstants.DEFAULT_BATCH_SIZE):
-        if not hasattr(self, '_initialized'):
+        if not hasattr(self, "_initialized"):
             self.client = EmbeddingClient().client
             self._embedding_limiter = None
             self.default_batch_size = default_batch_size
@@ -490,14 +530,18 @@ class EmbeddingService(metaclass=SingletonMeta):
             self._batch_processor = BatchProcessor(self._logger)
             self._text_validator = TextValidator()
             self._initialized = True
-            self._logger.debug(f"🔧 EmbeddingService initialized with batch_size={default_batch_size}")
+            self._logger.debug(
+                f"🔧 EmbeddingService initialized with batch_size={default_batch_size}"
+            )
         else:
-            self._logger.debug(f"🔧 EmbeddingService already initialized, keeping existing batch_size={self.default_batch_size}")
+            self._logger.debug(
+                f"🔧 EmbeddingService already initialized, keeping existing batch_size={self.default_batch_size}"
+            )
 
     @rate_limited(
         max_rate=APIConstants.DEFAULT_RATE_LIMIT,
         time_period=APIConstants.DEFAULT_RATE_PERIOD,
-        limiter_attr="_embedding_limiter"
+        limiter_attr="_embedding_limiter",
     )
     @api_retry
     async def _create_embeddings_batch(
@@ -541,6 +585,8 @@ class EmbeddingService(metaclass=SingletonMeta):
         result = await self._batch_processor.process_with_adaptive_batching(
             valid_texts, batch_size, self._create_embeddings_batch, model
         )
-        
-        self._logger.info(f"✅ All {len(valid_texts)} embeddings processed successfully")
+
+        self._logger.info(
+            f"✅ All {len(valid_texts)} embeddings processed successfully"
+        )
         return result
