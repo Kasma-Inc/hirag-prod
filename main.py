@@ -13,11 +13,11 @@ load_dotenv("/chatbot/.env")
 
 async def index():
     index = await HiRAG.create()
-    document_path = f"tests/Guide-to-U.S.-Healthcare-System.pdf"
-    content_type = "application/pdf"
+    document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
+    content_type = "text/plain"
     document_meta = {
-        "type": "pdf",
-        "filename": "Guide-to-U.S.-Healthcare-System.pdf",
+        "type": "txt",
+        "filename": "2wiki_subcorpus.txt",
         "uri": document_path,
         "private": False,
     }
@@ -26,7 +26,7 @@ async def index():
         content_type=content_type,
         document_meta=document_meta,
     )
-    print(await index.query_all("tell me about US healthcare system"))
+    print(await index.query_all("When did Lothair Ii's mother die?"))
 
 
 if __name__ == "__main__":

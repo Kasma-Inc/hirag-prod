@@ -12,3 +12,4 @@ kb/*
 # Virtual environments
 .venv
 .env
+logs/

@@ -5,7 +5,7 @@ from pydantic import BaseModel, field_validator
 
 class EntityMetadata(BaseModel):
     entity_type: str
-    description: str
+    description: List[str]
     chunk_ids: List[str]
 
 
