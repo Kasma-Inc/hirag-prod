@@ -45,12 +45,12 @@ class NetworkXGDB(BaseGDB):
         )
 
     async def _upsert_node(
-        self, node: Entity, record_description: Optional[str] = None
-    ) -> Optional[str]:
+        self, node: Entity, record_description: Optional[List[str]] = None
+    ) -> Optional[List[str]]:
         """
         Upsert a node into the graph.
 
-        Thiy method adds a new node to the graph if it doesn't exist, or updates an existing node.
+        This method adds a new node to the graph if it doesn't exist, or updates an existing node.
         For concurrent upsertion, we use the following strategy:
         If the node not in the graph, add it. Use the database's transaction atomic to
         ensure the consistency of the graph.
@@ -60,10 +60,10 @@ class NetworkXGDB(BaseGDB):
 
         Args:
             node (Entity): The entity node to be inserted or updated
-            record_description (Optional[str]): Description to compare with existing node's description
+            record_description (Optional[List[str]]): Description to compare with existing node's description
 
         Returns:
-            Optional[str]: If the node exists and has a different description, returns the existing description.
+            Optional[List[str]]: If the node exists and has a different description, returns the existing description.
                             Otherwise returns None.
 
         """
@@ -80,25 +80,30 @@ class NetworkXGDB(BaseGDB):
                         )
                     ]
                 )
-                return
+                return None
             except Exception as e:
                 # TODO: handle the exception
                 raise e
         else:
             node_in_db = self.graph.nodes[node.id]
-            latest_description = node_in_db["description"]
-            assert latest_description is not None
+            # Handle both old string format and new list format for backwards compatibility
+            latest_description = node_in_db.get("description", [])
+            if isinstance(latest_description, str):
+                latest_description = [latest_description]
+            elif latest_description is None:
+                latest_description = []
+
+            current_description = node.metadata.description
             if record_description == latest_description:
                 self.graph.nodes[node.id].update(
                     {**node.metadata.__dict__, "entity_name": node.page_content}
                 )
-                return
+                return None
             elif record_description is None:
-                record_description = node.metadata.description
-                if record_description == latest_description:
+                if current_description == latest_description:
                     # update an existing node
                     # skip the merge process
-                    return
+                    return None
                 else:
                     # require to merge with the latest description
                     return latest_description
@@ -106,12 +111,18 @@ class NetworkXGDB(BaseGDB):
                 # require to merge with the latest description
                 return latest_description
 
-    async def _merge_node(self, node: Entity, latest_description: str) -> Entity:
-        description_list = [node.metadata.description]
-        description = await self.summarizer.summarize_entity(
-            node.page_content, description_list
-        )
-        node.metadata.description = description
+    async def _merge_node(self, node: Entity, latest_description: List[str]) -> Entity:
+        # Directly merge description lists without summarization
+        current_descriptions = node.metadata.description
+        merged_descriptions = latest_description + current_descriptions
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_descriptions = []
+        for desc in merged_descriptions:
+            if desc not in seen:
+                seen.add(desc)
+                unique_descriptions.append(desc)
+        node.metadata.description = unique_descriptions
         return node
 
     async def upsert_node(self, node: Entity):
@@ -127,7 +138,12 @@ class NetworkXGDB(BaseGDB):
     async def upsert_nodes(self, nodes: List[Entity], concurrency: int | None = None):
         coros = [self.upsert_node(node) for node in nodes]
         if concurrency is None:
-            await asyncio.gather(*coros)
+            results = await asyncio.gather(*coros, return_exceptions=True)
+            for r in results:
+                if isinstance(r, Exception):
+                    import logging
+
+                    logging.warning(f"[upsert_nodes] Task failed: {r}")
         else:
             await _limited_gather(coros, concurrency)
 
@@ -143,10 +159,31 @@ class NetworkXGDB(BaseGDB):
 
     async def query_node(self, node_id: str) -> Entity:
         node = self.graph.nodes[node_id]
+        entity_name = node.get("entity_name", "")
+        metadata = {k: v for k, v in node.items() if k != "entity_name"}
+
+        # Ensure all required fields exist with default values
+        # Ensure description is always a list
+        if "description" in metadata:
+            if isinstance(metadata["description"], str):
+                metadata["description"] = [metadata["description"]]
+            elif metadata["description"] is None:
+                metadata["description"] = []
+        else:
+            metadata["description"] = []
+
+        # Ensure entity_type exists
+        if "entity_type" not in metadata:
+            metadata["entity_type"] = "UNKNOWN"
+
+        # Ensure chunk_ids exists
+        if "chunk_ids" not in metadata:
+            metadata["chunk_ids"] = []
+
         return Entity(
             id=node_id,
-            page_content=node["entity_name"],
-            metadata={k: v for k, v in node.items() if k != "entity_name"},
+            page_content=entity_name,
+            metadata=metadata,
         )
 
     async def query_edge(self, edge_id: str) -> Relation:
@@ -160,9 +197,34 @@ class NetworkXGDB(BaseGDB):
     async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]):
         neighbors = list(self.graph.neighbors(node_id))
         edges = list(self.graph.edges(node_id))
-        return await asyncio.gather(
-            *[self.query_node(neighbor) for neighbor in neighbors]
-        ), await asyncio.gather(*[self.query_edge(edge) for edge in edges])
+        neighbor_results = await asyncio.gather(
+            *[self.query_node(neighbor) for neighbor in neighbors],
+            return_exceptions=True,
+        )
+        edge_results = await asyncio.gather(
+            *[self.query_edge(edge) for edge in edges], return_exceptions=True
+        )
+
+        # Filter out failed results and only return successful ones
+        successful_neighbors = []
+        for r in neighbor_results:
+            if isinstance(r, Exception):
+                import logging
+
+                logging.warning(f"[query_one_hop] Neighbor task failed: {r}")
+            else:
+                successful_neighbors.append(r)
+
+        successful_edges = []
+        for r in edge_results:
+            if isinstance(r, Exception):
+                import logging
+
+                logging.warning(f"[query_one_hop] Edge task failed: {r}")
+            else:
+                successful_edges.append(r)
+
+        return successful_neighbors, successful_edges
 
     async def dump(self):
         if os.path.dirname(self.path) != "":

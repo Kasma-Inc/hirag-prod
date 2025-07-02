@@ -335,7 +335,11 @@ async def _limited_gather(
 
     async def _worker(c):
         async with sem:
-            return await c
+            try:
+                return await c
+            except Exception as e:
+                logger.warning(f"[limited_gather] Task failed: {e}")
+                return None
 
     tasks = [asyncio.create_task(_worker(c)) for c in coros]
     return await asyncio.gather(*tasks)

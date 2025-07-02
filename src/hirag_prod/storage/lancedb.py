@@ -1,3 +1,5 @@
+import logging
+import time
 from dataclasses import dataclass
 from typing import List, Literal, Optional
 
@@ -7,6 +9,8 @@ from hirag_prod._utils import EmbeddingFunc
 from hirag_prod.storage.base_vdb import BaseVDB
 
 from .retrieval_strategy_provider import RetrievalStrategyProvider
+
+logger = logging.getLogger(__name__)
 
 THRESHOLD_DISTANCE = 0.8
 TOPK = 5
@@ -29,6 +33,60 @@ class LanceDB(BaseVDB):
         db = await lancedb.connect_async(db_url)
         return cls(embedding_func, db, strategy_provider)
 
+    async def _ensure_table_exists_and_add_data(
+        self,
+        table_name: str,
+        data: List[dict],
+        table: Optional[lancedb.AsyncTable] = None,
+    ) -> lancedb.AsyncTable:
+        """
+        Ensure table exists and add data to it. This method handles table creation
+        and data insertion in a robust way that always appends data.
+
+        Args:
+            table_name: Name of the table
+            data: List of dictionaries containing the data to insert
+            table: Optional existing table instance
+
+        Returns:
+            The table instance with data added
+        """
+        if table is not None:
+            # Table instance provided, just add data
+            await table.add(data)
+            return table
+
+        # Try to open existing table first
+        try:
+            table = await self.db.open_table(table_name)
+            logger.info(
+                f"[_ensure_table_exists_and_add_data] Opened existing table '{table_name}'"
+            )
+            await table.add(data)
+            return table
+        except (ValueError, FileNotFoundError) as e:
+            # Table doesn't exist, create it
+            logger.info(
+                f"[_ensure_table_exists_and_add_data] Creating new table '{table_name}' (table not found: {e})"
+            )
+            try:
+                table = await self.db.create_table(table_name, data=data)
+                logger.info(
+                    f"[_ensure_table_exists_and_add_data] Successfully created table '{table_name}' with {len(data)} rows"
+                )
+                return table
+            except ValueError as create_error:
+                if "already exists" in str(create_error).lower():
+                    # Race condition: table was created by another process
+                    logger.info(
+                        f"[_ensure_table_exists_and_add_data] Table '{table_name}' was created by another process, opening and adding data"
+                    )
+                    table = await self.db.open_table(table_name)
+                    await table.add(data)
+                    return table
+                else:
+                    raise create_error
+
     async def upsert_text(
         self,
         text_to_embed: str,
@@ -37,30 +95,41 @@ class LanceDB(BaseVDB):
         table_name: Optional[str] = None,
         mode: Literal["append", "overwrite"] = "append",
     ) -> lancedb.AsyncTable:
-        """Generate embedding for the text and add the embedding and metadata to the table
+        """
+        Insert a single text with its embedding into the table.
+        This method ensures data is always appended, never overwritten.
 
         Args:
-            text_to_embed (str): the text to embed
-            metadata (dict): other metadata to add to the table
-            table (Optional[lancedb.AsyncTable]): If not None, use the existing table.
-            table_name (Optional[str]): Required if table is None.
+            text_to_embed: Text to generate embedding for
+            properties: Metadata properties for the record
+            table: Optional existing table instance
+            table_name: Table name (required if table is None)
+            mode: Legacy parameter, always appends regardless of value
+
+        Returns:
+            The table instance
         """
-        embedding = await self.embedding_func(text_to_embed)
+        if table is None and table_name is None:
+            raise ValueError("Either table or table_name must be provided")
+
+        table_info = table_name if table is None else f"table_instance_{id(table)}"
+
+        start = time.perf_counter()
+
+        # Generate embedding
+        embedding = await self.embedding_func([text_to_embed])
         properties["vector"] = embedding[0].tolist()
-        if table is None:
-            if table_name is None:
-                raise ValueError("table_name is required if table is None")
-            try:
-                return await self.db.create_table(table_name, data=[properties])
-            except ValueError as e:
-                if "already exists" in str(e):
-                    table = await self.db.open_table(table_name)
-                    await table.add([properties], mode=mode)
-                    return table
-                raise e
-        else:
-            await table.add([properties], mode=mode)
-            return table
+
+        # Ensure table exists and add data
+        result = await self._ensure_table_exists_and_add_data(
+            table_name if table_name else table.name, [properties], table
+        )
+
+        elapsed = time.perf_counter() - start
+        logger.info(
+            f"[upsert_text] Successfully added 1 record to table '{table_info}', elapsed={elapsed:.3f}s"
+        )
+        return result
 
     async def upsert_texts(
         self,
@@ -70,36 +139,47 @@ class LanceDB(BaseVDB):
         table_name: Optional[str] = None,
         mode: Literal["append", "overwrite"] = "append",
     ) -> lancedb.AsyncTable:
-        """Batch insert multiple texts with embeddings.
+        """
+        Batch insert multiple texts with embeddings.
+        This method ensures data is always appended, never overwritten.
 
         Args:
             texts_to_embed: List of texts to embed.
             properties_list: Corresponding metadata for each text.
-            table: Existing table instance. If ``None``, ``table_name`` must be provided.
-            table_name: Name of the table when ``table`` is ``None``.
-            mode: Append or overwrite mode for ``lance`` table add.
+            table: Existing table instance. If None, table_name must be provided.
+            table_name: Name of the table when table is None.
+            mode: Legacy parameter, always appends regardless of value
 
         Returns:
             The table where the data was inserted.
         """
+        if table is None and table_name is None:
+            raise ValueError("Either table or table_name must be provided")
+
+        if len(texts_to_embed) != len(properties_list):
+            raise ValueError(
+                "texts_to_embed and properties_list must have the same length"
+            )
+
+        table_info = table_name if table is None else f"table_instance_{id(table)}"
+
+        start = time.perf_counter()
+
+        # Generate embeddings for all texts
         embeddings = await self.embedding_func(texts_to_embed)
         for props, emb in zip(properties_list, embeddings):
             props["vector"] = emb.tolist()
 
-        if table is None:
-            if table_name is None:
-                raise ValueError("table_name is required if table is None")
-            try:
-                return await self.db.create_table(table_name, data=properties_list)
-            except ValueError as e:
-                if "already exists" in str(e):
-                    table = await self.db.open_table(table_name)
-                    await table.add(properties_list, mode=mode)
-                    return table
-                raise e
-        else:
-            await table.add(properties_list, mode=mode)
-            return table
+        # Ensure table exists and add data
+        result = await self._ensure_table_exists_and_add_data(
+            table_name if table_name else table.name, properties_list, table
+        )
+
+        elapsed = time.perf_counter() - start
+        logger.info(
+            f"[upsert_texts] Successfully added {len(properties_list)} records to table '{table_info}', elapsed={elapsed:.3f}s"
+        )
+        return result
 
     def add_filter_by_uri(self, uri_list: Optional[List[str]], query):
         filter_expr = None
@@ -148,7 +228,7 @@ class LanceDB(BaseVDB):
             List[dict]: _description_
         """
         query_text = query
-        embedding = await self.embedding_func(query_text)
+        embedding = await self.embedding_func([query_text])
         embedding = embedding[0].tolist()
         if columns_to_select is None:
             columns_to_select = [
@@ -163,6 +243,13 @@ class LanceDB(BaseVDB):
 
         # We use the cosine distance to calculate the distance between the query and the embeddings
         query = table.query().nearest_to(embedding).distance_type("cosine")
+
+        # Set nprobes to avoid the warning - adjust the value based on your needs
+        # Higher values = more accurate but slower, lower values = faster but less accurate
+        # Common values: 20-50 for balanced performance
+        if hasattr(query, "nprobes"):
+            query = query.nprobes(20)  # adjust this value as needed
+
         query = self.add_filter_by_uri(uri_list, query)
         query = self.add_filter_by_require_access(require_access, query)
 
