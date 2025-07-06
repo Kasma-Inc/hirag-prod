@@ -9,7 +9,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 from hirag_prod._utils import (
     _handle_single_entity_extraction,
     _handle_single_relationship_extraction,
-    _limited_gather,
+    _limited_gather_with_factory,
     compute_mdhash_id,
     pack_user_ass_to_openai_messages,
     split_string_by_multi_markers,
@@ -94,11 +94,12 @@ class VanillaEntity(BaseEntity):
         logging.info(f"[Entity] Starting extraction from {len(chunks)} chunks")
 
         # Step 1: Extract entities from all chunks concurrently
-        extraction_tasks = [
-            self._extract_entities_from_chunk(chunk) for chunk in chunks
+        extraction_factories = [
+            lambda chunk=chunk: self._extract_entities_from_chunk(chunk)
+            for chunk in chunks
         ]
-        entities_lists = await _limited_gather(
-            extraction_tasks, self.entity_extraction_concurrency
+        entities_lists = await _limited_gather_with_factory(
+            extraction_factories, self.entity_extraction_concurrency
         )
 
         # Step 2: Flatten and filter valid entities
@@ -357,13 +358,15 @@ class VanillaEntity(BaseEntity):
             entities_by_name[entity.page_content].append(entity)
 
         # Merge duplicate entities concurrently
-        merge_tasks = [
-            self._merge_entities_by_name(name, entity_list)
+        merge_factories = [
+            lambda name=name, entity_list=entity_list: self._merge_entities_by_name(
+                name, entity_list
+            )
             for name, entity_list in entities_by_name.items()
         ]
 
-        merged_entities = await _limited_gather(
-            merge_tasks, self.entity_merge_concurrency
+        merged_entities = await _limited_gather_with_factory(
+            merge_factories, self.entity_merge_concurrency
         )
         merged_entities = [entity for entity in merged_entities if entity]
 
@@ -513,12 +516,15 @@ class VanillaEntity(BaseEntity):
         )
 
         # Create relation extraction tasks for each chunk
-        extraction_tasks = [
-            self._extract_relations_from_chunk(chunk, entities) for chunk in chunks
+        extraction_factories = [
+            lambda chunk=chunk, entities=entities: self._extract_relations_from_chunk(
+                chunk, entities
+            )
+            for chunk in chunks
         ]
 
-        relations_lists = await _limited_gather(
-            extraction_tasks, self.relation_extraction_concurrency
+        relations_lists = await _limited_gather_with_factory(
+            extraction_factories, self.relation_extraction_concurrency
         )
 
         # Flatten and filter valid relations

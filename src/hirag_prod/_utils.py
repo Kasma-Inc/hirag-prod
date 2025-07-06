@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Coroutine, Iterable, List, TypeVar
+from typing import Any, Callable, Coroutine, Iterable, List, Optional, TypeVar
 
 import numpy as np
 import tiktoken
@@ -328,18 +328,62 @@ async def _handle_single_relationship_extraction(
 T = TypeVar("T")
 
 
-async def _limited_gather(
-    coros: Iterable[Coroutine[Any, Any, T]], limit: int
-) -> List[T]:
+async def _limited_gather_with_factory(
+    coro_factories: Iterable[Callable[[], Coroutine[Any, Any, T]]],
+    limit: int,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+) -> List[Optional[T]]:
+    """Execute coroutine factories with concurrency limit and proper retry support.
+
+    This is the recommended version for retry functionality.
+
+    Args:
+        coro_factories: Iterable of functions that create fresh coroutines
+        limit: Maximum number of concurrent executions
+        max_retries: Maximum number of retry attempts per task
+        retry_delay: Base delay between retries (with exponential backoff)
+
+    Returns:
+        List of results, with None for permanently failed tasks
+    """
     sem = asyncio.Semaphore(limit)
 
-    async def _worker(c):
+    async def _worker(
+        coro_factory: Callable[[], Coroutine[Any, Any, T]], task_id: int
+    ) -> Optional[T]:
+        """Execute a coroutine factory with retry logic."""
         async with sem:
-            try:
-                return await c
-            except Exception as e:
-                logger.warning(f"[limited_gather] Task failed: {e}")
-                return None
+            for attempt in range(max_retries):
+                try:
+                    # Create a fresh coroutine for each attempt
+                    coro = coro_factory()
+                    result = await coro
+                    return result
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        delay = retry_delay * (2**attempt)  # Exponential backoff
+                        logger.warning(
+                            f"Task {task_id} failed (attempt {attempt + 1}/{max_retries}): "
+                            f"{type(e).__name__}: {str(e)}. Retrying in {delay:.1f}s..."
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        logger.error(
+                            f"Task {task_id} failed permanently after {max_retries} attempts: "
+                            f"{type(e).__name__}: {str(e)}"
+                        )
+            return None
 
-    tasks = [asyncio.create_task(_worker(c)) for c in coros]
-    return await asyncio.gather(*tasks)
+    # Convert to list for indexing
+    factory_list = list(coro_factories)
+
+    # Create tasks for all factories
+    tasks = [
+        asyncio.create_task(_worker(factory, i))
+        for i, factory in enumerate(factory_list)
+    ]
+
+    # Wait for all tasks to complete
+    results = await asyncio.gather(*tasks, return_exceptions=False)
+    return results

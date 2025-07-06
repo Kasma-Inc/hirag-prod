@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pyarrow as pa
 
 from hirag_prod._llm import ChatCompletion, EmbeddingService
-from hirag_prod._utils import _limited_gather
+from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
 from hirag_prod.loader import load_document
@@ -41,20 +41,16 @@ class HiRAGException(Exception):
     """HiRAG base exception class"""
 
 
-
 class DocumentProcessingError(HiRAGException):
     """Document processing exception"""
-
 
 
 class EntityExtractionError(HiRAGException):
     """Entity extraction exception"""
 
 
-
 class StorageError(HiRAGException):
     """Storage exception"""
-
 
 
 # ============================================================================
@@ -650,11 +646,12 @@ class DocumentProcessor:
 
                 if relations:
                     # Store relations
-                    relation_coros = [
-                        self.storage.gdb.upsert_relation(rel) for rel in relations
+                    relation_factories = [
+                        lambda rel=rel: self.storage.gdb.upsert_relation(rel)
+                        for rel in relations
                     ]
-                    await _limited_gather(
-                        relation_coros, self.config.relation_upsert_concurrency
+                    await _limited_gather_with_factory(
+                        relation_factories, self.config.relation_upsert_concurrency
                     )
 
                     self.metrics.metrics.total_relations += len(relations)

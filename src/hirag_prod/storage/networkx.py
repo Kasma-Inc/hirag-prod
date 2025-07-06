@@ -6,7 +6,7 @@ from typing import Callable, List, Optional
 
 import networkx as nx
 
-from hirag_prod._utils import _limited_gather
+from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.base_gdb import BaseGDB
 from hirag_prod.summarization import BaseSummarizer, TrancatedAggregateSummarizer
@@ -145,7 +145,10 @@ class NetworkXGDB(BaseGDB):
 
                     logging.warning(f"[upsert_nodes] Task failed: {r}")
         else:
-            await _limited_gather(coros, concurrency)
+            await _limited_gather_with_factory(
+                [lambda node=node: self.upsert_node(node) for node in nodes],
+                concurrency,
+            )
 
     async def upsert_relation(self, relation: Relation):
         try:
