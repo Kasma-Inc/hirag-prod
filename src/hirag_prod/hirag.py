@@ -302,6 +302,7 @@ class StorageManager:
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
         """Batch insert chunks"""
+        # TODO: Implement intelligent batching based on chunk size and content complexity
         if not chunks:
             return
 
@@ -489,6 +490,7 @@ class DocumentProcessor:
         loader_configs: Optional[Dict] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
+        # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
         validate_input(document_path, content_type)
 
         async with self.metrics.track_operation(f"process_document"):
@@ -541,6 +543,7 @@ class DocumentProcessor:
         loader_configs: Optional[Dict],
     ) -> List[BaseChunk]:
         """Load and chunk document"""
+        # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
             try:
                 documents = await asyncio.to_thread(

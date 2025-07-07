@@ -93,6 +93,8 @@ class VanillaEntity(BaseEntity):
         """
         logging.info(f"[Entity] Starting extraction from {len(chunks)} chunks")
 
+        # TODO: Add progress bar for entity extraction to track processing of chunks
+
         # Step 1: Extract entities from all chunks concurrently
         extraction_factories = [
             lambda chunk=chunk: self._extract_entities_from_chunk(chunk)
@@ -514,6 +516,8 @@ class VanillaEntity(BaseEntity):
         logging.info(
             f"[Relation] Starting extraction from {len(chunks)} chunks with {len(entities)} entities"
         )
+
+        # TODO: Add progress bar for relation extraction to show chunk processing progress
 
         # Create relation extraction tasks for each chunk
         extraction_factories = [

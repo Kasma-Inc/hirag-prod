@@ -13,6 +13,7 @@ class FixTokenChunk(BaseChunk):
         self.chunk_overlap = chunk_overlap
 
     def chunk(self, document: File) -> list[Chunk]:
+        # TODO: Implement semantic-aware chunking to preserve context boundaries
         tokenizer = Tokenizer(
             tokens_per_chunk=self.chunk_size,
             chunk_overlap=self.chunk_overlap,

@@ -53,6 +53,8 @@ DEFAULT_LOADER_CONFIGS = {
 }
 
 
+# TODO: Remove deprecated PPTAGENT_LOADER_CONFIGS - no longer used in production
+# This configuration was abandoned and should be cleaned up from codebase
 PPTAGENT_LOADER_CONFIGS = {
     "pptx": {"loader": PPTParser, "init_args": {"work_dir": "temp"}},
 }
@@ -79,6 +81,8 @@ def load_document(
     Returns:
         List[File]: The loaded documents.
     """
+    # TODO: Optimize loader selection logic - consolidate loader types and reduce branching
+    # TODO: Add async support for concurrent document loading
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
     elif loader_configs is None and loader_type == "pptagent":

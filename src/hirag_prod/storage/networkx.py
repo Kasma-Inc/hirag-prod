@@ -136,8 +136,8 @@ class NetworkXGDB(BaseGDB):
                 record_description = latest_description
 
     async def upsert_nodes(self, nodes: List[Entity], concurrency: int | None = None):
-        coros = [self.upsert_node(node) for node in nodes]
         if concurrency is None:
+            coros = [self.upsert_node(node) for node in nodes]
             results = await asyncio.gather(*coros, return_exceptions=True)
             for r in results:
                 if isinstance(r, Exception):
@@ -145,10 +145,8 @@ class NetworkXGDB(BaseGDB):
 
                     logging.warning(f"[upsert_nodes] Task failed: {r}")
         else:
-            await _limited_gather_with_factory(
-                [lambda node=node: self.upsert_node(node) for node in nodes],
-                concurrency,
-            )
+            factories = [lambda node=node: self.upsert_node(node) for node in nodes]
+            await _limited_gather_with_factory(factories, concurrency)
 
     async def upsert_relation(self, relation: Relation):
         try:

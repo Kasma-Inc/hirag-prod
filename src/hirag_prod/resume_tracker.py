@@ -37,6 +37,7 @@ class ResumeTracker:
         auto_cleanup: bool = True,
     ):
         """Initialize the resume tracker with Redis backend"""
+        # TODO: Implement connection pooling for better Redis performance under load
         self.redis_client = redis.from_url(redis_url, decode_responses=True)
         self.key_prefix = key_prefix
         self.auto_cleanup = auto_cleanup

@@ -347,6 +347,7 @@ async def _limited_gather_with_factory(
     Returns:
         List of results, with None for permanently failed tasks
     """
+    # TODO: Add adaptive concurrency based on system resources and task complexity
     sem = asyncio.Semaphore(limit)
 
     async def _worker(

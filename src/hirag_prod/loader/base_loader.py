@@ -22,6 +22,7 @@ class BaseLoader(ABC):
     page_number_key: str = "page_number"
 
     def _load(self, document_path: str, **loader_args) -> List[File]:
+        # TODO: Add file format validation and error handling before loading
         raw_docs = self.loader_type(document_path, **loader_args).load()
         docs = []
         for i, doc in enumerate(raw_docs, start=1):
