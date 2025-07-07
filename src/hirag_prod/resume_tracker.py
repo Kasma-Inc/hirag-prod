@@ -1,12 +1,14 @@
 import hashlib
 import logging
-import sqlite3
 from datetime import datetime
 from enum import Enum
-from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+import redis
+
 logger = logging.getLogger(__name__)
+
+EXPIRE_TTL = 3600 * 24 * 30  # 30 days by default
 
 
 class ExtractionType(Enum):
@@ -16,101 +18,144 @@ class ExtractionType(Enum):
     RELATION = "relation"
 
 
-class ChunkResumeTracker:
+class ResumeTracker:
     """
-    SQLite-based chunk-level processing status tracker for efficient resume functionality.
+    Redis-based chunk-level processing status tracker for efficient resume functionality.
 
     Tracks the processing status of each chunk for:
     - Entity extraction completion
     - Relation extraction completion
     - Processing timestamps and metadata
+
+    Maintains document completion status for resume functionality across sessions.
     """
 
-    # Constants
-    DEFAULT_CLEANUP_DAYS = 30
+    def __init__(
+        self,
+        redis_url: str,
+        key_prefix: str,
+        auto_cleanup: bool = True,
+    ):
+        """Initialize the resume tracker with Redis backend"""
+        self.redis_client = redis.from_url(redis_url, decode_responses=True)
+        self.key_prefix = key_prefix
+        self.auto_cleanup = auto_cleanup
 
-    # Field mappings for different extraction types
-    EXTRACTION_FIELDS = {
-        ExtractionType.ENTITY: {
-            "completed": "entity_extraction_completed",
-            "started_at": "entity_extraction_started_at",
-            "completed_at": "entity_extraction_completed_at",
-            "count": "entity_count",
-            "doc_completed_field": "entity_completed_chunks",
-        },
-        ExtractionType.RELATION: {
-            "completed": "relation_extraction_completed",
-            "started_at": "relation_extraction_started_at",
-            "completed_at": "relation_extraction_completed_at",
-            "count": "relation_count",
-            "doc_completed_field": "relation_completed_chunks",
-        },
-    }
+        # Test connection
+        try:
+            self.redis_client.ping()
+            logger.info("Connected to Redis successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis: {e}")
+            raise
 
-    def __init__(self, db_path: str):
-        """Initialize the resume tracker with SQLite backend"""
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(exist_ok=True)
-        self._init_database()
+    def _chunk_key(self, chunk_id: str) -> str:
+        """Generate Redis key for chunk status"""
+        return f"{self.key_prefix}:chunk:{chunk_id}"
 
-    def _init_database(self):
-        """Initialize SQLite database with required tables"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Chunk status table
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS chunk_status (
-                    chunk_id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL,
-                    document_uri TEXT NOT NULL,
-                    chunk_hash TEXT,
-                    
-                    entity_extraction_completed BOOLEAN DEFAULT FALSE,
-                    entity_extraction_started_at TIMESTAMP,
-                    entity_extraction_completed_at TIMESTAMP,
-                    entity_count INTEGER DEFAULT 0,
-                    
-                    relation_extraction_completed BOOLEAN DEFAULT FALSE,
-                    relation_extraction_started_at TIMESTAMP,
-                    relation_extraction_completed_at TIMESTAMP,
-                    relation_count INTEGER DEFAULT 0,
-                    
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """
-            )
+    def _doc_chunks_key(self, document_id: str) -> str:
+        """Generate Redis key for document's chunk set"""
+        return f"{self.key_prefix}:doc:{document_id}:chunks"
 
-            # Create indexes
-            indexes = [
-                "CREATE INDEX IF NOT EXISTS idx_document_id ON chunk_status(document_id)",
-                "CREATE INDEX IF NOT EXISTS idx_document_uri ON chunk_status(document_uri)",
-                "CREATE INDEX IF NOT EXISTS idx_entity_completed ON chunk_status(entity_extraction_completed)",
-                "CREATE INDEX IF NOT EXISTS idx_relation_completed ON chunk_status(relation_extraction_completed)",
-            ]
-            for index_sql in indexes:
-                conn.execute(index_sql)
+    def _doc_entity_completed_key(self, document_id: str) -> str:
+        """Generate Redis key for document's entity-completed chunks"""
+        return f"{self.key_prefix}:doc:{document_id}:entity_completed"
 
-            # Document status table
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS document_status (
-                    document_id TEXT PRIMARY KEY,
-                    document_uri TEXT UNIQUE NOT NULL,
-                    total_chunks INTEGER DEFAULT 0,
-                    entity_completed_chunks INTEGER DEFAULT 0,
-                    relation_completed_chunks INTEGER DEFAULT 0,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    pipeline_completed BOOLEAN DEFAULT FALSE,
-                    pipeline_completed_at TIMESTAMP
-                )
-            """
-            )
-            conn.commit()
+    def _doc_relation_completed_key(self, document_id: str) -> str:
+        """Generate Redis key for document's relation-completed chunks"""
+        return f"{self.key_prefix}:doc:{document_id}:relation_completed"
+
+    def _doc_info_key(self, document_id: str) -> str:
+        """Generate Redis key for document info"""
+        return f"{self.key_prefix}:doc:{document_id}:info"
+
+    def _doc_completion_key(self, document_id: str) -> str:
+        """Generate Redis key for document completion status (persistent)"""
+        return f"{self.key_prefix}:completed:{document_id}"
 
     def _calculate_chunk_hash(self, chunk_content: str) -> str:
         """Calculate a hash for chunk content to detect changes"""
         return hashlib.md5(chunk_content.encode()).hexdigest()
+
+    def is_document_already_completed(self, document_id: str) -> bool:
+        """Check if document was already fully processed in a previous session"""
+        completion_key = self._doc_completion_key(document_id)
+        completion_data = self.redis_client.hgetall(completion_key)
+
+        if not completion_data:
+            return False
+
+        is_completed = completion_data.get("pipeline_completed", "false") == "true"
+        if is_completed:
+            logger.info(
+                f"Document {document_id} was already completed on {completion_data.get('completed_at')}"
+            )
+
+        return is_completed
+
+    def register_chunks(
+        self, chunks: List, document_id: str, document_uri: str
+    ) -> None:
+        """Register chunks in the tracking system"""
+        if not chunks:
+            return
+
+        # Check if document was already completed
+        if self.is_document_already_completed(document_id):
+            logger.info(
+                f"Document {document_id} already completed, skipping registration"
+            )
+            return
+
+        pipeline = self.redis_client.pipeline()
+        now = datetime.now().isoformat()
+
+        # Check if document already exists in current session
+        doc_info_key = self._doc_info_key(document_id)
+        if self.redis_client.exists(doc_info_key):
+            logger.debug(
+                f"Document {document_id} already registered in current session, skipping chunk registration"
+            )
+            return
+
+        # Register document info
+        doc_info = {
+            "document_id": document_id,
+            "document_uri": document_uri,
+            "total_chunks": len(chunks),
+            "created_at": now,
+            "last_updated": now,
+        }
+        pipeline.hset(doc_info_key, mapping=doc_info)
+
+        # Register chunks
+        doc_chunks_key = self._doc_chunks_key(document_id)
+        for chunk in chunks:
+            chunk_key = self._chunk_key(chunk.id)
+            chunk_data = {
+                "chunk_id": chunk.id,
+                "document_id": document_id,
+                "document_uri": document_uri,
+                "chunk_hash": self._calculate_chunk_hash(chunk.page_content),
+                "entity_extraction_completed": "false",
+                "relation_extraction_completed": "false",
+                "entity_count": "0",
+                "relation_count": "0",
+                "created_at": now,
+            }
+            pipeline.hset(chunk_key, mapping=chunk_data)
+            pipeline.sadd(doc_chunks_key, chunk.id)
+            # Set TTL for chunk data (30 days default)
+            pipeline.expire(chunk_key, EXPIRE_TTL)
+
+        # Set TTL for document keys (but not completion key)
+        pipeline.expire(doc_info_key, EXPIRE_TTL)
+        pipeline.expire(doc_chunks_key, EXPIRE_TTL)
+        pipeline.execute()
+
+        logger.info(
+            f"Registered {len(chunks)} chunks for document {document_id} in Redis"
+        )
 
     def _get_chunk_ids_with_status(
         self, chunks: List, extraction_type: ExtractionType
@@ -119,99 +164,14 @@ class ChunkResumeTracker:
         if not chunks:
             return set()
 
-        chunk_ids = [chunk.id for chunk in chunks]
-        placeholders = ",".join("?" * len(chunk_ids))
-        completed_field = self.EXTRACTION_FIELDS[extraction_type]["completed"]
+        document_id = chunks[0].metadata.document_id
+        if extraction_type == ExtractionType.ENTITY:
+            completed_key = self._doc_entity_completed_key(document_id)
+        else:
+            completed_key = self._doc_relation_completed_key(document_id)
 
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                f"""
-                SELECT chunk_id FROM chunk_status 
-                WHERE chunk_id IN ({placeholders}) AND {completed_field} = TRUE
-            """,
-                chunk_ids,
-            )
-            return {row[0] for row in cursor}
-
-    def _update_document_completion_count(
-        self, document_id: str, extraction_type: ExtractionType
-    ):
-        """Update document-level completion count for the specified extraction type"""
-        fields = self.EXTRACTION_FIELDS[extraction_type]
-        completed_field = fields["completed"]
-        doc_field = fields["doc_completed_field"]
-
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                f"""
-                SELECT COUNT(*) FROM chunk_status 
-                WHERE document_id = ? AND {completed_field} = TRUE
-            """,
-                (document_id,),
-            )
-            completed_count = cursor.fetchone()[0]
-
-            conn.execute(
-                f"""
-                UPDATE document_status 
-                SET {doc_field} = ?, last_updated = CURRENT_TIMESTAMP
-                WHERE document_id = ?
-            """,
-                (completed_count, document_id),
-            )
-            conn.commit()
-
-    def register_chunks(
-        self, chunks: List, document_id: str, document_uri: str
-    ) -> None:
-        """Register chunks in the tracking system (preserving existing status)"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Check if document already exists
-            cursor = conn.execute(
-                "SELECT COUNT(*) FROM document_status WHERE document_id = ?",
-                (document_id,),
-            )
-            if cursor.fetchone()[0] > 0:
-                logger.debug(
-                    f"Document {document_id} already registered, skipping chunk registration"
-                )
-                return
-
-            # Register new chunks
-            now = datetime.now()
-            chunk_data = [
-                (
-                    chunk.id,
-                    document_id,
-                    document_uri,
-                    self._calculate_chunk_hash(chunk.page_content),
-                    now,
-                )
-                for chunk in chunks
-            ]
-
-            conn.executemany(
-                """
-                INSERT OR IGNORE INTO chunk_status 
-                (chunk_id, document_id, document_uri, chunk_hash, created_at)
-                VALUES (?, ?, ?, ?, ?)
-            """,
-                chunk_data,
-            )
-
-            conn.execute(
-                """
-                INSERT OR IGNORE INTO document_status 
-                (document_id, document_uri, total_chunks, last_updated)
-                VALUES (?, ?, ?, ?)
-            """,
-                (document_id, document_uri, len(chunks), now),
-            )
-
-            conn.commit()
-            logger.info(
-                f"Registered {len(chunks)} new chunks for document {document_id}"
-            )
+        completed_chunks = self.redis_client.smembers(completed_key)
+        return set(completed_chunks)
 
     def get_pending_chunks(self, chunks: List, extraction_type: ExtractionType) -> List:
         """Get chunks that need the specified extraction type"""
@@ -256,20 +216,15 @@ class ChunkResumeTracker:
         if not chunks:
             return
 
-        started_at_field = self.EXTRACTION_FIELDS[extraction_type]["started_at"]
+        pipeline = self.redis_client.pipeline()
+        now = datetime.now().isoformat()
+        field_name = f"{extraction_type.value}_extraction_started_at"
 
-        with sqlite3.connect(self.db_path) as conn:
-            chunk_data = [(datetime.now(), chunk.id) for chunk in chunks]
-            conn.executemany(
-                f"""
-                UPDATE chunk_status 
-                SET {started_at_field} = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE chunk_id = ?
-            """,
-                chunk_data,
-            )
-            conn.commit()
+        for chunk in chunks:
+            chunk_key = self._chunk_key(chunk.id)
+            pipeline.hset(chunk_key, field_name, now)
 
+        pipeline.execute()
         logger.info(
             f"Marked {len(chunks)} chunks as {extraction_type.value} extraction started"
         )
@@ -285,35 +240,40 @@ class ChunkResumeTracker:
             return
 
         counts = counts or {}
-        fields = self.EXTRACTION_FIELDS[extraction_type]
+        pipeline = self.redis_client.pipeline()
+        now = datetime.now().isoformat()
+        document_id = chunks[0].metadata.document_id
 
-        with sqlite3.connect(self.db_path) as conn:
-            chunk_data = [
-                (datetime.now(), counts.get(chunk.id, 0), chunk.id) for chunk in chunks
-            ]
-            conn.executemany(
-                f"""
-                UPDATE chunk_status 
-                SET {fields['completed']} = TRUE,
-                    {fields['completed_at']} = ?,
-                    {fields['count']} = ?,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE chunk_id = ?
-            """,
-                chunk_data,
-            )
-            conn.commit()
+        # Get the appropriate completed set key
+        if extraction_type == ExtractionType.ENTITY:
+            completed_key = self._doc_entity_completed_key(document_id)
+        else:
+            completed_key = self._doc_relation_completed_key(document_id)
 
-        # Update document-level tracking
-        if chunks:
-            document_id = chunks[0].metadata.document_id
-            self._update_document_completion_count(document_id, extraction_type)
+        # Update chunk status and add to completed set
+        for chunk in chunks:
+            chunk_key = self._chunk_key(chunk.id)
+            updates = {
+                f"{extraction_type.value}_extraction_completed": "true",
+                f"{extraction_type.value}_extraction_completed_at": now,
+                f"{extraction_type.value}_count": str(counts.get(chunk.id, 0)),
+                "updated_at": now,
+            }
+            pipeline.hset(chunk_key, mapping=updates)
+            pipeline.sadd(completed_key, chunk.id)
+
+        # Set TTL for completed set
+        pipeline.expire(completed_key, EXPIRE_TTL)
+        pipeline.execute()
 
         logger.info(
             f"Marked {len(chunks)} chunks as {extraction_type.value} extraction completed"
         )
 
-    # Convenience methods for backward compatibility
+        # Check if document is complete and cleanup if so (only if auto_cleanup is enabled)
+        if self.auto_cleanup:
+            self._check_and_cleanup_if_complete(document_id)
+
     def mark_entity_extraction_started(self, chunks: List) -> None:
         """Mark chunks as having started entity extraction"""
         self.mark_extraction_started(chunks, ExtractionType.ENTITY)
@@ -335,127 +295,187 @@ class ChunkResumeTracker:
         self.mark_extraction_completed(chunks, ExtractionType.RELATION, relation_counts)
 
     def is_document_complete(self, document_id: str) -> bool:
-        """Check if entire document processing is complete"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute(
-                """
-                SELECT total_chunks, entity_completed_chunks, relation_completed_chunks, pipeline_completed
-                FROM document_status WHERE document_id = ?
-            """,
-                (document_id,),
-            )
-            row = cursor.fetchone()
+        """Check if entire document processing is complete in current session"""
+        doc_info_key = self._doc_info_key(document_id)
+        doc_chunks_key = self._doc_chunks_key(document_id)
+        entity_completed_key = self._doc_entity_completed_key(document_id)
+        relation_completed_key = self._doc_relation_completed_key(document_id)
 
-            if not row:
-                return False
+        # Get document info
+        doc_info = self.redis_client.hgetall(doc_info_key)
+        if not doc_info:
+            return False
 
-            total, entity_done, relation_done, pipeline_done = row
-            return pipeline_done or (
-                total > 0 and entity_done == total and relation_done == total
-            )
+        total_chunks = int(doc_info.get("total_chunks", 0))
+        if total_chunks == 0:
+            return False
+
+        # Check completion status
+        entity_completed_count = self.redis_client.scard(entity_completed_key)
+        relation_completed_count = self.redis_client.scard(relation_completed_key)
+
+        is_complete = (
+            entity_completed_count == total_chunks
+            and relation_completed_count == total_chunks
+        )
+
+        return is_complete
 
     def mark_document_completed(self, document_id: str) -> None:
-        """Mark entire document as completed"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """
-                UPDATE document_status 
-                SET pipeline_completed = TRUE, 
-                    pipeline_completed_at = CURRENT_TIMESTAMP,
-                    last_updated = CURRENT_TIMESTAMP
-                WHERE document_id = ?
-            """,
-                (document_id,),
+        """Mark entire document as completed and trigger cleanup"""
+        now = datetime.now().isoformat()
+
+        # Store persistent completion record
+        completion_key = self._doc_completion_key(document_id)
+        completion_data = {
+            "document_id": document_id,
+            "pipeline_completed": "true",
+            "completed_at": now,
+            "last_updated": now,
+        }
+        # Set long TTL for completion records (30 days)
+        self.redis_client.hset(completion_key, mapping=completion_data)
+        self.redis_client.expire(completion_key, EXPIRE_TTL)
+
+        # Update document status in current session
+        doc_info_key = self._doc_info_key(document_id)
+        if self.redis_client.exists(doc_info_key):
+            self.redis_client.hset(
+                doc_info_key,
+                mapping={
+                    "pipeline_completed": "true",
+                    "pipeline_completed_at": now,
+                    "last_updated": now,
+                },
             )
-            conn.commit()
 
         logger.info(f"Marked document {document_id} as fully completed")
 
+        # Cleanup tracking data since processing is complete
+        self._cleanup_document_tracking(document_id)
+
+    def _check_and_cleanup_if_complete(self, document_id: str) -> None:
+        """Check if document is complete and cleanup if so"""
+        if self.is_document_complete(document_id):
+            logger.info(
+                f"Document {document_id} processing complete, cleaning up tracking data"
+            )
+            self._cleanup_document_tracking(document_id)
+
+    def _cleanup_document_tracking(self, document_id: str) -> None:
+        """Clean up session tracking data for a completed document (keeps completion record)"""
+        try:
+            # Get all chunk IDs for this document
+            doc_chunks_key = self._doc_chunks_key(document_id)
+            chunk_ids = self.redis_client.smembers(doc_chunks_key)
+
+            # Prepare pipeline for cleanup
+            pipeline = self.redis_client.pipeline()
+
+            # Delete chunk status keys
+            for chunk_id in chunk_ids:
+                chunk_key = self._chunk_key(chunk_id)
+                pipeline.delete(chunk_key)
+
+            # Delete document session keys (but keep completion record)
+            pipeline.delete(doc_chunks_key)
+            pipeline.delete(self._doc_entity_completed_key(document_id))
+            pipeline.delete(self._doc_relation_completed_key(document_id))
+            pipeline.delete(self._doc_info_key(document_id))
+
+            # Execute cleanup
+            pipeline.execute()
+
+            logger.info(
+                f"Cleaned up tracking data for {len(chunk_ids)} chunks in document {document_id}"
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to cleanup tracking data for document {document_id}: {e}"
+            )
+
     def get_processing_stats(self, document_id: str) -> Dict:
         """Get detailed processing statistics for a document"""
-        with sqlite3.connect(self.db_path) as conn:
-            # Document-level stats
-            cursor = conn.execute(
-                """
-                SELECT total_chunks, entity_completed_chunks, relation_completed_chunks, 
-                       pipeline_completed, last_updated
-                FROM document_status WHERE document_id = ?
-            """,
-                (document_id,),
-            )
-            doc_row = cursor.fetchone()
+        doc_info_key = self._doc_info_key(document_id)
+        doc_info = self.redis_client.hgetall(doc_info_key)
 
-            if not doc_row:
-                return {"error": "Document not found"}
+        if not doc_info:
+            # Check if document was completed in a previous session
+            completion_key = self._doc_completion_key(document_id)
+            completion_data = self.redis_client.hgetall(completion_key)
+            if completion_data:
+                return {
+                    "document_id": document_id,
+                    "pipeline_completed": True,
+                    "completed_at": completion_data.get("completed_at"),
+                    "status": "Previously completed",
+                }
+            return {"error": "Document not found"}
 
-            total, entity_done, relation_done, pipeline_done, last_updated = doc_row
+        total_chunks = int(doc_info.get("total_chunks", 0))
+        entity_completed = self.redis_client.scard(
+            self._doc_entity_completed_key(document_id)
+        )
+        relation_completed = self.redis_client.scard(
+            self._doc_relation_completed_key(document_id)
+        )
 
-            # Chunk-level details
-            cursor = conn.execute(
-                """
-                SELECT 
-                    COUNT(*) as total,
-                    SUM(CASE WHEN entity_extraction_completed THEN 1 ELSE 0 END) as entity_completed,
-                    SUM(CASE WHEN relation_extraction_completed THEN 1 ELSE 0 END) as relation_completed,
-                    SUM(entity_count) as total_entities,
-                    SUM(relation_count) as total_relations
-                FROM chunk_status WHERE document_id = ?
-            """,
-                (document_id,),
-            )
-            chunk_stats = cursor.fetchone()
+        # Calculate totals by checking individual chunks
+        doc_chunks_key = self._doc_chunks_key(document_id)
+        chunk_ids = self.redis_client.smembers(doc_chunks_key)
 
-            return {
-                "document_id": document_id,
-                "total_chunks": total,
-                "entity_extraction": {
-                    "completed_chunks": entity_done,
-                    "progress": f"{entity_done}/{total}",
-                    "percentage": (entity_done / total * 100) if total > 0 else 0,
-                },
-                "relation_extraction": {
-                    "completed_chunks": relation_done,
-                    "progress": f"{relation_done}/{total}",
-                    "percentage": (relation_done / total * 100) if total > 0 else 0,
-                },
-                "totals": {
-                    "entities": chunk_stats[3] if chunk_stats else 0,
-                    "relations": chunk_stats[4] if chunk_stats else 0,
-                },
-                "pipeline_completed": pipeline_done,
-                "last_updated": last_updated,
-            }
+        total_entities = 0
+        total_relations = 0
+
+        if chunk_ids:
+            pipeline = self.redis_client.pipeline()
+            for chunk_id in chunk_ids:
+                chunk_key = self._chunk_key(chunk_id)
+                pipeline.hmget(chunk_key, "entity_count", "relation_count")
+
+            results = pipeline.execute()
+            for entity_count, relation_count in results:
+                total_entities += int(entity_count or 0)
+                total_relations += int(relation_count or 0)
+
+        return {
+            "document_id": document_id,
+            "total_chunks": total_chunks,
+            "entity_extraction": {
+                "completed_chunks": entity_completed,
+                "progress": f"{entity_completed}/{total_chunks}",
+                "percentage": (
+                    (entity_completed / total_chunks * 100) if total_chunks > 0 else 0
+                ),
+            },
+            "relation_extraction": {
+                "completed_chunks": relation_completed,
+                "progress": f"{relation_completed}/{total_chunks}",
+                "percentage": (
+                    (relation_completed / total_chunks * 100) if total_chunks > 0 else 0
+                ),
+            },
+            "totals": {
+                "entities": total_entities,
+                "relations": total_relations,
+            },
+            "pipeline_completed": doc_info.get("pipeline_completed", "false") == "true",
+            "last_updated": doc_info.get("last_updated"),
+        }
 
     def reset_document(self, document_id: str) -> None:
         """Reset processing status for a document (for testing/debugging)"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                "DELETE FROM chunk_status WHERE document_id = ?", (document_id,)
-            )
-            conn.execute(
-                "DELETE FROM document_status WHERE document_id = ?", (document_id,)
-            )
-            conn.commit()
-
+        # Clean up both session data and completion record
+        self._cleanup_document_tracking(document_id)
+        completion_key = self._doc_completion_key(document_id)
+        self.redis_client.delete(completion_key)
         logger.info(f"Reset processing status for document {document_id}")
 
-    def cleanup_old_entries(self, days: int = DEFAULT_CLEANUP_DAYS) -> None:
-        """Clean up tracking entries older than specified days"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                f"""
-                DELETE FROM chunk_status 
-                WHERE created_at < datetime('now', '-{days} days')
-            """
-            )
-
-            conn.execute(
-                f"""
-                DELETE FROM document_status 
-                WHERE last_updated < datetime('now', '-{days} days')
-            """
-            )
-
-            conn.commit()
-
-        logger.info(f"Cleaned up tracking entries older than {days} days")
+    def cleanup_old_entries(self, days: int = 30) -> None:
+        """Clean up tracking entries older than specified days (Redis TTL handles this automatically)"""
+        # Redis TTL automatically handles cleanup, but we can manually clean expired keys
+        # This is mainly for compatibility with the interface
+        logger.info(
+            f"Redis TTL automatically handles cleanup of entries older than {days} days"
+        )

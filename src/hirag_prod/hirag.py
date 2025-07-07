@@ -14,7 +14,9 @@ from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
 from hirag_prod.loader import load_document
+from hirag_prod.resume_tracker import ResumeTracker
 from hirag_prod.schema import Entity
+from hirag_prod.schema.entity import EntityMetadata
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -22,6 +24,43 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
+
+# ============================================================================
+# Constants and Default Values
+# ============================================================================
+
+# Database Configuration
+DEFAULT_DB_URL = "kb/hirag.db"
+DEFAULT_GRAPH_DB_PATH = "kb/hirag.gpickle"
+
+# Redis Configuration
+DEFAULT_REDIS_URL = "redis://redis:6379/2"
+DEFAULT_REDIS_KEY_PREFIX = "hirag"
+
+# Model Configuration
+DEFAULT_LLM_MODEL_NAME = "gpt-4o-mini"
+
+# Chunking Configuration
+DEFAULT_CHUNK_SIZE = 1200
+DEFAULT_CHUNK_OVERLAP = 200
+
+# Batch Processing Configuration
+DEFAULT_EMBEDDING_BATCH_SIZE = 1000
+DEFAULT_ENTITY_UPSERT_CONCURRENCY = 32
+DEFAULT_RELATION_UPSERT_CONCURRENCY = 32
+
+# Retry Configuration
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 1.0
+
+# Vector and Schema Configuration
+VECTOR_DIMENSION = 1536
+
+
+# Query and Operation Constants
+MAX_CHUNK_IDS_PER_QUERY = 10
+DEFAULT_QUERY_TOPK = 10
+DEFAULT_QUERY_TOPN = 5
 
 # Configure Logging
 logging.basicConfig(
@@ -63,25 +102,28 @@ class HiRAGConfig:
     """HiRAG system configuration"""
 
     # Database configuration
-    db_url: str = "kb/hirag.db"
-    graph_db_path: str = "kb/hirag.gpickle"
-    resume_tracker_db_path: str = "kb/resume_tracker.db"
+    db_url: str = DEFAULT_DB_URL
+    graph_db_path: str = DEFAULT_GRAPH_DB_PATH
+
+    # Resume tracker configuration (Redis-based)
+    redis_url: str = DEFAULT_REDIS_URL
+    redis_key_prefix: str = DEFAULT_REDIS_KEY_PREFIX
 
     # Model configuration
-    llm_model_name: str = "gpt-4o-mini"
+    llm_model_name: str = DEFAULT_LLM_MODEL_NAME
 
     # Chunking configuration
-    chunk_size: int = 1200
-    chunk_overlap: int = 200
+    chunk_size: int = DEFAULT_CHUNK_SIZE
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP
 
     # Batch processing configuration
-    embedding_batch_size: int = 1000
-    entity_upsert_concurrency: int = 32
-    relation_upsert_concurrency: int = 32
+    embedding_batch_size: int = DEFAULT_EMBEDDING_BATCH_SIZE
+    entity_upsert_concurrency: int = DEFAULT_ENTITY_UPSERT_CONCURRENCY
+    relation_upsert_concurrency: int = DEFAULT_RELATION_UPSERT_CONCURRENCY
 
     # Retry configuration
-    max_retries: int = 3
-    retry_delay: float = 1.0
+    max_retries: int = DEFAULT_MAX_RETRIES
+    retry_delay: float = DEFAULT_RETRY_DELAY
 
 
 # ============================================================================
@@ -140,7 +182,9 @@ class MetricsCollector:
 # ============================================================================
 
 
-def retry_async(max_retries: int = 3, delay: float = 1.0):
+def retry_async(
+    max_retries: int = DEFAULT_MAX_RETRIES, delay: float = DEFAULT_RETRY_DELAY
+):
     """Async retry decorator"""
 
     def decorator(func):
@@ -215,7 +259,9 @@ class StorageManager:
                             pa.field("private", pa.bool_()),
                             pa.field("chunk_idx", pa.int32()),
                             pa.field("document_id", pa.string()),
-                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field(
+                                "vector", pa.list_(pa.float32(), VECTOR_DIMENSION)
+                            ),
                             pa.field("uploaded_at", pa.timestamp("ms")),
                         ]
                     ),
@@ -235,7 +281,9 @@ class StorageManager:
                         [
                             pa.field("text", pa.string()),
                             pa.field("document_key", pa.string()),
-                            pa.field("vector", pa.list_(pa.float32(), 1536)),
+                            pa.field(
+                                "vector", pa.list_(pa.float32(), VECTOR_DIMENSION)
+                            ),
                             pa.field("entity_type", pa.string()),
                             pa.field("description", pa.list_(pa.string())),
                             pa.field("chunk_ids", pa.list_(pa.string())),
@@ -251,7 +299,7 @@ class StorageManager:
             else:
                 raise StorageError(f"Failed to initialize entities table: {e}")
 
-    @retry_async(max_retries=3, delay=1.0)
+    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
         """Batch insert chunks"""
         if not chunks:
@@ -290,7 +338,7 @@ class StorageManager:
         except Exception as e:
             raise StorageError(f"Failed to upsert chunks: {e}")
 
-    @retry_async(max_retries=3, delay=1.0)
+    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_entities(self, entities: List[Entity]) -> None:
         """Batch insert entities"""
         if not entities:
@@ -361,7 +409,7 @@ class StorageManager:
 
         try:
             # Limit query conditions to avoid overly long queries
-            limited_chunk_ids = chunk_ids[:10]
+            limited_chunk_ids = chunk_ids[:MAX_CHUNK_IDS_PER_QUERY]
             chunk_conditions = " OR ".join(
                 [
                     f"array_contains(chunk_ids, '{chunk_id}')"
@@ -455,15 +503,19 @@ class DocumentProcessor:
 
             self.metrics.metrics.total_chunks = len(chunks)
 
-            # Register with resume tracker
+            # Check if document was already completed in a previous session
             if self.resume_tracker:
                 document_id = chunks[0].metadata.document_id
-                document_uri = chunks[0].metadata.uri
-                self.resume_tracker.register_chunks(chunks, document_id, document_uri)
-
-                if self.resume_tracker.is_document_complete(document_id):
-                    logger.info("🎉 Document already fully processed!")
+                if self.resume_tracker.is_document_already_completed(document_id):
+                    logger.info(
+                        "🎉 Document already fully processed in previous session!"
+                    )
                     return self.metrics.metrics
+                else:
+                    document_uri = chunks[0].metadata.uri
+                    self.resume_tracker.register_chunks(
+                        chunks, document_id, document_uri
+                    )
 
             # Process chunks
             await self._process_chunks(chunks)
@@ -692,8 +744,6 @@ class DocumentProcessor:
         # Convert to entity objects
         for ent_data in existing_entities_data:
             if ent_data["document_key"] not in [e.id for e in new_entities]:
-                from .schema.entity import EntityMetadata
-
                 entity_obj = Entity(
                     id=ent_data["document_key"],
                     page_content=ent_data["text"],
@@ -741,7 +791,7 @@ class QueryService:
         self.storage = storage
 
     async def query_chunks(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
         """Query chunks"""
         return await self.storage.vdb.query(
@@ -760,7 +810,7 @@ class QueryService:
         )
 
     async def query_entities(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
         """Query entities"""
         return await self.storage.vdb.query(
@@ -772,7 +822,7 @@ class QueryService:
         )
 
     async def query_relations(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> Tuple[List[str], List[str]]:
         """Query relations"""
         # Search related entities
@@ -793,9 +843,15 @@ class QueryService:
 
     async def query_all(self, query: str) -> Dict[str, Any]:
         """Query all"""
-        chunks = await self.query_chunks(query, topk=10, topn=5)
-        entities = await self.query_entities(query, topk=10, topn=5)
-        neighbors, relations = await self.query_relations(query, topk=10, topn=5)
+        chunks = await self.query_chunks(
+            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
+        )
+        entities = await self.query_entities(
+            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
+        )
+        neighbors, relations = await self.query_relations(
+            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
+        )
 
         return {
             "chunks": chunks,
@@ -880,9 +936,10 @@ class HiRAG:
         # Initialize resume tracker
         resume_tracker = kwargs.get("resume_tracker")
         if resume_tracker is None:
-            from .resume_tracker import ChunkResumeTracker
-
-            resume_tracker = ChunkResumeTracker(self.config.resume_tracker_db_path)
+            resume_tracker = ResumeTracker(
+                redis_url=self.config.redis_url, key_prefix=self.config.redis_key_prefix
+            )
+            logger.info("Using Redis-based resume tracker")
 
         # Initialize components
         self._metrics = MetricsCollector()
@@ -952,7 +1009,7 @@ class HiRAG:
             raise
 
     async def query_chunks(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
         """Query document chunks"""
         if not self._query_service:
@@ -961,7 +1018,7 @@ class HiRAG:
         return await self._query_service.query_chunks(query, topk, topn)
 
     async def query_entities(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
         """Query entities"""
         if not self._query_service:
@@ -970,7 +1027,7 @@ class HiRAG:
         return await self._query_service.query_entities(query, topk, topn)
 
     async def query_relations(
-        self, query: str, topk: int = 10, topn: int = 5
+        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> Tuple[List[str], List[str]]:
         """Query relations"""
         if not self._query_service:
