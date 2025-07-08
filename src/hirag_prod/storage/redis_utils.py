@@ -3,6 +3,7 @@
 
 import json
 import logging
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,14 +14,14 @@ import redis
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv("/chatbot/.env", override=True)
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Default configuration
-DEFAULT_REDIS_URL = "redis://redis:6379/2"
-DEFAULT_KEY_PREFIX = "hirag"
+DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/2")
+DEFAULT_KEY_PREFIX = os.environ.get("REDIS_KEY_PREFIX", "hirag")
 
 
 @dataclass

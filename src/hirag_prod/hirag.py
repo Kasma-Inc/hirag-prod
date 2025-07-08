@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pyarrow as pa
+from dotenv import load_dotenv
 
 from hirag_prod._llm import ChatCompletion, EmbeddingService
 from hirag_prod._utils import _limited_gather_with_factory
@@ -25,6 +27,8 @@ from hirag_prod.storage import (
     RetrievalStrategyProvider,
 )
 
+load_dotenv("/chatbot/.env", override=True)
+
 # ============================================================================
 # Constants and Default Values
 # ============================================================================
@@ -33,9 +37,9 @@ from hirag_prod.storage import (
 DEFAULT_DB_URL = "kb/hirag.db"
 DEFAULT_GRAPH_DB_PATH = "kb/hirag.gpickle"
 
-# Redis Configuration
-DEFAULT_REDIS_URL = "redis://redis:6379/2"
-DEFAULT_REDIS_KEY_PREFIX = "hirag"
+# Redis Configuration for resume tracker
+DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/2")
+DEFAULT_REDIS_KEY_PREFIX = os.environ.get("REDIS_KEY_PREFIX", "hirag")
 
 # Model Configuration
 DEFAULT_LLM_MODEL_NAME = "gpt-4o-mini"
