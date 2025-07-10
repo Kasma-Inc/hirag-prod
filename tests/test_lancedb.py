@@ -10,6 +10,11 @@ from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProv
 
 load_dotenv(override=True)
 
+try:
+    EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
+except ValueError as e:
+    raise ValueError(f"EMBEDDING_DIMENSION must be an integer: {e}")
+
 
 @pytest.mark.asyncio
 async def test_lancedb():
@@ -40,7 +45,7 @@ async def test_lancedb():
     assert table.to_pandas()["document_key"].iloc[0] == "test"
     assert table.to_pandas()["filename"].iloc[0] == "test.txt"
     assert table.to_pandas()["private"].iloc[0] == True
-    assert table.to_pandas()["vector"].iloc[0].shape == (1536,)
+    assert table.to_pandas()["vector"].iloc[0].shape == (EMBEDDING_DIMENSION)
 
     async_table = await lance_db.upsert_text(
         text_to_embed="Repeat, Hello, world!",
@@ -58,7 +63,7 @@ async def test_lancedb():
     assert table.to_pandas()["document_key"].iloc[1] == "test_append"
     assert table.to_pandas()["filename"].iloc[1] == "in_memory_test"
     assert table.to_pandas()["private"].iloc[1] == True
-    assert table.to_pandas()["vector"].iloc[0].shape == (1536,)
+    assert table.to_pandas()["vector"].iloc[0].shape == (EMBEDDING_DIMENSION)
     assert table.to_pandas().columns.tolist() == [
         "text",
         "document_key",

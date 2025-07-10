@@ -6,12 +6,17 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pyarrow as pa
 from dotenv import load_dotenv
 
-from hirag_prod._llm import ChatCompletion, EmbeddingService
+from hirag_prod._llm import (
+    ChatCompletion,
+    EmbeddingService,
+    LocalEmbeddingService,
+    create_embedding_service,
+)
 from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
@@ -49,7 +54,7 @@ DEFAULT_CHUNK_SIZE = 1200
 DEFAULT_CHUNK_OVERLAP = 200
 
 # Batch Processing Configuration
-DEFAULT_EMBEDDING_BATCH_SIZE = 1000
+DEFAULT_EMBEDDING_BATCH_SIZE = 1000  # Optimized for both OpenAI and local services
 DEFAULT_ENTITY_UPSERT_CONCURRENCY = 32
 DEFAULT_RELATION_UPSERT_CONCURRENCY = 32
 
@@ -58,8 +63,10 @@ DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 1.0
 
 # Vector and Schema Configuration
-VECTOR_DIMENSION = 1536
-
+try:
+    EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
+except ValueError as e:
+    raise ValueError(f"EMBEDDING_DIMENSION must be an integer: {e}")
 
 # Query and Operation Constants
 MAX_CHUNK_IDS_PER_QUERY = 10
@@ -264,7 +271,7 @@ class StorageManager:
                             pa.field("chunk_idx", pa.int32()),
                             pa.field("document_id", pa.string()),
                             pa.field(
-                                "vector", pa.list_(pa.float32(), VECTOR_DIMENSION)
+                                "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
                             pa.field("uploaded_at", pa.timestamp("ms")),
                         ]
@@ -286,7 +293,7 @@ class StorageManager:
                             pa.field("text", pa.string()),
                             pa.field("document_key", pa.string()),
                             pa.field(
-                                "vector", pa.list_(pa.float32(), VECTOR_DIMENSION)
+                                "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
                             pa.field("entity_type", pa.string()),
                             pa.field("description", pa.list_(pa.string())),
@@ -891,10 +898,10 @@ class HiRAG:
 
     # Services
     chat_service: Optional[ChatCompletion] = field(default=None, init=False)
-    embedding_service: Optional[EmbeddingService] = field(default=None, init=False)
+    embedding_service: Optional[Union[EmbeddingService, LocalEmbeddingService]] = field(
+        default=None, init=False
+    )
 
-    # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
-    # outside of the HiRAG class for better management of resources
     @classmethod
     async def create(cls, config: Optional[HiRAGConfig] = None, **kwargs) -> "HiRAG":
         """Create HiRAG instance"""
@@ -903,11 +910,13 @@ class HiRAG:
         await instance._initialize(**kwargs)
         return instance
 
+    # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
+    # outside of the HiRAG class for better management of resources
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
         # Initialize services
         self.chat_service = ChatCompletion()
-        self.embedding_service = EmbeddingService(
+        self.embedding_service = create_embedding_service(
             default_batch_size=self.config.embedding_batch_size
         )
 
