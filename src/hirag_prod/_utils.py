@@ -362,7 +362,7 @@ async def _limited_gather_with_factory(
                     result = await coro
                     return result
                 except Exception as e:
-                    if attempt < max_retries - 1:
+                    if attempt <= max_retries - 1:
                         delay = retry_delay * (2**attempt)  # Exponential backoff
                         logger.warning(
                             f"Task {task_id} failed (attempt {attempt + 1}/{max_retries}): "

@@ -1,14 +1,18 @@
 import hashlib
 import logging
+import os
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Set
 
 import redis
+from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-EXPIRE_TTL = 3600 * 24 * 30  # 30 days by default
+load_dotenv("/chatbot/.env", override=True)
+
+EXPIRE_TTL = os.getenv("EXPIRE_TTL", 3600 * 24)  # 1 day by default
 
 
 class ExtractionType(Enum):

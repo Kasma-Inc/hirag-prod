@@ -893,6 +893,8 @@ class HiRAG:
     chat_service: Optional[ChatCompletion] = field(default=None, init=False)
     embedding_service: Optional[EmbeddingService] = field(default=None, init=False)
 
+    # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
+    # outside of the HiRAG class for better management of resources
     @classmethod
     async def create(cls, config: Optional[HiRAGConfig] = None, **kwargs) -> "HiRAG":
         """Create HiRAG instance"""
