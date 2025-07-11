@@ -26,6 +26,11 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
+from hirag_prod.parser import (
+    BaseParser,
+    ChunkParser,
+    DictParser,
+)
 
 load_dotenv("/chatbot/.env", override=True)
 
@@ -1051,6 +1056,46 @@ class HiRAG:
 
         return await self._query_service.query_all(query)
 
+    # async def parse_chunks(
+    #     self,
+    #     raw_data: List[Dict[str, Any]],
+    #     keep_attr: Optional[List[str]] = None,
+    # ) -> List[Dict[str, Any]]:
+    #     """
+    #     Parse raw chunk data using the specified parser
+
+    #     Args:
+    #         raw_data: raw data to parse
+    #         parser: parser to use (default is ListParser)
+    #         keep_attr: attributes to keep in the parsed output
+
+    #     Returns:
+    #         List of parsed data
+    #     """
+    #     if not self._processor:
+    #         raise HiRAGException("HiRAG instance not properly initialized")
+
+    #     parser = ChunkParser()
+
+    #     return parser.parse(raw_data, keep_attr=keep_attr)
+
+    async def parse_dict(self, raw_data: dict) -> str:
+        """
+        Parse raw dictionary data using the specified parser
+
+        Args:
+            raw_data: raw data to parse
+            keep_attr: attributes to keep in the parsed output
+
+        Returns:
+            Parsed data
+        """
+        if not self._processor:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        parser = DictParser()
+        return parser.parse(raw_data)
+
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
         if not self._storage:
@@ -1122,3 +1167,4 @@ class HiRAG:
     def gdb(self):
         """Backward compatibility: access graph database"""
         return self._storage.gdb if self._storage else None
+
