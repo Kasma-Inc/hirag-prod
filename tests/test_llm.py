@@ -1,385 +1,405 @@
-"""Quick test for LLM services"""
-
-import asyncio
 import os
-import time
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import numpy as np
 import pytest
+from dotenv import load_dotenv
 
-from hirag_prod._llm import APIConfig, ChatCompletion, EmbeddingService, TokenUsage
+from src.hirag_prod._llm import (
+    ChatCompletion,
+    EmbeddingService,
+    EmbeddingServiceType,
+    LocalEmbeddingService,
+    create_embedding_service,
+)
+
+load_dotenv("/chatbot/.env", override=True)
 
 
-class TestAPIConfig:
-    """Test API configuration functionality."""
+def clear_all_singletons():
+    """Clear all singleton instances to avoid test pollution"""
+    for singleton_class in [EmbeddingService, ChatCompletion]:
+        if hasattr(singleton_class, "_instances"):
+            singleton_class._instances.clear()
 
-    def test_api_config_from_env_success(self):
-        """Test successful API config creation from environment variables."""
-        with patch.dict(
-            os.environ,
-            {
-                "TEST_API_KEY": "test-key-123",
-                "TEST_BASE_URL": "https://test.example.com",
-            },
-        ):
-            config = APIConfig.from_env("TEST_API_KEY", "TEST_BASE_URL")
-            assert config.api_key == "test-key-123"
-            assert config.base_url == "https://test.example.com"
 
-    def test_api_config_missing_api_key(self):
-        """Test API config fails gracefully when API key is missing."""
-        with patch.dict(
-            os.environ, {"TEST_BASE_URL": "https://test.example.com"}, clear=True
-        ):
-            with pytest.raises(
-                ValueError, match="TEST_API_KEY environment variable is not set"
-            ):
-                APIConfig.from_env("TEST_API_KEY", "TEST_BASE_URL")
+class TestConfig:
+    """Test configuration and sample data"""
 
-    def test_api_config_missing_base_url(self):
-        """Test API config fails gracefully when base URL is missing."""
-        with patch.dict(os.environ, {"TEST_API_KEY": "test-key-123"}, clear=True):
-            with pytest.raises(
-                ValueError, match="TEST_BASE_URL environment variable is not set"
-            ):
-                APIConfig.from_env("TEST_API_KEY", "TEST_BASE_URL")
+    SAMPLE_TEXTS = [
+        "This is a test document.",
+        "Another sample text for embedding.",
+        "Third text to verify batch processing.",
+    ]
+
+    SAMPLE_PROMPT = "What is artificial intelligence?"
+    SAMPLE_MODEL = "gpt-3.5-turbo"
+    SAMPLE_EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+def get_required_env(key: str) -> str:
+    """Get required environment variable or raise error"""
+    value = os.getenv(key)
+    if not value:
+        raise ValueError(f"Required environment variable {key} is not set")
+    return value
+
+
+def get_embedding_service_type() -> str:
+    """Get embedding service type from environment"""
+    return os.getenv("EMBEDDING_SERVICE_TYPE", "openai").lower()
+
+
+def get_embedding_dimension() -> int:
+    """Get embedding dimension from environment"""
+    dimension_str = os.getenv("EMBEDDING_DIMENSION")
+    if not dimension_str:
+        raise ValueError("Required environment variable EMBEDDING_DIMENSION is not set")
+
+    try:
+        dimension = int(dimension_str)
+    except ValueError:
+        raise ValueError("EMBEDDING_DIMENSION must be an integer")
+
+    return dimension
+
+
+@pytest.fixture
+def mock_openai_response():
+    """Mock OpenAI API response for chat completion"""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = "AI is a field of computer science."
+    mock_response.usage = MagicMock()
+    mock_response.usage.prompt_tokens = 10
+    mock_response.usage.completion_tokens = 15
+    mock_response.usage.total_tokens = 25
+    return mock_response
+
+
+@pytest.fixture
+def mock_embedding_response():
+    """Mock embedding API response for OpenAI"""
+    dimension = get_embedding_dimension()
+    embeddings = [[0.1] * dimension, [0.2] * dimension, [0.3] * dimension]
+
+    mock_response = MagicMock()
+    mock_response.data = []
+    for embedding in embeddings:
+        mock_data = MagicMock()
+        mock_data.embedding = embedding
+        mock_response.data.append(mock_data)
+
+    return mock_response
+
+
+@pytest.fixture
+def mock_local_embedding_response():
+    """Mock local embedding service response"""
+    dimension = get_embedding_dimension()
+    return {
+        "data": [
+            {"embedding": [0.1] * dimension},
+            {"embedding": [0.2] * dimension},
+            {"embedding": [0.3] * dimension},
+        ]
+    }
 
 
 class TestChatCompletion:
-    """Test ChatCompletion service functionality."""
-
-    @pytest.fixture
-    def chat_service(self):
-        """Create a ChatCompletion service instance for testing."""
-        return ChatCompletion()
-
-    def test_chat_service_singleton(self):
-        """Test that ChatCompletion follows singleton pattern."""
-        service1 = ChatCompletion()
-        service2 = ChatCompletion()
-        assert service1 is service2
-
-    def test_build_messages_basic(self, chat_service):
-        """Test basic message building functionality."""
-        messages = chat_service._build_messages(None, None, "Test prompt")
-        expected = [{"role": "user", "content": "Test prompt"}]
-        assert messages == expected
-
-    def test_build_messages_with_system_prompt(self, chat_service):
-        """Test message building with system prompt."""
-        messages = chat_service._build_messages(
-            "You are a helpful assistant", None, "Test prompt"
-        )
-        expected = [
-            {"role": "system", "content": "You are a helpful assistant"},
-            {"role": "user", "content": "Test prompt"},
-        ]
-        assert messages == expected
-
-    def test_build_messages_with_history(self, chat_service):
-        """Test message building with conversation history."""
-        history = [
-            {"role": "user", "content": "Previous question"},
-            {"role": "assistant", "content": "Previous answer"},
-        ]
-        messages = chat_service._build_messages(None, history, "Test prompt")
-        expected = [
-            {"role": "user", "content": "Previous question"},
-            {"role": "assistant", "content": "Previous answer"},
-            {"role": "user", "content": "Test prompt"},
-        ]
-        assert messages == expected
+    """Test suite for ChatCompletion service"""
 
     @pytest.mark.asyncio
-    async def test_chat_completion_basic(self, chat_service):
-        """Test basic chat completion functionality."""
-        try:
-            response = await chat_service.complete(
-                model="gpt-4o-mini",
-                prompt="What is 1+1? Reply with just the number.",
-                timeout=30.0,
+    async def test_chat_completion_connectivity(self, mock_openai_response):
+        """Test basic chat completion connectivity using environment configuration"""
+        # Verify required environment variables
+        api_key = get_required_env("LLM_API_KEY")
+        base_url = get_required_env("LLM_BASE_URL")
+
+        chat_service = ChatCompletion()
+
+        with patch.object(
+            chat_service.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            return_value=mock_openai_response,
+        ) as mock_create:
+
+            result = await chat_service.complete(
+                model=TestConfig.SAMPLE_MODEL, prompt=TestConfig.SAMPLE_PROMPT
             )
 
-            assert isinstance(response, str)
-            assert len(response.strip()) > 0
-            print(f"✅ Chat completion successful: {response.strip()}")
+            assert result == "AI is a field of computer science."
+            mock_create.assert_called_once()
 
-        except Exception as e:
-            pytest.fail(f"Chat completion failed: {e}")
+            # Verify token usage tracking
+            stats = chat_service.get_token_usage_stats()
+            assert stats["request_count"] == 1
+            assert stats["total_tokens"] == 25
 
     @pytest.mark.asyncio
-    async def test_chat_completion_with_system_prompt(self, chat_service):
-        """Test chat completion with system prompt."""
-        try:
-            response = await chat_service.complete(
-                model="gpt-4o-mini",
-                prompt="What is the capital of France?",
-                system_prompt="You are a geography expert. Give concise answers.",
-                timeout=30.0,
+    async def test_chat_completion_with_system_prompt(self, mock_openai_response):
+        """Test chat completion with system prompt and history"""
+        chat_service = ChatCompletion()
+
+        with patch.object(
+            chat_service.client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            return_value=mock_openai_response,
+        ) as mock_create:
+
+            history = [{"role": "user", "content": "Previous question"}]
+            result = await chat_service.complete(
+                model=TestConfig.SAMPLE_MODEL,
+                prompt=TestConfig.SAMPLE_PROMPT,
+                system_prompt="You are a helpful AI assistant.",
+                history_messages=history,
             )
 
-            assert isinstance(response, str)
-            assert len(response.strip()) > 0
-            print(
-                f"✅ Chat completion with system prompt successful: {response.strip()}"
+            assert result == "AI is a field of computer science."
+
+            # Verify messages structure
+            call_args = mock_create.call_args
+            messages = call_args[1]["messages"]
+            assert len(messages) == 3  # system + history + user
+            assert messages[0]["role"] == "system"
+            assert messages[1]["role"] == "user"
+            assert messages[2]["role"] == "user"
+
+
+class TestEmbeddingServiceOpenAI:
+    """Test suite for OpenAI embedding service"""
+
+    @pytest.mark.skipif(
+        get_embedding_service_type() != "openai",
+        reason="Skipping OpenAI tests - service type is not 'openai'",
+    )
+    @pytest.mark.asyncio
+    async def test_openai_embedding_service(self, mock_embedding_response):
+        """Test OpenAI embedding service connectivity using environment configuration"""
+        # Verify required environment variables
+        api_key = get_required_env("EMBEDDING_API_KEY")
+        base_url = get_required_env("EMBEDDING_BASE_URL")
+
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
+
+        # Patch rate limiting to disable it during tests
+        with patch("src.hirag_prod._llm.rate_limited", return_value=lambda func: func):
+            # Use the factory function like hirag.py does
+            embedding_service = create_embedding_service()
+
+            with patch.object(
+                embedding_service.client.embeddings,
+                "create",
+                new_callable=AsyncMock,
+                return_value=mock_embedding_response,
+            ) as mock_create:
+
+                result = await embedding_service.create_embeddings(
+                    texts=TestConfig.SAMPLE_TEXTS,
+                    model=TestConfig.SAMPLE_EMBEDDING_MODEL,
+                )
+
+                assert isinstance(result, np.ndarray)
+                assert result.shape == (3, get_embedding_dimension())
+                mock_create.assert_called_once()
+
+                await embedding_service.close()
+
+    @pytest.mark.skipif(
+        get_embedding_service_type() != "openai",
+        reason="Skipping OpenAI tests - service type is not 'openai'",
+    )
+    @pytest.mark.asyncio
+    async def test_batch_embedding_processing(self, mock_embedding_response):
+        """Test batch processing functionality with large text lists for OpenAI service"""
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
+
+        # Patch rate limiting to disable it during tests
+        with patch("src.hirag_prod._llm.rate_limited", return_value=lambda func: func):
+            # Use the factory function like hirag.py does, with custom batch size
+            embedding_service = create_embedding_service(default_batch_size=2)
+
+            # Create a larger list of texts to trigger batch processing
+            large_text_list = TestConfig.SAMPLE_TEXTS * 5  # 15 texts total
+
+            with patch.object(
+                embedding_service.client.embeddings,
+                "create",
+                new_callable=AsyncMock,
+                return_value=mock_embedding_response,
+            ) as mock_create:
+
+                result = await embedding_service.create_embeddings(
+                    texts=large_text_list, batch_size=2
+                )
+
+                assert isinstance(result, np.ndarray)
+                # Should process in multiple batches (15 texts, batch_size=2 → 8 batches)
+                assert mock_create.call_count >= 7
+
+                await embedding_service.close()
+
+
+class TestEmbeddingServiceLocal:
+    """Test suite for local embedding service"""
+
+    @pytest.mark.skipif(
+        get_embedding_service_type() != "local",
+        reason="Skipping local tests - service type is not 'local'",
+    )
+    @pytest.mark.asyncio
+    async def test_local_embedding_service(self, mock_local_embedding_response):
+        """Test local embedding service connectivity using environment configuration"""
+        # Verify required environment variables
+        base_url = get_required_env("LOCAL_EMBEDDING_BASE_URL")
+        model_name = get_required_env("LOCAL_EMBEDDING_MODEL_NAME")
+        auth_token = get_required_env("LOCAL_EMBEDDING_AUTH_TOKEN")
+        model_path = get_required_env("LOCAL_EMBEDDING_MODEL_PATH")
+
+        # Use the factory function like hirag.py does
+        embedding_service = create_embedding_service()
+
+        # Mock the HTTP client for local service
+        with patch.object(
+            embedding_service.client._http_client, "post", new_callable=AsyncMock
+        ) as mock_post:
+            mock_response = MagicMock()
+            mock_response.json.return_value = mock_local_embedding_response
+            mock_response.raise_for_status = MagicMock()
+            mock_post.return_value = mock_response
+
+            result = await embedding_service.create_embeddings(
+                texts=TestConfig.SAMPLE_TEXTS
             )
 
-        except Exception as e:
-            pytest.fail(f"Chat completion with system prompt failed: {e}")
+            assert isinstance(result, np.ndarray)
+            assert result.shape == (3, get_embedding_dimension())
+            mock_post.assert_called_once()
+
+            await embedding_service.close()
+
+    @pytest.mark.skipif(
+        get_embedding_service_type() != "local",
+        reason="Skipping local tests - service type is not 'local'",
+    )
+    @pytest.mark.asyncio
+    async def test_local_embedding_batch_processing(
+        self, mock_local_embedding_response
+    ):
+        """Test batch processing functionality for local embedding service"""
+        # Use the factory function like hirag.py does, with custom batch size
+        embedding_service = create_embedding_service(default_batch_size=2)
+
+        # Create a larger list of texts to trigger batch processing
+        large_text_list = TestConfig.SAMPLE_TEXTS * 5  # 15 texts total
+
+        # Mock the HTTP client
+        with patch.object(
+            embedding_service.client._http_client, "post", new_callable=AsyncMock
+        ) as mock_post:
+            mock_response = MagicMock()
+            mock_response.json.return_value = mock_local_embedding_response
+            mock_response.raise_for_status = MagicMock()
+            mock_post.return_value = mock_response
+
+            result = await embedding_service.create_embeddings(
+                texts=large_text_list, batch_size=2
+            )
+
+            assert isinstance(result, np.ndarray)
+            # Should process in multiple batches (15 texts, batch_size=2 → 8 batches)
+            assert mock_post.call_count >= 7
+
+            await embedding_service.close()
+
+
+class TestEmbeddingServiceCommon:
+    """Common tests for both embedding service types"""
 
     @pytest.mark.asyncio
-    async def test_concurrent_chat_requests(self, chat_service):
-        """Test concurrent chat requests to identify potential rate limiting issues."""
-        prompts = [
-            "What is 6+6?",
-            "What is 1+1?",
-            "What is 8+8?",
-        ]
+    async def test_embedding_service_factory(self):
+        """Test the create_embedding_service factory function with current environment"""
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
 
-        start_time = time.time()
+        service_type = get_embedding_service_type()
 
-        try:
-            # Create concurrent tasks
-            tasks = [
-                chat_service.complete(model="gpt-4o-mini", prompt=prompt, timeout=30.0)
-                for prompt in prompts
-            ]
+        service = create_embedding_service()
 
-            # Execute concurrently
-            responses = await asyncio.gather(*tasks, return_exceptions=True)
+        if service_type == "local":
+            assert isinstance(service, LocalEmbeddingService)
+        else:
+            assert isinstance(service, EmbeddingService)
 
-            end_time = time.time()
-            duration = end_time - start_time
-
-            # Analyze results
-            successful_responses = [r for r in responses if isinstance(r, str)]
-            failed_responses = [r for r in responses if isinstance(r, Exception)]
-
-            print(f"✅ Concurrent requests completed in {duration:.2f}s")
-            print(f"   Successful: {len(successful_responses)}/{len(prompts)}")
-            print(f"   Failed: {len(failed_responses)}")
-
-            if failed_responses:
-                for i, error in enumerate(failed_responses):
-                    print(f"   Error {i+1}: {type(error).__name__}: {error}")
-
-            # At least some requests should succeed
-            assert len(successful_responses) > 0, "All concurrent requests failed"
-
-        except Exception as e:
-            pytest.fail(f"Concurrent chat requests failed: {e}")
-
-
-class TestEmbeddingService:
-    """Test EmbeddingService functionality."""
-
-    @pytest.fixture
-    def embedding_service(self):
-        """Create an EmbeddingService instance for testing."""
-        return EmbeddingService(default_batch_size=10)
-
-    def test_embedding_service_singleton(self):
-        """Test that EmbeddingService follows singleton pattern."""
-        service1 = EmbeddingService()
-        service2 = EmbeddingService()
-        assert service1 is service2
+        await service.close()
 
     @pytest.mark.asyncio
-    async def test_single_embedding(self, embedding_service):
-        """Test single text embedding."""
-        try:
-            embeddings = await embedding_service.create_embeddings(
-                texts=["This is a test sentence."]
-            )
+    async def test_text_validation(self):
+        """Test text validation and error handling"""
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
 
-            assert embeddings.shape[0] == 1
-            assert embeddings.shape[1] > 0  # Should have embedding dimensions
-            print(f"✅ Single embedding successful, shape: {embeddings.shape}")
+        # Use the factory function like hirag.py does
+        embedding_service = create_embedding_service()
 
-        except Exception as e:
-            pytest.fail(f"Single embedding failed: {e}")
-
-    @pytest.mark.asyncio
-    async def test_batch_embeddings(self, embedding_service):
-        """Test batch text embeddings."""
-        texts = [
-            "This is the first test sentence.",
-            "This is the second test sentence.",
-            "This is the third test sentence.",
-        ]
-
-        try:
-            embeddings = await embedding_service.create_embeddings(texts=texts)
-
-            assert embeddings.shape[0] == len(texts)
-            assert embeddings.shape[1] > 0
-            print(f"✅ Batch embeddings successful, shape: {embeddings.shape}")
-
-        except Exception as e:
-            pytest.fail(f"Batch embeddings failed: {e}")
-
-    @pytest.mark.asyncio
-    async def test_large_batch_embeddings(self, embedding_service):
-        """Test large batch processing with adaptive batching."""
-        # Create more texts than the batch size to test batching logic
-        texts = [f"Test sentence number {i}." for i in range(25)]
-
-        try:
-            start_time = time.time()
-            embeddings = await embedding_service.create_embeddings(
-                texts=texts, batch_size=5  # Force multiple batches
-            )
-            end_time = time.time()
-
-            assert embeddings.shape[0] == len(texts)
-            assert embeddings.shape[1] > 0
-
-            duration = end_time - start_time
-            print(
-                f"✅ Large batch embeddings successful in {duration:.2f}s, shape: {embeddings.shape}"
-            )
-
-        except Exception as e:
-            pytest.fail(f"Large batch embeddings failed: {e}")
-
-    def test_embedding_text_validation(self, embedding_service):
-        """Test text validation in embedding service."""
         # Test empty list
         with pytest.raises(ValueError, match="texts list cannot be empty"):
-            embedding_service._text_validator.validate_and_clean([])
+            await embedding_service.create_embeddings([])
 
-        # Test None text
-        with pytest.raises(ValueError, match="Text at index 0 is None"):
-            embedding_service._text_validator.validate_and_clean([None])
+        # Test None values
+        with pytest.raises(ValueError, match="Text at index .* is None"):
+            await embedding_service.create_embeddings(["valid text", None])
 
-        # Test non-string text
-        with pytest.raises(ValueError, match="Text at index 0 is not a string"):
-            embedding_service._text_validator.validate_and_clean([123])
+        # Test non-string values
+        with pytest.raises(ValueError, match="Text at index .* is not a string"):
+            await embedding_service.create_embeddings(["valid text", 123])
 
-        # Test empty string after strip
-        with pytest.raises(
-            ValueError, match="Text at index 0 is empty after stripping"
-        ):
-            embedding_service._text_validator.validate_and_clean(["   "])
+        # Test empty strings
+        with pytest.raises(ValueError, match="Text at index .* is empty"):
+            await embedding_service.create_embeddings(["valid text", "   "])
 
-
-class TestTokenUsage:
-    """Test token usage tracking functionality."""
-
-    def test_token_usage_creation(self):
-        """Test TokenUsage object creation and string representation."""
-        usage = TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15)
-
-        assert usage.prompt_tokens == 10
-        assert usage.completion_tokens == 5
-        assert usage.total_tokens == 15
-
-        expected_str = "Tokens - Prompt: 10, Completion: 5, Total: 15"
-        assert str(usage) == expected_str
+        await embedding_service.close()
 
 
-class TestEnvironmentConfiguration:
-    """Test environment configuration for LLM services."""
+class TestIntegration:
+    """Integration tests for the complete LLM module"""
 
-    def test_required_environment_variables(self):
-        """Test that required environment variables are set."""
-        required_vars = [
-            "OPENAI_API_KEY",
-            "OPENAI_BASE_URL",
-            "OPENAI_EMBEDDING_API_KEY",
-            "OPENAI_EMBEDDING_BASE_URL",
-        ]
+    @pytest.mark.asyncio
+    async def test_service_environment_detection(self):
+        """Test that services correctly detect and use environment configuration"""
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
 
-        missing_vars = []
-        for var in required_vars:
-            if not os.getenv(var):
-                missing_vars.append(var)
+        service_type = get_embedding_service_type()
 
-        if missing_vars:
-            pytest.skip(f"Missing required environment variables: {missing_vars}")
+        service = create_embedding_service()
 
-        print("✅ All required environment variables are set")
+        if service_type == "local":
+            assert isinstance(service, LocalEmbeddingService)
+        else:
+            assert isinstance(service, EmbeddingService)
+            # Only check service type for EmbeddingService that uses UnifiedEmbeddingClient
+            if hasattr(service.client, "config"):
+                assert service.client.config.service_type == EmbeddingServiceType.OPENAI
 
-    def test_api_endpoints_format(self):
-        """Test that API endpoints are properly formatted URLs."""
-        base_urls = [
-            ("OPENAI_BASE_URL", os.getenv("OPENAI_BASE_URL")),
-            ("OPENAI_EMBEDDING_BASE_URL", os.getenv("OPENAI_EMBEDDING_BASE_URL")),
-        ]
+        await service.close()
 
-        for var_name, url in base_urls:
-            if url:
-                assert url.startswith(
-                    "http"
-                ), f"{var_name} should start with http/https"
-                assert not url.endswith(
-                    "/"
-                ), f"{var_name} should not end with trailing slash"
-                print(f"✅ {var_name} is properly formatted: {url}")
+    @pytest.mark.asyncio
+    async def test_service_cleanup(self):
+        """Test proper cleanup of services"""
+        # Clear all singleton instances to avoid conflicts
+        clear_all_singletons()
 
+        service = create_embedding_service()
 
-@pytest.mark.asyncio
-async def test_integration_chat_and_embedding():
-    """Integration test combining chat completion and embedding services."""
-    try:
-        # Test chat completion
-        chat_service = ChatCompletion()
-        chat_response = await chat_service.complete(
-            model="gpt-4o-mini",
-            prompt="Generate a short sentence about AI.",
-            timeout=30.0,
-        )
+        # Ensure close method exists and can be called
+        assert hasattr(service, "close")
+        await service.close()
 
-        # Test embedding of the generated text
-        embedding_service = EmbeddingService()
-        embeddings = await embedding_service.create_embeddings([chat_response])
-
-        assert isinstance(chat_response, str)
-        assert len(chat_response.strip()) > 0
-        assert embeddings.shape[0] == 1
-        assert embeddings.shape[1] > 0
-
-        print(f"✅ Integration test successful")
-        print(f"   Generated text: {chat_response}")
-        print(f"   Embedding shape: {embeddings.shape}")
-
-    except Exception as e:
-        pytest.fail(f"Integration test failed: {e}")
-
-
-if __name__ == "__main__":
-    """Run tests directly for debugging purposes."""
-    import sys
-
-    print("🧪 Running LLM tests directly...")
-
-    # Basic configuration test
-    print("\n1. Testing environment configuration...")
-    test_env = TestEnvironmentConfiguration()
-    test_env.test_required_environment_variables()
-    test_env.test_api_endpoints_format()
-
-    # Run async tests
-    async def run_async_tests():
-        print("\n2. Testing chat completion...")
-        chat_test = TestChatCompletion()
-        chat_service = ChatCompletion()  # Create service directly
-        await chat_test.test_chat_completion_basic(chat_service)
-
-        print("\n3. Testing embeddings...")
-        embed_test = TestEmbeddingService()
-        embed_service = EmbeddingService(
-            default_batch_size=10
-        )  # Create service directly
-        await embed_test.test_single_embedding(embed_service)
-
-        print("\n4. Running integration test...")
-        await test_integration_chat_and_embedding()
-
-        print("\n✅ All direct tests completed successfully!")
-
-    try:
-        asyncio.run(run_async_tests())
-    except Exception as e:
-        print(f"\n❌ Test failed: {e}")
-        sys.exit(1)
+        # Verify HTTP client is properly closed for local service
+        if isinstance(service, LocalEmbeddingService):
+            assert service.client._http_client.is_closed

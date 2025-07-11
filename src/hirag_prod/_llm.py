@@ -5,9 +5,11 @@ import threading
 import weakref
 from abc import ABC
 from dataclasses import dataclass
+from enum import Enum
 from functools import wraps
 from typing import Any, Dict, List, Optional, Union
 
+import httpx
 import numpy as np
 from aiolimiter import AsyncLimiter
 from openai import APIConnectionError, AsyncOpenAI, RateLimitError
@@ -21,6 +23,13 @@ from tenacity import (
 # ============================================================================
 # Constants
 # ============================================================================
+
+
+class EmbeddingServiceType(Enum):
+    """Types of embedding services"""
+
+    OPENAI = "openai"
+    LOCAL = "local"
 
 
 class APIConstants:
@@ -87,6 +96,82 @@ class APIConfig:
             raise ValueError(f"{base_url_env} environment variable is not set")
 
         return cls(api_key=api_key, base_url=base_url)
+
+
+@dataclass
+class LocalEmbeddingConfig:
+    """Configuration for local embedding service"""
+
+    base_url: str
+    model_name: str
+    entry_point: str
+    authorization_token: str
+    model_path: str
+    default_batch_size: int = 200  # Default batch size for local embedding service
+
+    @classmethod
+    def from_env(cls) -> "LocalEmbeddingConfig":
+        """Create local embedding config from environment variables"""
+        base_url = os.getenv("LOCAL_EMBEDDING_BASE_URL")
+        model_name = os.getenv("LOCAL_EMBEDDING_MODEL_NAME")
+        entry_point = os.getenv("LOCAL_EMBEDDING_ENTRY_POINT", "/v1/embeddings")
+        authorization_token = os.getenv("LOCAL_EMBEDDING_AUTH_TOKEN")
+        model_path = os.getenv("LOCAL_EMBEDDING_MODEL_PATH")
+        default_batch_size = int(os.getenv("LOCAL_EMBEDDING_BATCH_SIZE", "200"))
+
+        if not base_url:
+            raise ValueError("LOCAL_EMBEDDING_BASE_URL environment variable is not set")
+        if not model_name:
+            raise ValueError(
+                "LOCAL_EMBEDDING_MODEL_NAME environment variable is not set"
+            )
+        if not authorization_token:
+            raise ValueError(
+                "LOCAL_EMBEDDING_AUTH_TOKEN environment variable is not set"
+            )
+        if not model_path:
+            raise ValueError(
+                "LOCAL_EMBEDDING_MODEL_PATH environment variable is not set"
+            )
+
+        return cls(
+            base_url=base_url,
+            model_name=model_name,
+            entry_point=entry_point,
+            authorization_token=authorization_token,
+            model_path=model_path,
+            default_batch_size=default_batch_size,
+        )
+
+
+@dataclass
+class EmbeddingConfig:
+    """Configuration for embedding service with service type selection"""
+
+    service_type: EmbeddingServiceType
+    openai_config: Optional[APIConfig] = None
+    local_config: Optional[LocalEmbeddingConfig] = None
+
+    @classmethod
+    def from_env(cls) -> "EmbeddingConfig":
+        """Create embedding config from environment variables"""
+        service_type_str = os.getenv("EMBEDDING_SERVICE_TYPE", "openai").lower()
+
+        try:
+            service_type = EmbeddingServiceType(service_type_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid EMBEDDING_SERVICE_TYPE: {service_type_str}. Must be 'openai' or 'local'"
+            )
+
+        if service_type == EmbeddingServiceType.OPENAI:
+            openai_config = APIConfig.from_env(
+                "EMBEDDING_API_KEY", "EMBEDDING_BASE_URL"
+            )
+            return cls(service_type=service_type, openai_config=openai_config)
+        else:
+            local_config = LocalEmbeddingConfig.from_env()
+            return cls(service_type=service_type, local_config=local_config)
 
 
 # ============================================================================
@@ -218,7 +303,7 @@ class ChatClient(BaseAPIClient):
 
     def __init__(self):
         if not hasattr(self, "_initialized"):
-            config = APIConfig.from_env("OPENAI_API_KEY", "OPENAI_BASE_URL")
+            config = APIConfig.from_env("LLM_API_KEY", "LLM_BASE_URL")
             super().__init__(config)
 
 
@@ -227,10 +312,52 @@ class EmbeddingClient(BaseAPIClient):
 
     def __init__(self):
         if not hasattr(self, "_initialized"):
-            config = APIConfig.from_env(
-                "OPENAI_EMBEDDING_API_KEY", "OPENAI_EMBEDDING_BASE_URL"
-            )
+            config = APIConfig.from_env("EMBEDDING_API_KEY", "EMBEDDING_BASE_URL")
             super().__init__(config)
+
+
+class LocalEmbeddingClient:
+    """Client for local embedding service"""
+
+    def __init__(self, config: LocalEmbeddingConfig):
+        self.config = config
+        self._http_client = httpx.AsyncClient(timeout=30.0)
+
+    async def create_embeddings(self, texts: List[str]) -> List[List[float]]:
+        """Create embeddings using local service API"""
+        # Convert texts to messages format expected by local service
+        batch_texts_to_embed = [text for text in texts]
+
+        headers = {
+            "Content-Type": "application/json",
+            "Model-Name": self.config.model_name,
+            "Entry-Point": self.config.entry_point,
+            "Authorization": f"Bearer {self.config.authorization_token}",
+        }
+
+        payload = {"model": self.config.model_path, "input": batch_texts_to_embed}
+
+        response = await self._http_client.post(
+            self.config.base_url, headers=headers, json=payload
+        )
+
+        response.raise_for_status()
+        result = response.json()
+
+        # Extract embeddings from response
+        if "data" in result:
+            return [item["embedding"] for item in result["data"]]
+        else:
+            if isinstance(result, list):
+                return result
+            else:
+                raise ValueError(
+                    f"Unexpected response format from local embedding service: {result}"
+                )
+
+    async def close(self):
+        """Close the HTTP client"""
+        await self._http_client.aclose()
 
 
 # ============================================================================
@@ -439,7 +566,7 @@ class BatchProcessor:
                 batch_embeddings = await process_func(batch_texts, model)
                 all_embeddings.append(batch_embeddings)
 
-                self._logger.debug("✅ Batch completed successfully")
+                self._logger.info("✅ Batch completed successfully")
                 i += current_batch_size
 
                 # Reset batch size to original after successful batch
@@ -564,7 +691,7 @@ class EmbeddingService(metaclass=SingletonMeta):
 
         Args:
             texts: List of texts to embed
-            model: The embedding model to use
+            model: The embedding model to use (ignored for local service)
             batch_size: Maximum number of texts to process in a single API call (uses default if None)
 
         Returns:
@@ -590,3 +717,94 @@ class EmbeddingService(metaclass=SingletonMeta):
             f"✅ All {len(valid_texts)} embeddings processed successfully"
         )
         return result
+
+    async def close(self):
+        """Close underlying clients"""
+        await self.client.close()
+
+
+class LocalEmbeddingService:
+    """Simplified embedding service for local services with batch support"""
+
+    def __init__(self, default_batch_size: Optional[int] = None):
+        """Initialize with direct local client (no singleton)"""
+        self.config = LocalEmbeddingConfig.from_env()
+        self.client = LocalEmbeddingClient(self.config)
+        self._logger = logging.getLogger(LoggerNames.EMBEDDING)
+
+        # Set batch size
+        self.default_batch_size = default_batch_size or self.config.default_batch_size
+
+        # Initialize batch processor and text validator
+        self._batch_processor = BatchProcessor(self._logger)
+        self._text_validator = TextValidator()
+
+        self._logger.info(
+            f"🔧 LocalEmbeddingService initialized with batch_size={self.default_batch_size}"
+        )
+
+    async def _create_embeddings_batch(
+        self, texts: List[str], model: str = ""
+    ) -> np.ndarray:
+        """Create embeddings for a single batch of texts (internal method)"""
+        embeddings_list = await self.client.create_embeddings(texts)
+        return np.array(embeddings_list)
+
+    async def create_embeddings(
+        self, texts: List[str], batch_size: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Create embeddings using local service with batch support.
+
+        Args:
+            texts: List of texts to embed
+            batch_size: Maximum number of texts to process in a single API call (uses default if None)
+
+        Returns:
+            Numpy array of embeddings
+        """
+        # Validate and clean texts
+        valid_texts = self._text_validator.validate_and_clean(texts)
+
+        # Use default batch size if not specified
+        effective_batch_size = batch_size or self.default_batch_size
+
+        self._logger.info(
+            f"🔄 Processing {len(valid_texts)} texts with batch_size={effective_batch_size}"
+        )
+
+        # If batch size is small enough, process directly
+        if len(valid_texts) <= effective_batch_size:
+            return await self._create_embeddings_batch(valid_texts)
+
+        # Process in batches for large inputs with adaptive batch sizing
+        result = await self._batch_processor.process_with_adaptive_batching(
+            valid_texts, effective_batch_size, self._create_embeddings_batch, ""
+        )
+
+        self._logger.info(
+            f"✅ Completed processing {len(valid_texts)} texts, result shape: {result.shape}"
+        )
+        return result
+
+    async def close(self):
+        """Close the underlying client"""
+        await self.client.close()
+
+
+def create_embedding_service(
+    default_batch_size: int = APIConstants.DEFAULT_BATCH_SIZE,
+) -> Union[EmbeddingService, LocalEmbeddingService]:
+    """
+    Factory function to create appropriate embedding service.
+
+    For local services, returns LocalEmbeddingService with batch support.
+    For OpenAI services, returns the full EmbeddingService.
+    """
+    # Check service type from environment
+    service_type = os.getenv("EMBEDDING_SERVICE_TYPE", "openai").lower()
+
+    if service_type == "local":
+        return LocalEmbeddingService(default_batch_size)
+    else:
+        return EmbeddingService(default_batch_size)

@@ -12,7 +12,15 @@ logger = logging.getLogger(__name__)
 
 load_dotenv("/chatbot/.env", override=True)
 
-EXPIRE_TTL = os.getenv("EXPIRE_TTL", 3600 * 24)  # 1 day by default
+REDIS_EXPIRE_TTL = os.getenv("REDIS_EXPIRE_TTL", 3600 * 24)  # 1 day by default
+
+try:
+    EXPIRE_TTL = int(REDIS_EXPIRE_TTL)
+except ValueError:
+    logger.warning(
+        f"Invalid REDIS_EXPIRE_TTL value: {REDIS_EXPIRE_TTL}, using default 1 day"
+    )
+    EXPIRE_TTL = 3600 * 24
 
 
 class ExtractionType(Enum):
