@@ -1,7 +1,7 @@
 [project]
 name = "hirag-prod"
 version = "0.1.0"
-description = "Add your description here"
+description = "Toward Production-ready RAG"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
     "graspologic==3.4.1",
     "hnswlib==0.7.0",
     "isort>=6.0.1",
-    "jsonlines==4.0.0",
+    "jsonlines==3.1.0",
     "lancedb>=0.22.0",
     "langchain-text-splitters>=0.3.8",
     "matplotlib==3.10.0",
@@ -40,7 +40,7 @@ dependencies = [
     "transformers==4.47.1",
     "umap-learn==0.5.6",
     "xxhash==3.5.0",
-    "PPTAgent@git+https://github.com/Dormiveglia-elf/PPTAgent.git",
+    "docling==2.41.0",
     "voyageai==0.3.2",
     "pdfdeal==1.0.2",
     "redis==6.2.0",
