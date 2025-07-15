@@ -36,6 +36,8 @@ from hirag_prod.parser import (
     ChunkParser,
     DictParser,
 )
+from hirag_prod.reference import ReferenceSeparator
+from hirag_prod.prompt import PROMPTS
 
 load_dotenv("/chatbot/.env", override=True)
 
@@ -1065,46 +1067,6 @@ class HiRAG:
 
         return await self._query_service.query_all(query)
 
-    # async def parse_chunks(
-    #     self,
-    #     raw_data: List[Dict[str, Any]],
-    #     keep_attr: Optional[List[str]] = None,
-    # ) -> List[Dict[str, Any]]:
-    #     """
-    #     Parse raw chunk data using the specified parser
-
-    #     Args:
-    #         raw_data: raw data to parse
-    #         parser: parser to use (default is ListParser)
-    #         keep_attr: attributes to keep in the parsed output
-
-    #     Returns:
-    #         List of parsed data
-    #     """
-    #     if not self._processor:
-    #         raise HiRAGException("HiRAG instance not properly initialized")
-
-    #     parser = ChunkParser()
-
-    #     return parser.parse(raw_data, keep_attr=keep_attr)
-
-    async def parse_dict(self, raw_data: dict) -> str:
-        """
-        Parse raw dictionary data using the specified parser
-
-        Args:
-            raw_data: raw data to parse
-            keep_attr: attributes to keep in the parsed output
-
-        Returns:
-            Parsed data
-        """
-        if not self._processor:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
-        parser = DictParser()
-        return parser.parse(raw_data)
-
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
         if not self._storage:
@@ -1152,6 +1114,70 @@ class HiRAG:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.clean_up()
+
+    # ========================================================================
+    # Parsing methods
+    # ========================================================================
+
+    async def parse_dict(self, raw_data: dict) -> str:
+        """
+        Parse raw dictionary data using the specified parser
+
+        Args:
+            raw_data: raw data to parse
+            keep_attr: attributes to keep in the parsed output
+
+        Returns:
+            Parsed data
+        """
+
+        parser = DictParser()
+        return parser.parse(raw_data)
+    
+    async def reference_separate(
+        self, text: str
+    ) -> list[str]:
+        """
+        Separate references in the text.
+
+        Args:
+            text: The text to separate references from.
+
+        Returns:
+            A list of separated references.
+        """
+
+        reference_separator = ReferenceSeparator(
+            place_holder_begin=PROMPTS["PLACE_HOLDER_BEGIN"],
+            place_holder_end=PROMPTS["PLACE_HOLDER_END"],
+        )
+
+        return reference_separator.separate(text)
+    
+    async def reference_fill(
+        self, text: str, references: list[str]
+    ) -> str:
+        """
+        Fill references in the text.
+
+        Args:
+            text: The text to fill references into.
+            references: A list of references to fill.
+
+        Returns:
+            The text with filled references.
+        """
+
+        # Generating multiple times just for convenience testing purposes, will be updated to init later
+        reference_separator = ReferenceSeparator(
+            place_holder_begin=PROMPTS["PLACE_HOLDER_BEGIN"],
+            place_holder_end=PROMPTS["PLACE_HOLDER_END"],
+        )
+
+        format_prompt = PROMPTS["PLACE_HOLDER_SUBSTITUTE"]
+
+        return reference_separator.fill_placeholders(text, references, format_prompt=format_prompt)
+
 
     # ========================================================================
     # Backward compatibility property accessors

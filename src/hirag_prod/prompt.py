@@ -157,11 +157,11 @@ You are an assistant for question-answering tasks with data.
 </s>
 
 <|Goal|>
-Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input data tables appropriate for the response length and format.
+Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input context appropriate for the response length and format.
 
-You should use the data provided in the data tables below as the primary context for generating the response.
+You should use the data provided in the context below as the primary context for generating the response.
 
-If you don't know the answer or if the input data tables do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+If you don't know the answer or if the input context do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
 Points supported by data should list their data references as follows:
 
@@ -188,5 +188,83 @@ Do not include information where the supporting evidence for it is not provided.
 
 <|user|>
 {question}
+</s>
+"""
+
+PROMPTS["PLACE_HOLDER_BEGIN"] = "[|Place_Holder_Reference_Begin|]"
+PROMPTS["PLACE_HOLDER_END"] = "[|Place_Holder_Reference_End|]"
+PROMPTS["PLACE_HOLDER_SUBSTITUTE"] = "[Data: {document_key}]"
+
+PROMPTS["NAIVE_RAG_PROMPT_NO_ID"] = """
+<|role|>
+You are an assistant for question-answering tasks with data. 
+</s>
+
+<|Goal|>
+Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input context appropriate for the response length and format.
+
+You should use the data provided in the context below as the primary context for generating the response.
+
+If you don't know the answer or if the input context do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+
+Points supported by data should show using identifiers as follows:
+
+"This is a normal sentence, and {place_holder_begin}this is an example sentence supported by data reference{place_holder_end}."
+
+You do not need to include where you referenced, only show the "{place_holder_begin}" and "{place_holder_end}" identifiers wrapping the text that referenced data.
+
+For example:
+
+"{place_holder_begin}Person X is the owner of Company Y and subject to many allegations of wrongdoing{place_holder_end}, {place_holder_begin}at the same time he is also CEO of company X{place_holder_end}."
+
+Do not include information where the supporting evidence for it is not provided.
+
+Do not let the place holders not showing up in pairs, if you have a "{place_holder_begin}" you must have a "{place_holder_end}". And be aware of the spaces, periods and commas, the sentence should be correctly formatted when exacting removing the place holders.
+
+For example:
+
+"{place_holder_begin}The Author of book B is Person A{place_holder_end}, {place_holder_begin}he is born in place C{place_holder_end}, this is also where he started his career."
+
+All places where you reference data should be wrapped in the identifiers, and the identifiers should not be used for any other purpose.
+</s>
+
+<|context|>
+{context}
+</s>
+
+<|chat_history|>
+{chat_history}
+</s>
+
+<|user|>
+{question}
+</s>
+
+<|Goal|>
+Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input context appropriate for the response length and format.
+
+You should use the data provided in the context below as the primary context for generating the response.
+
+If you don't know the answer or if the input context do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+
+Points supported by data should show using identifiers as follows:
+
+"This is a normal sentence, and {place_holder_begin}this is an example sentence supported by data reference{place_holder_end}."
+
+You do not need to include where you referenced, only show the "{place_holder_begin}" and "{place_holder_end}" identifiers wrapping the text that referenced data.
+
+For example:
+
+"{place_holder_begin}Person X is the owner of Company Y and subject to many allegations of wrongdoing{place_holder_end}, {place_holder_begin}at the same time he is also CEO of company X{place_holder_end}."
+
+Do not include information where the supporting evidence for it is not provided.
+
+Do not let the place holders not showing up in pairs, if you have a "{place_holder_begin}" you must have a "{place_holder_end}". And be aware of the spaces, periods and commas, the sentence should be correctly formatted when exacting removing the place holders.
+
+For example:
+
+"{place_holder_begin}The Author of book B is Person A{place_holder_end}, {place_holder_begin}he is born in place C{place_holder_end}, this is also where he started his career."
+
+All places where you reference data should be wrapped in the identifiers, and the identifiers should not be used for any other purpose.
 </s>
 """
