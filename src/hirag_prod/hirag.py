@@ -563,7 +563,7 @@ class DocumentProcessor:
                     content_type,
                     document_meta,
                     loader_configs,
-                    loader_type="langchain",
+                    loader_type="docling",
                 )
 
                 chunks = []

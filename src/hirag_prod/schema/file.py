@@ -20,6 +20,7 @@ class FileMetadata(BaseModel):
             "text",
             "tsv",
             "html",
+            "md",
         ]
     ] = None
     filename: Optional[str] = None

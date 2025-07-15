@@ -1,8 +1,8 @@
-from langchain_community import document_loaders
+from docling.document_converter import DocumentConverter
 
 from hirag_prod.loader.base_loader import BaseLoader
 
 
 class CSVLoader(BaseLoader):
     def __init__(self):
-        self.loader_type = document_loaders.CSVLoader
+        self.loader_docling = DocumentConverter()

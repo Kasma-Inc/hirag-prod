@@ -1,102 +1,130 @@
 import os
+from typing import Any, Dict, Tuple
+
+import pytest
+from docling_core.types.doc import DoclingDocument
 
 from hirag_prod.loader import load_document
+from hirag_prod.schema import File
 
-
-def test_load_pdf_langchain():
-    document_path = f"{os.path.dirname(__file__)}/Guide-to-U.S.-Healthcare-System.pdf"
-    content_type = "application/pdf"
-    document_meta = {
-        "type": "pdf",
-        "filename": "Guide-to-U.S.-Healthcare-System.pdf",
-        "uri": document_path,
-        "private": False,
-    }
-    loader_configs = None
-    documents = load_document(
-        document_path,
-        content_type,
-        document_meta,
-        loader_configs,
-        loader_type="langchain",
-    )
-    assert len(documents) > 0
-    assert documents[0].page_content is not None
-    assert documents[0].metadata is not None
-    assert documents[0].id.startswith("doc-")
-
-
-def test_load_pdf_doc2x():
-    document_path = f"{os.path.dirname(__file__)}/agent.pdf"
-    content_type = "application/pdf"
-    document_meta = {
-        "type": "pdf",
-        "filename": "agent.pdf",
-        "uri": document_path,
-        "private": False,
-    }
-    documents = load_document(
-        document_path, content_type, document_meta, loader_type="doc2x"
-    )
-    assert len(documents) > 0
-    assert documents[0].page_content is not None
-    assert documents[0].metadata is not None
-    assert documents[0].id.startswith("doc-")
-
-
-def test_parse_pptx():
-    document_path = os.path.join(os.path.dirname(__file__), "Beamer.pptx")
-    content_type = (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    )
-    document_meta = {
-        "type": "pptx",
+# Test data configuration for different document types
+TEST_DOCUMENTS = {
+    "docx": {
+        "filename": "word_sample.docx",
+        "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    "csv": {
+        "filename": "csv-comma.csv",
+        "content_type": "text/csv",
+    },
+    "xlsx": {
+        "filename": "sample_sales_data.xlsm",
+        "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    "html": {
+        "filename": "wiki_labubu.html",
+        "content_type": "text/html",
+    },
+    "pptx": {
         "filename": "Beamer.pptx",
-        "uri": document_path,
-        "private": False,
-    }
-    loader_configs = None
-    documents = load_document(
-        document_path,
-        content_type,
-        document_meta,
-        loader_configs,
-        loader_type="pptagent",
-    )
-    assert len(documents) >= 1
-    # work_dir is auto-detected as .../ppt_templates/Beamer
-    abs_doc_path = os.path.abspath(document_path)
-    doc_dir = os.path.dirname(abs_doc_path)
-    doc_name = os.path.splitext(os.path.basename(abs_doc_path))[0]
-    work_dir = os.path.join(doc_dir, "ppt_templates", doc_name)
-    assert documents[0].metadata.uri == work_dir
-    # Check that work_dir exists and contains expected files
-    assert os.path.isdir(work_dir)
-    assert os.path.isfile(os.path.join(work_dir, "image_stats.json"))
-    assert os.path.isfile(os.path.join(work_dir, "slide_induction.json"))
-    assert os.path.isdir(os.path.join(work_dir, "slide_images"))
-    assert os.path.isdir(os.path.join(work_dir, "images"))
-    assert os.path.isdir(os.path.join(work_dir, "template_images"))
+        "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    },
+    "md": {
+        "filename": "fresh_wiki_article.md",
+        "content_type": "text/markdown",
+    },
+    "pdf": {
+        "filename": "Guide-to-U.S.-Healthcare-System.pdf",
+        "content_type": "application/pdf",
+    },
+}
 
 
-def test_load_txt_langchain():
-    document_path = os.path.join(os.path.dirname(__file__), "test.txt")
-    content_type = "text/plain"
-    document_meta = {
-        "type": "txt",
-        "filename": "test.txt",
-        "uri": document_path,
-        "private": False,
-    }
-    loader_configs = None
-    documents = load_document(
-        document_path,
-        content_type,
-        document_meta,
-        loader_configs,
-        loader_type="langchain",
-    )
-    assert len(documents) > 0
-    assert documents[0].page_content is not None
-    assert documents[0].metadata is not None
-    assert documents[0].id.startswith("doc-")
+class TestDoclingLoader:
+    """Test suite for Docling document loader with various file formats"""
+
+    @pytest.fixture
+    def test_files_dir(self) -> str:
+        """Get the test files directory path"""
+        return os.path.join(os.path.dirname(__file__), "test_files")
+
+    def _create_document_meta(
+        self, doc_type: str, filename: str, uri: str
+    ) -> Dict[str, Any]:
+        """
+        Create document metadata dictionary
+
+        Args:
+            doc_type: Document type (e.g., 'pdf', 'docx')
+            filename: Name of the file
+            uri: Full path to the document
+
+        Returns:
+            Document metadata dictionary
+        """
+        return {
+            "type": doc_type,
+            "filename": filename,
+            "uri": uri,
+            "private": False,
+        }
+
+    def _assert_document_loaded(self, docling_doc: Any, doc_md: Any) -> None:
+        """
+        Assert that document was loaded successfully
+
+        Args:
+            docling_doc: Docling document instance
+            doc_md: File metadata instance
+        """
+        assert isinstance(docling_doc, DoclingDocument)
+        assert isinstance(doc_md, File)
+        assert doc_md.page_content is not None
+        assert doc_md.metadata is not None
+        assert doc_md.id.startswith("doc-")
+
+    def _load_and_assert_document(
+        self, doc_type: str, test_files_dir: str
+    ) -> Tuple[Any, Any]:
+        """
+        Load a document and assert it was loaded correctly
+
+        Args:
+            doc_type: Document type to load
+            test_files_dir: Directory containing test files
+
+        Returns:
+            Tuple of (docling_doc, doc_md)
+        """
+        config = TEST_DOCUMENTS[doc_type]
+        document_path = os.path.join(test_files_dir, config["filename"])
+
+        document_meta = self._create_document_meta(
+            doc_type=doc_type, filename=config["filename"], uri=document_path
+        )
+
+        # Load the document
+        docling_doc, doc_md = load_document(
+            document_path=document_path,
+            content_type=config["content_type"],
+            document_meta=document_meta,
+            loader_configs=None,
+            loader_type="docling",
+        )
+
+        # Assert document loaded successfully
+        self._assert_document_loaded(docling_doc, doc_md)
+
+        return docling_doc, doc_md
+
+    # Individual test methods for each document type
+    @pytest.mark.parametrize("doc_type", TEST_DOCUMENTS.keys())
+    def test_load_document_docling(self, doc_type: str, test_files_dir: str):
+        """Test loading various document types with Docling loader"""
+        self._load_and_assert_document(doc_type, test_files_dir)
+
+
+# ================================ OCR ================================
+def test_load_pdf_ocr():
+    # TODO: s3 operation is not supported yet
+    pass
