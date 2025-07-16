@@ -26,7 +26,8 @@ async def index():
         content_type=content_type,
         document_meta=document_meta,
     )
-    print(await index.query_all("When did Lothair Ii's mother die?"))
+    ret = await index.query_all("When did Lothair Ii's mother die?", summary=True)
+    print(ret["summary"])
 
 
 if __name__ == "__main__":

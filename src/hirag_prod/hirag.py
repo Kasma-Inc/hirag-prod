@@ -31,6 +31,8 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
+from hirag_prod.prompt import PROMPTS
+from hirag_prod.parser import DictParser
 
 load_dotenv("/chatbot/.env", override=True)
 
@@ -48,6 +50,7 @@ DEFAULT_REDIS_KEY_PREFIX = os.environ.get("REDIS_KEY_PREFIX", "hirag")
 
 # Model Configuration
 DEFAULT_LLM_MODEL_NAME = "gpt-4o-mini"
+DEFAULT_MAX_TOKENS = 16000  # Default max tokens for LLM
 
 # Chunking Configuration
 DEFAULT_CHUNK_SIZE = 1200
@@ -122,6 +125,8 @@ class HiRAGConfig:
 
     # Model configuration
     llm_model_name: str = DEFAULT_LLM_MODEL_NAME
+    llm_max_tokens: int = DEFAULT_MAX_TOKENS  # Default max tokens for LLM
+    llm_timeout: float = 30.0  # Default timeout for LLM requests
 
     # Chunking configuration
     chunk_size: int = DEFAULT_CHUNK_SIZE
@@ -972,6 +977,57 @@ class HiRAG:
         self._query_service = QueryService(self._storage)
 
     # ========================================================================
+    # Chat service methods
+    # ========================================================================
+    
+    async def chat_complete(
+        self, prompt: str, **kwargs: Any
+    ) -> str:
+        """Chat with the user"""
+        if not self.chat_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        try:
+            response = await self.chat_service.complete(
+                prompt=prompt,
+                **kwargs,
+            )
+            return response
+        except Exception as e:
+            logger.error(f"Chat completion failed: {e}")
+            raise HiRAGException("Chat completion failed") from e
+
+    async def generate_summary(
+        self, chunks: List[Dict[str, Any]], entities: List[Dict[str, Any]], relationships: List[Dict[str, Any]]
+    ) -> str:
+        """Generate summary from chunks, entities, and relationships"""
+        if not self.chat_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        prompt = PROMPTS["community_report"]
+
+        parser = DictParser()
+            
+        # Should use parser to better format the data
+        data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
+        data += "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
+        data += "Relationships:\n" + str(relationships) + "\n\n"
+
+        prompt = prompt.format(data=data, max_report_length="5000")
+
+        try:
+            summary = await self.chat_complete(
+                prompt=prompt,
+                max_tokens=self.config.llm_max_tokens,
+                timeout=self.config.llm_timeout,
+                model=self.config.llm_model_name,
+            )
+            return summary
+        except Exception as e:
+            logger.error(f"Summary generation failed: {e}")
+            raise HiRAGException("Summary generation failed") from e
+
+    # ========================================================================
     # Public interface methods
     # ========================================================================
 
@@ -1053,11 +1109,20 @@ class HiRAG:
 
         return await self._query_service.query_relations(query, topk, topn)
 
-    async def query_all(self, query: str) -> Dict[str, Any]:
+    async def query_all(self, query: str, summary: bool = False) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
+        if summary:
+            query_all_results = await self._query_service.query_all(query)
+            text_summary = await self.generate_summary(
+                chunks=query_all_results["chunks"],
+                entities=query_all_results["entities"],
+                relationships=query_all_results["relations"],
+            )
+            query_all_results["summary"] = text_summary
+            return query_all_results
         return await self._query_service.query_all(query)
 
     async def get_health_status(self) -> Dict[str, Any]:
