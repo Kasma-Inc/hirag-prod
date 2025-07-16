@@ -80,6 +80,7 @@ async def Naive_RAG():
             model="gpt-4o-mini",
             prompt=prompt,
             timeout=30.0,
+            max_tokens=16000,
         )
         print("Response:", response)
     except Exception as e:
@@ -118,11 +119,21 @@ async def Naive_RAG_with_reference():
             model="gpt-4o-mini",
             prompt=prompt,
             timeout=30.0,
+            max_tokens=16000,
         )
         print("Response:", response)
     except Exception as e:
         logger.error(f"Error during chat completion: {e}")
         print("An error occurred during chat completion.")
+
+    print("\n\n")
+
+    # Create a reference separator instance
+    await index.create_separator(
+        place_holder_begin=PROMPTS["PLACE_HOLDER_BEGIN"],
+        place_holder_end=PROMPTS["PLACE_HOLDER_END"],
+        separator_type="double"  # or "single" based on your needs
+    )
 
     # Extract references from the response
     references = await index.reference_separate(response)
@@ -133,14 +144,22 @@ async def Naive_RAG_with_reference():
 
     # Get similar chunks in the vdb, one reference at a time
     similar_chunk_ids = []
+
+    # get keys in the raw data
+    doc_key_list = []
+    for chunk in raw_data:
+        doc_key_list.append(chunk["document_key"])
+
     for ref in references:
         found = False
         chunks_ref = await index.query_chunks(ref)
         if chunks_ref:
             for this_chunk in chunks_ref:
-                similar_chunk_ids.append(this_chunk["document_key"])
-                found = True
-                break
+                if this_chunk["document_key"] in doc_key_list:
+                    # If the chunk is found in the raw data, we can use it
+                    similar_chunk_ids.append(this_chunk["document_key"])
+                    found = True
+                    break
         
         if not found:
             print(f"No similar chunks found for reference: {ref}")
@@ -148,6 +167,97 @@ async def Naive_RAG_with_reference():
             continue
 
     print("Similar chunks found:", similar_chunk_ids)
+
+    print("\n\n")
+
+    # Fill the placeholders in the response with the references
+    filled_response = await index.reference_fill(
+        text=response,
+        references=similar_chunk_ids
+    )
+
+    print("Filled response:", filled_response)
+
+async def Naive_RAG_with_reference_single():
+    """
+    A simple RAG example using HiRAG with references.
+    This prompting uses the prompt to let the LLM give out which places are using references.
+    Then, it uses the ReferenceSeparator and similarity search to fill in the references.
+    Should be more robust than the previous one.
+    """
+
+    index = await HiRAG.create()
+    query = "Which film has the director who is older, God'S Gift To Women or Aldri Annet Enn Bråk?"
+
+    raw_data = await index.query_chunks(query)
+    parsed_dict = await index.parse_dict({"chunks": raw_data})
+
+    prompt_temp = PROMPTS["NAIVE_RAG_PROMPT_NO_ID_SINGLE"]
+    prompt = prompt_temp.format(
+        context=parsed_dict,
+        chat_history="<history> </history>",
+        question=query,
+        place_holder_end=PROMPTS["PLACE_HOLDER_SINGLE"],
+    )
+    
+    print(prompt)
+
+    chat_service = ChatCompletion()
+
+    try:
+        response = await chat_service.complete(
+            model="gpt-4o-mini",
+            prompt=prompt,
+            timeout=30.0,
+            max_tokens=16000,
+        )
+        print("Response:", response)
+    except Exception as e:
+        logger.error(f"Error during chat completion: {e}")
+        print("An error occurred during chat completion.")
+
+    print("\n\n")
+
+    # Create a reference separator instance
+    await index.create_separator(
+        place_holder_end=PROMPTS["PLACE_HOLDER_SINGLE"],
+        separator_type="single"  # or "double" based on your needs
+    )
+
+    # Extract references from the response
+    references = await index.reference_separate(response)
+    if not references:
+        print("No references found in the response.")
+        return
+    print("References found:", references)
+
+    # Get similar chunks in the vdb, one reference at a time
+    similar_chunk_ids = []
+
+    # get keys in the raw data
+    doc_key_list = []
+    for chunk in raw_data:
+        doc_key_list.append(chunk["document_key"])
+
+    for ref in references:
+        found = False
+        chunks_ref = await index.query_chunks(ref)
+        if chunks_ref:
+            for this_chunk in chunks_ref:
+                if this_chunk["document_key"] in doc_key_list:
+                    # If the chunk is found in the raw data, we can use it
+                    similar_chunk_ids.append(this_chunk["document_key"])
+                    found = True
+                    break
+        
+        if not found:
+            print(f"No similar chunks found for reference: {ref}")
+            similar_chunk_ids.append("")
+            continue
+
+    print("Similar chunks found:", similar_chunk_ids)
+
+    print("\n\n")
 
     # Fill the placeholders in the response with the references
     filled_response = await index.reference_fill(
@@ -159,4 +269,5 @@ async def Naive_RAG_with_reference():
 
 if __name__ == "__main__":
     # asyncio.run(Naive_RAG())
-    asyncio.run(Naive_RAG_with_reference())
+    # asyncio.run(Naive_RAG_with_reference())
+    asyncio.run(Naive_RAG_with_reference_single())

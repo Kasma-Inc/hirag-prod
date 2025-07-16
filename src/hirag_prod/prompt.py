@@ -191,8 +191,8 @@ Do not include information where the supporting evidence for it is not provided.
 </s>
 """
 
-PROMPTS["PLACE_HOLDER_BEGIN"] = "[|Place_Holder_Reference_Begin|]"
-PROMPTS["PLACE_HOLDER_END"] = "[|Place_Holder_Reference_End|]"
+PROMPTS["PLACE_HOLDER_BEGIN"] = "[|Reference_Begin|]"
+PROMPTS["PLACE_HOLDER_END"] = "[|Reference_End|]"
 PROMPTS["PLACE_HOLDER_SUBSTITUTE"] = "[Data: {document_key}]"
 
 PROMPTS["NAIVE_RAG_PROMPT_NO_ID"] = """
@@ -201,34 +201,45 @@ You are an assistant for question-answering tasks with data.
 </s>
 
 <|Goal|>
-Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input context appropriate for the response length and format.
+Core Response Generation:
 
-You should use the data provided in the context below as the primary context for generating the response.
+Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the data section appropriate for the response length and format.
 
-If you don't know the answer or if the input context do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+You should use the data provided in the data section below as the primary data for generating the response.
 
-Points supported by data should show using identifiers as follows:
+If you don't know the answer or if the data section do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
-"This is a normal sentence, and {place_holder_begin}this is an example sentence supported by data reference{place_holder_end}."
+You must annotate every specific point supported by the data section using identifiers as follows:
 
-You do not need to include where you referenced, only show the "{place_holder_begin}" and "{place_holder_end}" identifiers wrapping the text that referenced data.
+1. "{place_holder_begin}" before the text that references data.
+
+2. "{place_holder_end}" after the text that references data.
 
 For example:
 
+"This is a normal sentence, and {place_holder_begin}this is an example sentence supported by data reference{place_holder_end}."
+
 "{place_holder_begin}Person X is the owner of Company Y and subject to many allegations of wrongdoing{place_holder_end}, {place_holder_begin}at the same time he is also CEO of company X{place_holder_end}."
+
+You do not need to include where you referenced, only show the "{place_holder_begin}" and "{place_holder_end}" identifiers wrapping the text that referenced data. **Do not use it for any other purpose**
 
 Do not include information where the supporting evidence for it is not provided.
 
-Do not let the place holders not showing up in pairs, if you have a "{place_holder_begin}" you must have a "{place_holder_end}". And be aware of the spaces, periods and commas, the sentence should be correctly formatted when exacting removing the place holders.
+
+Formatting Specification:
+
+Do not let the place holders not showing up in pairs, if you have a "{place_holder_begin}" you must have a "{place_holder_end}".
+
+Place commas (`,`) and periods (`.`) after the `{place_holder_end}` tag, unless the punctuation is an integral part of the quoted data itself. This ensures the sentence remains grammatically correct if the placeholders are removed.
 
 For example:
 
 "{place_holder_begin}The Author of book B is Person A{place_holder_end}, {place_holder_begin}he is born in place C{place_holder_end}, this is also where he started his career."
 
-All places where you reference data should be wrapped in the identifiers, and the identifiers should not be used for any other purpose.
+ALL PLACES where you reference data should be WRAPPED between the two identifiers, and the identifiers should not be used for any other purpose.
 </s>
 
-<|context|>
+<|data|>
 {context}
 </s>
 
@@ -239,32 +250,57 @@ All places where you reference data should be wrapped in the identifiers, and th
 <|user|>
 {question}
 </s>
+"""
+
+PROMPTS["PLACE_HOLDER_SINGLE"] = "[|Reference_Used|]"
+
+PROMPTS["NAIVE_RAG_PROMPT_NO_ID_SINGLE"] = """
+<|role|>
+You are an assistant for question-answering tasks with data. 
+</s>
 
 <|Goal|>
-Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the input context appropriate for the response length and format.
+Core Response Generation:
 
-You should use the data provided in the context below as the primary context for generating the response.
+Generate a response of the target length and format that responds to the user's question, summarizing all relevant information in the data section appropriate for the response length and format.
 
-If you don't know the answer or if the input context do not contain sufficient information to provide an answer, just say so. Do not make anything up.
+You should use the data provided in the data section below as the primary data for generating the response.
 
-Points supported by data should show using identifiers as follows:
+If you don't know the answer or if the data section do not contain sufficient information to provide an answer, just say so. Do not make anything up.
 
-"This is a normal sentence, and {place_holder_begin}this is an example sentence supported by data reference{place_holder_end}."
-
-You do not need to include where you referenced, only show the "{place_holder_begin}" and "{place_holder_end}" identifiers wrapping the text that referenced data.
+You must annotate every specific point supported by the data section using identifiers as follows: "{place_holder_end}" after the text that references data.
 
 For example:
 
-"{place_holder_begin}Person X is the owner of Company Y and subject to many allegations of wrongdoing{place_holder_end}, {place_holder_begin}at the same time he is also CEO of company X{place_holder_end}."
+"This is a normal sentence. This is an example sentence supported by data reference{place_holder_end}."
+
+"Person X is the owner of Company Y and subject to many allegations of wrongdoing{place_holder_end}, at the same time he is also CEO of company X{place_holder_end}."
+
+You do not need to include where you referenced, only show the "{place_holder_end}" identifier after the text that referenced data. **Do not use it for any other purpose**
 
 Do not include information where the supporting evidence for it is not provided.
 
-Do not let the place holders not showing up in pairs, if you have a "{place_holder_begin}" you must have a "{place_holder_end}". And be aware of the spaces, periods and commas, the sentence should be correctly formatted when exacting removing the place holders.
+
+Formatting Specification:
+
+Place commas (`,`) and periods (`.`) after the `{place_holder_end}` tag, unless the punctuation is an integral part of the quoted data itself. This ensures the sentence remains grammatically correct if the placeholders are removed.
 
 For example:
 
-"{place_holder_begin}The Author of book B is Person A{place_holder_end}, {place_holder_begin}he is born in place C{place_holder_end}, this is also where he started his career."
+"The Author of book B is Person A{place_holder_end}, he is born in place C{place_holder_end}, this is also where he started his career."
 
-All places where you reference data should be wrapped in the identifiers, and the identifiers should not be used for any other purpose.
+ALL PLACES where you reference data should be WRAPPED between the two identifiers, and the identifiers should not be used for any other purpose.
+</s>
+
+<|data|>
+{context}
+</s>
+
+<|chat_history|>
+{chat_history}
+</s>
+
+<|user|>
+{question}
 </s>
 """

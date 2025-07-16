@@ -1133,6 +1133,42 @@ class HiRAG:
 
         parser = DictParser()
         return parser.parse(raw_data)
+
+    async def create_separator(
+        self, place_holder_begin: str = "", place_holder_end: str = "", separator_type: str = "double"
+    ) -> bool:
+        """
+        Create a reference separator instance.
+
+        Args:
+            place_holder_begin: The beginning placeholder for references.
+            place_holder_end: The ending placeholder for references.
+            separator_type: Type of separator, e.g., "double".
+
+        Returns:
+            An instance of ReferenceSeparator.
+        """
+        if separator_type not in ["double", "single"]:
+            raise ValueError("Invalid separator type. Use 'double' or 'single'.")
+
+        # If no placeholders are provided, use default values
+        if separator_type == "double":
+            if not place_holder_begin:
+                place_holder_begin = PROMPTS["PLACE_HOLDER_BEGIN"]
+            if not place_holder_end:
+                place_holder_end = PROMPTS["PLACE_HOLDER_END"]
+        elif separator_type == "single":
+            place_holder_begin = ""
+            if not place_holder_end:
+                place_holder_end = PROMPTS["PLACE_HOLDER_SINGLE"]
+
+        self.reference_separator = ReferenceSeparator(
+            place_holder_begin=place_holder_begin,
+            place_holder_end=place_holder_end,
+            separator_type=separator_type,
+        )
+
+        return True
     
     async def reference_separate(
         self, text: str
@@ -1147,13 +1183,11 @@ class HiRAG:
             A list of separated references.
         """
 
-        reference_separator = ReferenceSeparator(
-            place_holder_begin=PROMPTS["PLACE_HOLDER_BEGIN"],
-            place_holder_end=PROMPTS["PLACE_HOLDER_END"],
-        )
+        if not hasattr(self, 'reference_separator'):
+            raise HiRAGException("Reference separator not initialized. Call create_separator first.")
 
-        return reference_separator.separate(text)
-    
+        return self.reference_separator.separate(text)
+
     async def reference_fill(
         self, text: str, references: list[str]
     ) -> str:
@@ -1168,15 +1202,12 @@ class HiRAG:
             The text with filled references.
         """
 
-        # Generating multiple times just for convenience testing purposes, will be updated to init later
-        reference_separator = ReferenceSeparator(
-            place_holder_begin=PROMPTS["PLACE_HOLDER_BEGIN"],
-            place_holder_end=PROMPTS["PLACE_HOLDER_END"],
-        )
+        if not hasattr(self, 'reference_separator'):
+            raise HiRAGException("Reference separator not initialized. Call create_separator first.")
 
         format_prompt = PROMPTS["PLACE_HOLDER_SUBSTITUTE"]
 
-        return reference_separator.fill_placeholders(text, references, format_prompt=format_prompt)
+        return self.reference_separator.fill_placeholders(text, references, format_prompt=format_prompt)
 
 
     # ========================================================================
