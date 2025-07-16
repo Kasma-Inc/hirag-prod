@@ -1,37 +1,101 @@
 import os
 
-from hirag_prod.chunk import FixTokenChunk
 from hirag_prod.loader import load_document
+from hirag_prod.loader.chunk_split import (
+    chunk_docling_document,
+    chunk_langchain_document,
+)
 
 
-def test_chunk_documents():
-    # Load a document first using the same approach as in test_loader.py
-    document_path = f"{os.path.dirname(__file__)}/Guide-to-U.S.-Healthcare-System.pdf"
-    content_type = "application/pdf"
+def test_chunk_docling_document():
+    """Test chunking a docx document using the docling loader and chunk_docling_document function"""
+    # Load a docx document first using the docling loader
+    document_path = f"{os.path.dirname(__file__)}/test_files/word_sample.docx"
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
     document_meta = {
-        "type": "pdf",
-        "filename": "Guide-to-U.S.-Healthcare-System.pdf",
+        "type": "docx",
+        "filename": "word_sample.docx",
         "uri": document_path,
         "private": False,
     }
-    documents = load_document(
-        document_path, content_type, document_meta, loader_type="langchain"
+
+    docling_doc, doc_md = load_document(
+        document_path=document_path,
+        content_type=content_type,
+        document_meta=document_meta,
+        loader_configs=None,
+        loader_type="docling",
     )
 
-    # Test chunking the loaded documents
-    chunker = FixTokenChunk(chunk_size=500, chunk_overlap=50)
-    chunked_docs = []
-    for document in documents:
-        chunks = chunker.chunk(document)
-        chunked_docs.extend(chunks)
+    chunks = chunk_docling_document(docling_doc, doc_md)
 
-    # Verify the chunking results
-    assert chunked_docs is not None
-    assert len(chunked_docs) > 0
+    assert chunks is not None
+    assert len(chunks) > 0
 
-    # Check that each chunk has the expected metadata
-    for chunk_id, chunk in enumerate(chunked_docs):
-        assert "chunk_idx" in chunk.metadata.__dict__
-        assert chunk.page_content is not None
-        assert chunk.metadata.type == "pdf"
-        assert chunk.metadata.filename == "Guide-to-U.S.-Healthcare-System.pdf"
+    assert hasattr(chunks[0], "id")
+    assert hasattr(chunks[0], "page_content")
+    assert hasattr(chunks[0], "metadata")
+
+    assert chunks[0].id.startswith("chunk-")
+    assert chunks[0].page_content is not None
+
+    assert hasattr(chunks[0].metadata, "chunk_idx")
+    assert hasattr(chunks[0].metadata, "document_id")
+    assert hasattr(chunks[0].metadata, "chunk_type")
+
+    assert chunks[0].metadata.type == "docx"
+    assert chunks[0].metadata.filename == "word_sample.docx"
+    assert chunks[0].metadata.uri == document_path
+    assert chunks[0].metadata.private == False
+    assert chunks[0].metadata.document_id == doc_md.id
+
+    assert chunks[0].metadata.chunk_idx == 0
+    assert chunks[0].metadata.chunk_type is not None
+
+
+def test_chunk_langchain_document():
+    """Test chunking a txt document using the langchain loader and chunk_langchain_document function"""
+    # Load a txt document first using the langchain loader
+    document_path = f"{os.path.dirname(__file__)}/test_files/test.txt"
+    content_type = "text/plain"
+    document_meta = {
+        "type": "txt",
+        "filename": "test.txt",
+        "uri": document_path,
+        "private": False,
+    }
+
+    langchain_doc = load_document(
+        document_path=document_path,
+        content_type=content_type,
+        document_meta=document_meta,
+        loader_configs=None,
+        loader_type="langchain",
+    )
+
+    chunks = chunk_langchain_document(langchain_doc)
+
+    assert chunks is not None
+    assert len(chunks) > 0
+
+    assert hasattr(chunks[0], "id")
+    assert hasattr(chunks[0], "page_content")
+    assert hasattr(chunks[0], "metadata")
+
+    assert chunks[0].id.startswith("chunk-")
+    assert chunks[0].page_content is not None
+
+    assert hasattr(chunks[0].metadata, "chunk_idx")
+    assert hasattr(chunks[0].metadata, "document_id")
+    assert hasattr(chunks[0].metadata, "chunk_type")
+
+    assert chunks[0].metadata.type == "txt"
+    assert chunks[0].metadata.filename == "test.txt"
+    assert chunks[0].metadata.uri == document_path
+    assert chunks[0].metadata.private == False
+    assert chunks[0].metadata.document_id == langchain_doc.id
+
+    assert chunks[0].metadata.chunk_idx == 0
+    assert chunks[0].metadata.chunk_type is not None

@@ -51,7 +51,7 @@ def load_document(
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: Literal["docling", "OCR"] = "docling",
+    loader_type: Literal["docling", "OCR", "langchain"] = "docling",
 ) -> Tuple[Any, File]:
     """Load a document from the given path and content type
 
@@ -60,7 +60,6 @@ def load_document(
         content_type (str): The content type of the document.
         document_meta (Optional[dict]): The metadata of the document.
         loader_configs (Optional[dict]): If unspecified, use DEFAULT_LOADER_CONFIGS.
-        loader_type (Literal["docling", "OCR"]): The type of loader to use.
 
     Raises:
         ValueError: If the content type is not supported.
@@ -70,6 +69,14 @@ def load_document(
     """
     # TODO: Optimize loader selection logic - consolidate loader types and reduce branching
     # TODO: Add async support for concurrent document loading
+    if content_type == "text/plain":
+        loader_type = "langchain"
+    # TODO: OCR NOT SUPPORTED YET
+    # elif content_type == "application/pdf":
+    #     loader_type = "OCR"
+    else:
+        loader_type = "docling"
+
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
 
@@ -81,6 +88,9 @@ def load_document(
     if loader_type == "docling":
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)
         return docling_doc, doc_md
+    elif loader_type == "langchain":
+        langchain_doc = loader.load_langchain(document_path, document_meta)
+        return langchain_doc
     elif loader_type == "OCR":
         if loader is not isinstance(PDFLoader):
             raise ValueError("OCR loader only supports PDF documents")
@@ -97,4 +107,5 @@ __all__ = [
     "HTMLLoader",
     "CSVLoader",
     "TxtLoader",
+    "MdLoader",
 ]

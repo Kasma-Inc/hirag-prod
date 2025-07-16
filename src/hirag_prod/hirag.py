@@ -21,6 +21,10 @@ from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseEntity, VanillaEntity
 from hirag_prod.loader import load_document
+from hirag_prod.loader.chunk_split import (
+    chunk_docling_document,
+    chunk_langchain_document,
+)
 from hirag_prod.resume_tracker import ResumeTracker
 from hirag_prod.schema import Entity
 from hirag_prod.schema.entity import EntityMetadata
@@ -270,6 +274,7 @@ class StorageManager:
                             pa.field("private", pa.bool_()),
                             pa.field("chunk_idx", pa.int32()),
                             pa.field("document_id", pa.string()),
+                            pa.field("chunk_type", pa.string()),
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
@@ -557,21 +562,29 @@ class DocumentProcessor:
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
             try:
-                documents = await asyncio.to_thread(
-                    load_document,
-                    document_path,
-                    content_type,
-                    document_meta,
-                    loader_configs,
-                    loader_type="docling",
-                )
-
-                chunks = []
-                for doc in documents:
-                    chunks.extend(self.chunker.chunk(doc))
+                if content_type == "text/plain":
+                    langchain_doc = await asyncio.to_thread(
+                        load_document,
+                        document_path,
+                        content_type,
+                        document_meta,
+                        loader_configs,
+                        loader_type="langchain",
+                    )
+                    chunks = chunk_langchain_document(langchain_doc)
+                else:
+                    docling_doc, doc_md = await asyncio.to_thread(
+                        load_document,
+                        document_path,
+                        content_type,
+                        document_meta,
+                        loader_configs,
+                        loader_type="docling",
+                    )
+                    chunks = chunk_docling_document(docling_doc, doc_md)
 
                 logger.info(
-                    f"📄 Created {len(chunks)} chunks from {len(documents)} documents"
+                    f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )
                 return chunks
 

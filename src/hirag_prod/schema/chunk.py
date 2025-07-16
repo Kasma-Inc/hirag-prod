@@ -9,6 +9,8 @@ class ChunkMetadata(FileMetadata):
     chunk_idx: int
     # The id of the document that the chunk is from
     document_id: str
+    # The type of the chunk
+    chunk_type: str
 
 
 class Chunk(Document, BaseModel):

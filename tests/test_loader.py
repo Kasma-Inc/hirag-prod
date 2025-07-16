@@ -7,8 +7,8 @@ from docling_core.types.doc import DoclingDocument
 from hirag_prod.loader import load_document
 from hirag_prod.schema import File
 
-# Test data configuration for different document types
-TEST_DOCUMENTS = {
+# Document types supported by Docling loader (excluding txt)
+DOCLING_DOCUMENTS = {
     "docx": {
         "filename": "word_sample.docx",
         "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -39,7 +39,16 @@ TEST_DOCUMENTS = {
     },
 }
 
+# Document types supported by Langchain loader (primarily txt)
+LANGCHAIN_DOCUMENTS = {
+    "txt": {
+        "filename": "test.txt",
+        "content_type": "text/plain",
+    },
+}
 
+
+# ================================ Test Docling Loader ================================
 class TestDoclingLoader:
     """Test suite for Docling document loader with various file formats"""
 
@@ -51,17 +60,6 @@ class TestDoclingLoader:
     def _create_document_meta(
         self, doc_type: str, filename: str, uri: str
     ) -> Dict[str, Any]:
-        """
-        Create document metadata dictionary
-
-        Args:
-            doc_type: Document type (e.g., 'pdf', 'docx')
-            filename: Name of the file
-            uri: Full path to the document
-
-        Returns:
-            Document metadata dictionary
-        """
         return {
             "type": doc_type,
             "filename": filename,
@@ -69,14 +67,8 @@ class TestDoclingLoader:
             "private": False,
         }
 
-    def _assert_document_loaded(self, docling_doc: Any, doc_md: Any) -> None:
-        """
-        Assert that document was loaded successfully
-
-        Args:
-            docling_doc: Docling document instance
-            doc_md: File metadata instance
-        """
+    def _assert_docling_document_loaded(self, docling_doc: Any, doc_md: Any) -> None:
+        """Assert that docling document was loaded successfully"""
         assert isinstance(docling_doc, DoclingDocument)
         assert isinstance(doc_md, File)
         assert doc_md.page_content is not None
@@ -86,24 +78,14 @@ class TestDoclingLoader:
     def _load_and_assert_document(
         self, doc_type: str, test_files_dir: str
     ) -> Tuple[Any, Any]:
-        """
-        Load a document and assert it was loaded correctly
-
-        Args:
-            doc_type: Document type to load
-            test_files_dir: Directory containing test files
-
-        Returns:
-            Tuple of (docling_doc, doc_md)
-        """
-        config = TEST_DOCUMENTS[doc_type]
+        """Load a document with docling loader and assert it was loaded correctly"""
+        config = DOCLING_DOCUMENTS[doc_type]
         document_path = os.path.join(test_files_dir, config["filename"])
 
         document_meta = self._create_document_meta(
             doc_type=doc_type, filename=config["filename"], uri=document_path
         )
 
-        # Load the document
         docling_doc, doc_md = load_document(
             document_path=document_path,
             content_type=config["content_type"],
@@ -112,19 +94,74 @@ class TestDoclingLoader:
             loader_type="docling",
         )
 
-        # Assert document loaded successfully
-        self._assert_document_loaded(docling_doc, doc_md)
-
+        self._assert_docling_document_loaded(docling_doc, doc_md)
         return docling_doc, doc_md
 
-    # Individual test methods for each document type
-    @pytest.mark.parametrize("doc_type", TEST_DOCUMENTS.keys())
+    @pytest.mark.parametrize("doc_type", DOCLING_DOCUMENTS.keys())
     def test_load_document_docling(self, doc_type: str, test_files_dir: str):
         """Test loading various document types with Docling loader"""
         self._load_and_assert_document(doc_type, test_files_dir)
 
 
-# ================================ OCR ================================
-def test_load_pdf_ocr():
-    # TODO: s3 operation is not supported yet
-    pass
+# ================================ Test Langchain Loader ================================
+class TestLangchainLoader:
+    """Test suite for Langchain document loader with text files"""
+
+    @pytest.fixture
+    def test_files_dir(self) -> str:
+        """Get the test files directory path"""
+        return os.path.join(os.path.dirname(__file__), "test_files")
+
+    def _create_document_meta(
+        self, doc_type: str, filename: str, uri: str
+    ) -> Dict[str, Any]:
+        """Create document metadata dictionary"""
+        return {
+            "type": doc_type,
+            "filename": filename,
+            "uri": uri,
+            "private": False,
+        }
+
+    def _assert_langchain_document_loaded(self, langchain_doc: Any) -> None:
+        """Assert that langchain document was loaded successfully"""
+        assert isinstance(langchain_doc, File)
+        assert langchain_doc.page_content is not None
+        assert langchain_doc.id.startswith("doc-")
+        assert langchain_doc.metadata is not None
+        assert langchain_doc.metadata.type == "txt"
+        assert langchain_doc.metadata.filename == "test.txt"
+
+    def _load_and_assert_document(self, doc_type: str, test_files_dir: str) -> Any:
+        """Load a document with langchain loader and assert it was loaded correctly"""
+        config = LANGCHAIN_DOCUMENTS[doc_type]
+        document_path = os.path.join(test_files_dir, config["filename"])
+
+        document_meta = self._create_document_meta(
+            doc_type=doc_type, filename=config["filename"], uri=document_path
+        )
+
+        langchain_doc = load_document(
+            document_path=document_path,
+            content_type=config["content_type"],
+            document_meta=document_meta,
+            loader_configs=None,
+            loader_type="langchain",
+        )
+
+        self._assert_langchain_document_loaded(langchain_doc)
+        return langchain_doc
+
+    @pytest.mark.parametrize("doc_type", LANGCHAIN_DOCUMENTS.keys())
+    def test_load_document_langchain(self, doc_type: str, test_files_dir: str):
+        """Test loading text files with Langchain loader"""
+        self._load_and_assert_document(doc_type, test_files_dir)
+
+
+# ================================ Test OCR Loader ================================
+class TestOCRLoader:
+    """Test suite for OCR document loader with PDF files"""
+
+    def test_load_pdf_ocr(self):
+        """Test loading PDF with OCR loader"""
+        # TODO: s3 operation is not supported yet
