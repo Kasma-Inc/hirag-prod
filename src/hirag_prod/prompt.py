@@ -152,6 +152,30 @@ PROMPTS["DEFAULT_RECORD_DELIMITER"] = "##"
 PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 
 PROMPTS["community_report"] = """
+You are an AI assistant that helps a human analyst to summarize a given stream of data, identifying and assessing relevant information associated with certain entities, relationships within a network.
+
+# Goal
+Write a comprehensive summary of the given data, given a list of chunks of raw text, list of entities and a list of their relationships. 
+If the provided descriptions are contradictory, please resolve the contradictions and provide a single, coherent summary.
+Make sure it is written in third person, and include the entity names so we have the full context.
+
+# Grounding Rules
+
+Do not include information where the supporting evidence for it is not provided.
+
+Limit the total report length to {max_report_length} words.
+
+# Real Data
+
+Use the following data for your answer. Do not make anything up in your answer.
+
+Data:
+{data}
+
+Output:
+"""
+
+PROMPTS["community_report_original"] = """
 You are an AI assistant that helps a human analyst to perform general information discovery. Information discovery is the process of identifying and assessing relevant information associated with certain entities (e.g., organizations and individuals) within a network.
 
 # Goal

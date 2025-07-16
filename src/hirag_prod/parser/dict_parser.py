@@ -53,7 +53,7 @@ class DictParser:
         if method == "string":
             return "\n".join(self.parse_to_string(item) for item in data)
         elif method == "table":
-            return DataFrame(data).to_string(index=False)
+            return DataFrame(data).to_csv(index=False)
 
         else:
             raise ValueError("Method must be either 'string' or 'table'")
