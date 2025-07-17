@@ -151,7 +151,10 @@ PROMPTS["DEFAULT_TUPLE_DELIMITER"] = "<|>"
 PROMPTS["DEFAULT_RECORD_DELIMITER"] = "##"
 PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 
-PROMPTS["community_report"] = """
+PROMPTS["REFERENCE_PLACEHOLDER"] = "[|REFERENCE|]"
+PROMPTS["REFERENCE_FORMAT"] = "[Data: {document_key}]"
+
+PROMPTS["summary_all"] = """
 You are an AI assistant that helps a human analyst to summarize a given stream of data, identifying and assessing relevant information associated with certain entities, relationships within a network.
 
 # Goal
@@ -161,16 +164,64 @@ Make sure it is written in third person, and include the entity names so we have
 
 # Grounding Rules
 
+Points supported by data should indicate that they are supported by the data as follows:
+
+"This is an example sentence supported by data references {reference_placeholder}."
+
+No matter which data source the information comes from or how many sources referred to, it should be referenced in the same way, indicating {reference_placeholder} at the end of the sentence, before the period.
+
+Do not include the key or the id of the data record in the summary.
+
 Do not include information where the supporting evidence for it is not provided.
 
 Limit the total report length to {max_report_length} words.
 
+# Example Input
+-----------
+Data:
+
+Chunks
+id,chunk
+1,The Unity March is a significant event that is taking place at Verdant Oasis Plaza.
+2,The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza.
+
+Entities
+
+id,entity,description
+5,VERDANT OASIS PLAZA,Verdant Oasis Plaza is the location of the Unity March
+6,HARMONY ASSEMBLY,Harmony Assembly is an organization that is holding a march at Verdant Oasis Plaza
+
+Relationships
+id,source,target,description
+37,VERDANT OASIS PLAZA,UNITY MARCH,Verdant Oasis Plaza is the location of the Unity March
+38,VERDANT OASIS PLAZA,HARMONY ASSEMBLY,Harmony Assembly is holding a march at Verdant Oasis Plaza
+
+# Example Output
+The Unity March is a significant event that is taking place at Verdant Oasis Plaza {reference_placeholder}. 
+The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza {reference_placeholder}. 
+The relationship between the Harmony Assembly and the Unity March indicates that the Harmony Assembly is responsible for the organization of this event {reference_placeholder}.
+The relationship between the Verdant Oasis Plaza and the Unity March indicates that the Unity March is being held at this location {reference_placeholder}.
+
 # Real Data
 
-Use the following data for your answer. Do not make anything up in your answer.
+Use the following data for your answer.
 
 Data:
 {data}
+
+# Grounding Rules
+
+Points supported by data should indicate that they are supported by the data as follows:
+
+"This is an example sentence supported by data references {reference_placeholder}."
+
+No matter which data source the information comes from or how many sources referred to, it should be shown in the same way, indicating {reference_placeholder} at the end of the sentence, before the period.
+
+Do not include the key or the id of the data record in the summary.
+
+Do not include information where the supporting evidence for it is not provided.
+
+Limit the total report length to {max_report_length} words.
 
 Output:
 """

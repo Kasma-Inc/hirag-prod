@@ -36,7 +36,10 @@ from hirag_prod.storage import (
     RetrievalStrategyProvider,
 )
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.parser import DictParser
+from hirag_prod.parser import (
+    DictParser,
+    ReferenceParser,
+)
 
 load_dotenv("/chatbot/.env", override=True)
 
@@ -1013,11 +1016,15 @@ class HiRAG:
     async def generate_summary(
         self, chunks: List[Dict[str, Any]], entities: List[Dict[str, Any]], relationships: List[Dict[str, Any]]
     ) -> str:
-        """Generate summary from chunks, entities, and relationships"""
+        """Generate summary from chunks, entities, and relations"""
+        DEBUG = False  # Set to True for debugging output
+
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
-        prompt = PROMPTS["community_report"]
+        prompt = PROMPTS["summary_all"]
+
+        placeholder = PROMPTS["REFERENCE_PLACEHOLDER"]
 
         parser = DictParser()
             
@@ -1026,7 +1033,7 @@ class HiRAG:
         data += "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
         data += "Relationships:\n" + str(relationships) + "\n\n"
 
-        prompt = prompt.format(data=data, max_report_length="5000")
+        prompt = prompt.format(data=data, max_report_length="5000", reference_placeholder=placeholder)
 
         try:
             summary = await self.chat_complete(
@@ -1035,10 +1042,60 @@ class HiRAG:
                 timeout=self.config.llm_timeout,
                 model=self.config.llm_model_name,
             )
-            return summary
         except Exception as e:
             logger.error(f"Summary generation failed: {e}")
             raise HiRAGException("Summary generation failed") from e
+
+        if DEBUG:
+            print("\n\n\nGenerated Summary:\n", summary)
+
+        # Find all sentences that contain the placeholder
+        ref_parser = ReferenceParser()
+
+        ref_sentences = await ref_parser.parse_references(summary, placeholder)
+
+        if DEBUG:
+            print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
+
+        # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
+        result = []
+
+        chunks_keys = [c["document_key"] for c in chunks]
+
+        for sentence in ref_sentences:
+            found = False
+
+            # Chunks
+            similar_chunks = await self.query_chunks(
+                query=sentence,
+                topk=DEFAULT_QUERY_TOPK,
+                topn=DEFAULT_QUERY_TOPN
+            )
+
+            # keep the top matching chunk that has also shown up in the referred chunks
+            for chunk in similar_chunks:
+                if chunk["document_key"] in chunks_keys:
+                    result.append(chunk["document_key"])
+                    found = True
+                    break
+            
+            if not found:
+                result.append("")
+
+        format_prompt = PROMPTS["REFERENCE_FORMAT"]
+
+        # fill the summary by ref chunks
+        summary = await ref_parser.fill_placeholders(
+            text=summary,
+            references=result,
+            reference_placeholder=placeholder,
+            format_prompt=format_prompt,
+        )
+
+        if DEBUG:
+            print("\n\n\nFormatted Summary:\n", summary)
+
+        return summary
 
     # ========================================================================
     # Public interface methods
