@@ -90,7 +90,7 @@ def load_document(
         return docling_doc, doc_md
     elif loader_type == "langchain":
         langchain_doc = loader.load_langchain(document_path, document_meta)
-        return langchain_doc
+        return None, langchain_doc
     elif loader_type == "OCR":
         if loader is not isinstance(PDFLoader):
             raise ValueError("OCR loader only supports PDF documents")
