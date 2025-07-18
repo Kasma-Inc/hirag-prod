@@ -73,7 +73,7 @@ async def test_merge_node():
         page_content="UNITED STATES",
         metadata={
             "entity_type": "GEO",
-            "description": description1,
+            "description": [description1],
             "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
         },
     )
@@ -82,7 +82,7 @@ async def test_merge_node():
         page_content="UNITED STATES",
         metadata={
             "entity_type": "GEO",
-            "description": description2,
+            "description": [description2],
             "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
         },
     )
@@ -90,9 +90,9 @@ async def test_merge_node():
     await gdb.upsert_node(node2)
 
     node = await gdb.query_node(node1.id)
-    assert node.metadata.description != description1
-    assert node.metadata.description != description2
-    assert isinstance(node.metadata.description, str)
+    assert node.metadata.description[0] == description1
+    assert node.metadata.description[0] != description2
+    assert isinstance(node.metadata.description[0], str)
     assert len(node.metadata.description) > 0
 
 
@@ -186,7 +186,7 @@ async def test_merge_nodes():
         page_content="UNITED STATES",
         metadata={
             "entity_type": "GEO",
-            "description": description1,
+            "description": [description1],
             "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
         },
     )
@@ -195,11 +195,10 @@ async def test_merge_nodes():
         page_content="UNITED STATES",
         metadata={
             "entity_type": "GEO",
-            "description": description2,
+            "description": [description2],
             "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
         },
     )
     await gdb.upsert_nodes([node1, node2])
     node = await gdb.query_node(node1.id)
-    breakpoint()
-    assert node.metadata.description == description1
+    assert node.metadata.description[0] == description1

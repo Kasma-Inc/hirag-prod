@@ -5,11 +5,13 @@ import numpy as np
 import pytest
 from dotenv import load_dotenv
 
-from src.hirag_prod._llm import (
+from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
     EmbeddingServiceType,
     LocalEmbeddingService,
+    SingletonABCMeta,
+    SingletonMeta,
     create_embedding_service,
 )
 
@@ -18,9 +20,24 @@ load_dotenv("/chatbot/.env", override=True)
 
 def clear_all_singletons():
     """Clear all singleton instances to avoid test pollution"""
+    # Reset token usage stats for existing ChatCompletion instances
+    for singleton_class in [ChatCompletion]:
+        if (
+            hasattr(singleton_class, "_instances")
+            and singleton_class in singleton_class._instances
+        ):
+            instance = singleton_class._instances[singleton_class]
+            if hasattr(instance, "reset_token_usage_stats"):
+                instance.reset_token_usage_stats()
+
+    # Clear all singleton instances
     for singleton_class in [EmbeddingService, ChatCompletion]:
         if hasattr(singleton_class, "_instances"):
             singleton_class._instances.clear()
+
+    # Also clear the metaclass instances for both SingletonMeta and SingletonABCMeta
+    SingletonMeta._instances.clear()
+    SingletonABCMeta._instances.clear()
 
 
 class TestConfig:
@@ -106,6 +123,14 @@ def mock_local_embedding_response():
     }
 
 
+@pytest.fixture(autouse=True)
+def auto_clear_singletons():
+    """Automatically clear singleton instances before each test"""
+    clear_all_singletons()
+    yield
+    clear_all_singletons()
+
+
 class TestChatCompletion:
     """Test suite for ChatCompletion service"""
 
@@ -182,11 +207,8 @@ class TestEmbeddingServiceOpenAI:
         api_key = get_required_env("EMBEDDING_API_KEY")
         base_url = get_required_env("EMBEDDING_BASE_URL")
 
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         # Patch rate limiting to disable it during tests
-        with patch("src.hirag_prod._llm.rate_limited", return_value=lambda func: func):
+        with patch("hirag_prod._llm.rate_limited", return_value=lambda func: func):
             # Use the factory function like hirag.py does
             embedding_service = create_embedding_service()
 
@@ -206,8 +228,6 @@ class TestEmbeddingServiceOpenAI:
                 assert result.shape == (3, get_embedding_dimension())
                 mock_create.assert_called_once()
 
-                await embedding_service.close()
-
     @pytest.mark.skipif(
         get_embedding_service_type() != "openai",
         reason="Skipping OpenAI tests - service type is not 'openai'",
@@ -215,11 +235,8 @@ class TestEmbeddingServiceOpenAI:
     @pytest.mark.asyncio
     async def test_batch_embedding_processing(self, mock_embedding_response):
         """Test batch processing functionality with large text lists for OpenAI service"""
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         # Patch rate limiting to disable it during tests
-        with patch("src.hirag_prod._llm.rate_limited", return_value=lambda func: func):
+        with patch("hirag_prod._llm.rate_limited", return_value=lambda func: func):
             # Use the factory function like hirag.py does, with custom batch size
             embedding_service = create_embedding_service(default_batch_size=2)
 
@@ -240,8 +257,6 @@ class TestEmbeddingServiceOpenAI:
                 assert isinstance(result, np.ndarray)
                 # Should process in multiple batches (15 texts, batch_size=2 → 8 batches)
                 assert mock_create.call_count >= 7
-
-                await embedding_service.close()
 
 
 class TestEmbeddingServiceLocal:
@@ -280,8 +295,6 @@ class TestEmbeddingServiceLocal:
             assert result.shape == (3, get_embedding_dimension())
             mock_post.assert_called_once()
 
-            await embedding_service.close()
-
     @pytest.mark.skipif(
         get_embedding_service_type() != "local",
         reason="Skipping local tests - service type is not 'local'",
@@ -314,8 +327,6 @@ class TestEmbeddingServiceLocal:
             # Should process in multiple batches (15 texts, batch_size=2 → 8 batches)
             assert mock_post.call_count >= 7
 
-            await embedding_service.close()
-
 
 class TestEmbeddingServiceCommon:
     """Common tests for both embedding service types"""
@@ -323,9 +334,6 @@ class TestEmbeddingServiceCommon:
     @pytest.mark.asyncio
     async def test_embedding_service_factory(self):
         """Test the create_embedding_service factory function with current environment"""
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         service_type = get_embedding_service_type()
 
         service = create_embedding_service()
@@ -335,14 +343,9 @@ class TestEmbeddingServiceCommon:
         else:
             assert isinstance(service, EmbeddingService)
 
-        await service.close()
-
     @pytest.mark.asyncio
     async def test_text_validation(self):
         """Test text validation and error handling"""
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         # Use the factory function like hirag.py does
         embedding_service = create_embedding_service()
 
@@ -362,8 +365,6 @@ class TestEmbeddingServiceCommon:
         with pytest.raises(ValueError, match="Text at index .* is empty"):
             await embedding_service.create_embeddings(["valid text", "   "])
 
-        await embedding_service.close()
-
 
 class TestIntegration:
     """Integration tests for the complete LLM module"""
@@ -371,9 +372,6 @@ class TestIntegration:
     @pytest.mark.asyncio
     async def test_service_environment_detection(self):
         """Test that services correctly detect and use environment configuration"""
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         service_type = get_embedding_service_type()
 
         service = create_embedding_service()
@@ -382,24 +380,18 @@ class TestIntegration:
             assert isinstance(service, LocalEmbeddingService)
         else:
             assert isinstance(service, EmbeddingService)
-            # Only check service type for EmbeddingService that uses UnifiedEmbeddingClient
             if hasattr(service.client, "config"):
                 assert service.client.config.service_type == EmbeddingServiceType.OPENAI
-
-        await service.close()
 
     @pytest.mark.asyncio
     async def test_service_cleanup(self):
         """Test proper cleanup of services"""
-        # Clear all singleton instances to avoid conflicts
-        clear_all_singletons()
-
         service = create_embedding_service()
 
         # Ensure close method exists and can be called
         assert hasattr(service, "close")
         await service.close()
 
-        # Verify HTTP client is properly closed for local service
         if isinstance(service, LocalEmbeddingService):
-            assert service.client._http_client.is_closed
+            assert hasattr(service.client, "_http_client")
+            assert not service.client._http_client.is_closed

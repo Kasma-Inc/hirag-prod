@@ -1,5 +1,7 @@
+from typing import Any, Dict, List
+
 from pandas import DataFrame
-from typing import Dict, List, Any
+
 
 class DictParser:
     """Parser for parsing dictionary data into LLM friendly format."""
@@ -32,10 +34,12 @@ class DictParser:
         if not isinstance(data, dict):
             raise ValueError("Input must be a dictionary")
 
-        df = DataFrame(list(data.items()), columns=['Key', 'Value'])
+        df = DataFrame(list(data.items()), columns=["Key", "Value"])
         return df
 
-    def parse_list_of_dicts(self, data: List[Dict[str, Any]], method: str = "string") -> str:
+    def parse_list_of_dicts(
+        self, data: List[Dict[str, Any]], method: str = "string"
+    ) -> str:
         """
         Convert a list of dictionaries to a string or table format.
 
@@ -46,7 +50,9 @@ class DictParser:
         Returns:
             str: The parsed representation of the list of dictionaries.
         """
-        if not isinstance(data, list) or not all(isinstance(item, dict) for item in data):
+        if not isinstance(data, list) or not all(
+            isinstance(item, dict) for item in data
+        ):
             raise ValueError("Input must be a list of dictionaries")
 
         # transform each dictionary to a df and concatenate them
