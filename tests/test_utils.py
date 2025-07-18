@@ -3,11 +3,19 @@ Tests for utility functions in hirag_prod._utils
 """
 
 import asyncio
+import os
+import tempfile
 import time
 
 import pytest
 
-from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod._utils import (
+    _limited_gather_with_factory,
+    delete_s3_file,
+    download_s3_file,
+    list_s3_files,
+    upload_file_to_s3,
+)
 
 
 class TestLimitedGatherWithFactory:
@@ -193,6 +201,69 @@ class TestLimitedGatherWithFactory:
         # Verify each factory used its own increment value
         assert shared_state["counter"] == 6  # 1 + 2 + 3
         assert len(set(results)) == 3  # All results should be different
+
+
+class TestS3Operations:
+    """Test suite for S3 utility functions using real PDF file"""
+
+    @pytest.fixture
+    def test_file_path(self):
+        """Path to the test PDF file"""
+        return os.path.join(
+            os.path.dirname(__file__), "test_files/Guide-to-U.S.-Healthcare-System.pdf"
+        )
+
+    @pytest.fixture
+    def test_file_name(self):
+        """Name of the test PDF file"""
+        return "Guide-to-U.S.-Healthcare-System.pdf"
+
+    @pytest.fixture
+    def file_type(self):
+        """File type for S3 organization"""
+        return "pdf"
+
+    @pytest.fixture
+    def temp_download_dir(self):
+        """Temporary directory for downloading files"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield temp_dir
+
+    @pytest.mark.asyncio
+    async def test_s3_full_workflow(
+        self, test_file_path, test_file_name, file_type, temp_download_dir
+    ):
+        """Test complete S3 workflow: upload → list → download → delete"""
+
+        # Skip test if AWS credentials are not available
+        if not os.getenv("AWS_ACCESS_KEY_ID") or not os.getenv("AWS_BUCKET_NAME"):
+            pytest.skip("AWS credentials not configured")
+
+        # Verify test file exists
+        assert os.path.exists(test_file_path), f"Test file not found: {test_file_path}"
+
+        # Step 1: Upload file to S3
+        upload_success = await upload_file_to_s3(test_file_path, file_type)
+        assert upload_success, "Failed to upload file to S3"
+
+        # Step 2: List S3 files to verify upload
+        list_success = await list_s3_files(prefix=f"{os.getenv('AWS_UPLOAD_PATH', '')}")
+        assert list_success, "Failed to list S3 files"
+
+        # Step 3: Download file from S3
+        download_success = await download_s3_file(
+            test_file_name, file_type, temp_download_dir
+        )
+        assert download_success, "Failed to download file from S3"
+
+        # Verify downloaded file exists and has content
+        downloaded_file_path = os.path.join(temp_download_dir, test_file_name)
+        assert os.path.exists(downloaded_file_path), "Downloaded file not found"
+        assert os.path.getsize(downloaded_file_path) > 0, "Downloaded file is empty"
+
+        # Step 4: Delete file from S3
+        delete_success = await delete_s3_file(test_file_name, file_type)
+        assert delete_success, "Failed to delete file from S3"
 
 
 if __name__ == "__main__":

@@ -141,7 +141,7 @@ class TestLangchainLoader:
             doc_type=doc_type, filename=config["filename"], uri=document_path
         )
 
-        langchain_doc = load_document(
+        _, langchain_doc = load_document(
             document_path=document_path,
             content_type=config["content_type"],
             document_meta=document_meta,

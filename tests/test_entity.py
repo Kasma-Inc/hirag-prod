@@ -17,6 +17,7 @@ async def test_vanilla_entity():
             id="chunk-5b8421d1da0999a82176b7836b795235",
             metadata={
                 "type": "pdf",
+                "chunk_type": "text",
                 "filename": "Guide-to-U.S.-Healthcare-System.pdf",
                 "page_number": 4,
                 "chunk_idx": 0,
@@ -30,6 +31,7 @@ async def test_vanilla_entity():
             id="chunk-d66c81e0b32e3d4e6777f0dfbabe81a8",
             metadata={
                 "type": "pdf",
+                "chunk_type": "text",
                 "filename": "Guide-to-U.S.-Healthcare-System.pdf",
                 "page_number": 4,
                 "chunk_idx": 1,
@@ -53,6 +55,7 @@ async def test_vanilla_relation():
             id="chunk-5b8421d1da0999a82176b7836b795235",
             metadata={
                 "type": "pdf",
+                "chunk_type": "text",
                 "filename": "Guide-to-U.S.-Healthcare-System.pdf",
                 "page_number": 4,
                 "chunk_idx": 0,
@@ -66,6 +69,7 @@ async def test_vanilla_relation():
             id="chunk-d66c81e0b32e3d4e6777f0dfbabe81a8",
             metadata={
                 "type": "pdf",
+                "chunk_type": "text",
                 "filename": "Guide-to-U.S.-Healthcare-System.pdf",
                 "page_number": 4,
                 "chunk_idx": 1,
@@ -82,7 +86,9 @@ async def test_vanilla_relation():
             id="ent-3ff39c0f9a2e36a5d47ded059ba14673",
             metadata={
                 "entity_type": "GEO",
-                "description": "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage.",
+                "description": [
+                    "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."
+                ],
                 "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
             },
             page_content="UNITED STATES",
@@ -91,7 +97,9 @@ async def test_vanilla_relation():
             id="ent-5a28a79d61d9ba7001246e3fdebbe108",
             metadata={
                 "entity_type": "EVENT",
-                "description": "The Health Care System in the United States refers to the organized provision of medical services, which relies on a combination of privatized and government insurance. This system encompasses a variety of healthcare providers and services aimed at delivering medical care to the population, ensuring access to needed health resources through different forms of insurance coverage.",
+                "description": [
+                    "The Health Care System in the United States refers to the organized provision of medical services, which relies on a combination of privatized and government insurance. This system encompasses a variety of healthcare providers and services aimed at delivering medical care to the population, ensuring access to needed health resources through different forms of insurance coverage."
+                ],
                 "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
             },
             page_content="HEALTH CARE SYSTEM",
@@ -100,7 +108,9 @@ async def test_vanilla_relation():
             id="ent-2a422318fc58c5302a5ba9365bcbc0be",
             metadata={
                 "entity_type": "ORGANIZATION",
-                "description": "Insurance Companies are private entities that offer health insurance coverage and establish payment processes for healthcare services based on contracts with providers. They play a crucial role in the healthcare system by managing risk and ensuring that individuals have access to necessary medical services through their insurance plans.",
+                "description": [
+                    "Insurance Companies are private entities that offer health insurance coverage and establish payment processes for healthcare services based on contracts with providers. They play a crucial role in the healthcare system by managing risk and ensuring that individuals have access to necessary medical services through their insurance plans."
+                ],
                 "chunk_ids": [
                     "chunk-d66c81e0b32e3d4e6777f0dfbabe81a8",
                     "chunk-5b8421d1da0999a82176b7836b795235",
@@ -112,7 +122,9 @@ async def test_vanilla_relation():
             id="ent-8ac4883b1b6f421ea5f0196eb317b2ba",
             metadata={
                 "entity_type": "ORGANIZATION",
-                "description": "Health Care Providers are the professionals or facilities that offer medical treatments and services to patients, regardless of their insurance status, whether they are insured or uninsured.",
+                "description": [
+                    "Health Care Providers are the professionals or facilities that offer medical treatments and services to patients, regardless of their insurance status, whether they are insured or uninsured."
+                ],
                 "chunk_ids": ["chunk-d66c81e0b32e3d4e6777f0dfbabe81a8"],
             },
             page_content="HEALTH CARE PROVIDERS",

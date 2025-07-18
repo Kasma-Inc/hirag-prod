@@ -46,6 +46,12 @@ black==25.1.0
     #   blackdoc
 blackdoc==0.4.1
     # via hirag-prod (pyproject.toml)
+boto3==1.39.7
+    # via hirag-prod (pyproject.toml)
+botocore==1.39.7
+    # via
+    #   boto3
+    #   s3transfer
 certifi==2025.7.14
     # via
     #   docling
@@ -177,6 +183,10 @@ jinja2==3.1.6
     # via torch
 jiter==0.10.0
     # via openai
+jmespath==1.0.1
+    # via
+    #   boto3
+    #   botocore
 joblib==1.5.1
     # via
     #   graspologic
@@ -502,6 +512,7 @@ python-bidi==0.6.6
     # via easyocr
 python-dateutil==2.9.0.post0
     # via
+    #   botocore
     #   matplotlib
     #   pandas
 python-docx==1.2.0
@@ -571,6 +582,8 @@ rtree==1.4.0
     # via
     #   docling
     #   docling-ibm-models
+s3transfer==0.13.0
+    # via boto3
 safetensors==0.5.3
     # via
     #   docling-ibm-models
@@ -732,7 +745,9 @@ umap-learn==0.5.6
     #   hirag-prod (pyproject.toml)
     #   graspologic
 urllib3==2.5.0
-    # via requests
+    # via
+    #   botocore
+    #   requests
 uvicorn==0.35.0
     # via mcp
 voyageai==0.3.2
