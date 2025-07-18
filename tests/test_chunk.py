@@ -67,7 +67,7 @@ def test_chunk_langchain_document():
         "private": False,
     }
 
-    langchain_doc = load_document(
+    _, langchain_doc = load_document(
         document_path=document_path,
         content_type=content_type,
         document_meta=document_meta,

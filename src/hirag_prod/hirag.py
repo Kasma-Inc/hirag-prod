@@ -25,6 +25,8 @@ from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_langchain_document,
 )
+from hirag_prod.parser import DictParser
+from hirag_prod.prompt import PROMPTS
 from hirag_prod.resume_tracker import ResumeTracker
 from hirag_prod.schema import Entity
 from hirag_prod.schema.entity import EntityMetadata
@@ -573,7 +575,7 @@ class DocumentProcessor:
         async with self.metrics.track_operation("load_and_chunk"):
             try:
                 if content_type == "text/plain":
-                    langchain_doc = await asyncio.to_thread(
+                    _, langchain_doc = await asyncio.to_thread(
                         load_document,
                         document_path,
                         content_type,
@@ -1030,10 +1032,8 @@ class HiRAG:
     # ========================================================================
     # Chat service methods
     # ========================================================================
-    
-    async def chat_complete(
-        self, prompt: str, **kwargs: Any
-    ) -> str:
+
+    async def chat_complete(self, prompt: str, **kwargs: Any) -> str:
         """Chat with the user"""
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
@@ -1049,7 +1049,10 @@ class HiRAG:
             raise HiRAGException("Chat completion failed") from e
 
     async def generate_summary(
-        self, chunks: List[Dict[str, Any]], entities: List[Dict[str, Any]], relationships: List[Dict[str, Any]]
+        self,
+        chunks: List[Dict[str, Any]],
+        entities: List[Dict[str, Any]],
+        relationships: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks, entities, and relations"""
         DEBUG = False  # Set to True for debugging output
