@@ -40,6 +40,8 @@ from hirag_prod.parser import (
     DictParser,
     ReferenceParser,
 )
+# from hirag_prod.similarity import CosineSimilarity
+from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 load_dotenv("/chatbot/.env", override=True)
 
@@ -895,6 +897,35 @@ class QueryService:
             "relations": relations,
         }
 
+    async def query_chunk_embeddings(
+        self, chunk_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Query chunk embeddings"""
+        if not chunk_ids:
+            return {}
+
+        res = {}
+        try:
+            for chunk_id in chunk_ids:
+
+                chunk_data = await self.storage.vdb.query_by_key(
+                    document_key=chunk_id,
+                    key_column="document_key",
+                    table=self.storage.chunks_table,
+                    columns_to_select=["vector"],
+                    limit=1,
+                )
+
+                if chunk_data:
+                    res[chunk_id] = chunk_data[0].get("vector", None)
+                else:
+                    res[chunk_id] = None
+        
+        except Exception as e:
+            logger.error(f"Failed to query chunk embeddings: {e}")
+            return {}
+        
+        return res
 
 # ============================================================================
 # Main HiRAG class
@@ -1017,85 +1048,123 @@ class HiRAG:
         self, chunks: List[Dict[str, Any]], entities: List[Dict[str, Any]], relationships: List[Dict[str, Any]]
     ) -> str:
         """Generate summary from chunks, entities, and relations"""
-        DEBUG = False  # Set to True for debugging output
+        DEBUG = True  # Set to True for debugging output
 
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
-        prompt = PROMPTS["summary_all"]
-
-        placeholder = PROMPTS["REFERENCE_PLACEHOLDER"]
-
-        parser = DictParser()
-            
-        # Should use parser to better format the data
-        data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
-        data += "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
-        data += "Relationships:\n" + str(relationships) + "\n\n"
-
-        prompt = prompt.format(data=data, max_report_length="5000", reference_placeholder=placeholder)
+        logger.info("🚀 Starting summary generation")
+        start_time = time.perf_counter()
 
         try:
-            summary = await self.chat_complete(
-                prompt=prompt,
-                max_tokens=self.config.llm_max_tokens,
-                timeout=self.config.llm_timeout,
-                model=self.config.llm_model_name,
+            prompt = PROMPTS["summary_all"]
+
+            placeholder = PROMPTS["REFERENCE_PLACEHOLDER"]
+
+            parser = DictParser()
+                
+            # Should use parser to better format the data
+            data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
+            data += "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
+            data += "Relationships:\n" + str(relationships) + "\n\n"
+
+            prompt = prompt.format(data=data, max_report_length="5000", reference_placeholder=placeholder)
+
+            try:
+                summary = await self.chat_complete(
+                    prompt=prompt,
+                    max_tokens=self.config.llm_max_tokens,
+                    timeout=self.config.llm_timeout,
+                    model=self.config.llm_model_name,
+                )
+            except Exception as e:
+                logger.error(f"Summary generation failed: {e}")
+                raise HiRAGException("Summary generation failed") from e
+
+            if DEBUG:
+                print("\n\n\nGenerated Summary:\n", summary)
+
+            # Find all sentences that contain the placeholder
+            ref_parser = ReferenceParser()
+
+            ref_sentences = await ref_parser.parse_references(summary, placeholder)
+
+            if DEBUG:
+                print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
+
+            # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
+            result = []
+
+            chunks_keys = [c["document_key"] for c in chunks]
+
+            # Generate embeddings for each reference sentence
+            if not ref_sentences:
+                logger.warning("No reference sentences found in summary")
+                return summary
+
+            sentence_embeddings = await self.embedding_service.create_embeddings(
+                texts=ref_sentences
             )
+
+            for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
+                found = False
+
+                # If the sentence is empty, continue
+                if not sentence.strip():
+                    result.append("")
+                    continue
+
+                chunk_embeddings = await self._query_service.query_chunk_embeddings(chunks_keys)
+
+                # Similarity search to find the most similar chunks
+                similar_chunks = []
+                for chunk_key, embedding in chunk_embeddings.items():
+                    if embedding is not None:
+                        similarity = sklearn_cosine_similarity(
+                            [sentence_embedding], [embedding]
+                        )[0][0]
+                        similar_chunks.append({
+                            "document_key": chunk_key,
+                            "similarity": similarity
+                        })
+                
+                # Sort by similarity
+                similar_chunks.sort(key=lambda x: x["similarity"], reverse=True)
+
+                if DEBUG:
+                    print("\n\n\nSimilar Chunks for Sentence:", sentence, "\n", similar_chunks)
+
+                # If no similar chunks found, append empty string
+                if not similar_chunks:
+                    result.append("")
+                    continue
+
+                # Get the top similar chunk
+                top_chunk = similar_chunks[0]["document_key"]
+                result.append(top_chunk)
+
+            format_prompt = PROMPTS["REFERENCE_FORMAT"]
+
+            # fill the summary by ref chunks
+            summary = await ref_parser.fill_placeholders(
+                text=summary,
+                references=result,
+                reference_placeholder=placeholder,
+                format_prompt=format_prompt,
+            )
+
+            if DEBUG:
+                print("\n\n\nFormatted Summary:\n", summary)
+
+            total_time = time.perf_counter() - start_time
+            logger.info(f"✅ Summary generation completed in {total_time:.3f}s")
+
+            return summary
+
         except Exception as e:
-            logger.error(f"Summary generation failed: {e}")
-            raise HiRAGException("Summary generation failed") from e
-
-        if DEBUG:
-            print("\n\n\nGenerated Summary:\n", summary)
-
-        # Find all sentences that contain the placeholder
-        ref_parser = ReferenceParser()
-
-        ref_sentences = await ref_parser.parse_references(summary, placeholder)
-
-        if DEBUG:
-            print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
-
-        # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
-        result = []
-
-        chunks_keys = [c["document_key"] for c in chunks]
-
-        for sentence in ref_sentences:
-            found = False
-
-            # Chunks
-            similar_chunks = await self.query_chunks(
-                query=sentence,
-                topk=DEFAULT_QUERY_TOPK,
-                topn=DEFAULT_QUERY_TOPN
-            )
-
-            # keep the top matching chunk that has also shown up in the referred chunks
-            for chunk in similar_chunks:
-                if chunk["document_key"] in chunks_keys:
-                    result.append(chunk["document_key"])
-                    found = True
-                    break
-            
-            if not found:
-                result.append("")
-
-        format_prompt = PROMPTS["REFERENCE_FORMAT"]
-
-        # fill the summary by ref chunks
-        summary = await ref_parser.fill_placeholders(
-            text=summary,
-            references=result,
-            reference_placeholder=placeholder,
-            format_prompt=format_prompt,
-        )
-
-        if DEBUG:
-            print("\n\n\nFormatted Summary:\n", summary)
-
-        return summary
+            total_time = time.perf_counter() - start_time
+            logger.error(f"❌ Summary generation failed after {total_time:.3f}s: {e}")
+            raise
 
     # ========================================================================
     # Public interface methods

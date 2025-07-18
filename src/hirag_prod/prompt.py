@@ -174,6 +174,8 @@ Do not include the key or the id of the data record in the summary.
 
 Do not include information where the supporting evidence for it is not provided.
 
+Never use two references in the same sentence or one directly after another.
+
 Limit the total report length to {max_report_length} words.
 
 # Example Input
@@ -220,6 +222,8 @@ No matter which data source the information comes from or how many sources refer
 Do not include the key or the id of the data record in the summary.
 
 Do not include information where the supporting evidence for it is not provided.
+
+Never use two references in the same sentence or one directly after another.
 
 Limit the total report length to {max_report_length} words.
 
