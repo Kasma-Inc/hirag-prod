@@ -1048,7 +1048,7 @@ class HiRAG:
         self, chunks: List[Dict[str, Any]], entities: List[Dict[str, Any]], relationships: List[Dict[str, Any]]
     ) -> str:
         """Generate summary from chunks, entities, and relations"""
-        DEBUG = True  # Set to True for debugging output
+        DEBUG = False  # Set to True for debugging output
 
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
