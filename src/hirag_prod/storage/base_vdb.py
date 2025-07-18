@@ -17,3 +17,10 @@ class BaseVDB(ABC):
     @abstractmethod
     async def query(self, query: str) -> List[dict]:
         raise NotImplementedError
+
+    @abstractmethod
+    async def query_by_keys(
+        self,
+        key_value: List[str],
+    ) -> List[dict]:
+        raise NotImplementedError

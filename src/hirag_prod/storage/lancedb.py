@@ -264,6 +264,45 @@ class LanceDB(BaseVDB):
         )
         return await reranked_query.to_list()
 
+    async def query_by_keys(
+        self,
+        key_value: List[str],
+        table: lancedb.AsyncTable,
+        key_column: str = "document_key",
+        columns_to_select: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[dict]:
+        """Query the table by document key and return matching results.
+
+        Args:
+            document_key (str): The document key value to search for.
+            table (lancedb.AsyncTable): The lancedb table to search.
+            key_column (str): The name of the column containing document keys. Defaults to "document_key".
+            columns_to_select (Optional[List[str]]): The columns to select from the table.
+                If None, defaults to common columns.
+            limit (Optional[int]): Maximum number of results to return. If None, returns all matches.
+
+        Returns:
+            List[dict]: List of matching records from the table.
+        """
+        if columns_to_select is None:
+            columns_to_select = [
+                "text",
+                "uri",
+                "filename", 
+                "private",
+                key_column,
+            ]
+
+        # Build the query with filter for the document key
+        query = table.query().where(f"{key_column} IN ({', '.join(map(repr, key_value))})").select(columns_to_select)
+
+        # Apply limit if specified
+        if limit is not None:
+            query = query.limit(limit)
+
+        return await query.to_list()
+
     async def get_table(self, table_name: str) -> str:
         """Get a table from the database."""
         table = await self.db.open_table(table_name)
