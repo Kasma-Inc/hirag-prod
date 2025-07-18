@@ -908,7 +908,7 @@ class QueryService:
         try:
             # Query chunk embeddings by keys
             chunk_data = await self.storage.vdb.query_by_keys(
-                document_keys=chunk_ids,
+                key_value=chunk_ids,
                 key_column="document_key",
                 table=self.storage.chunks_table,
                 columns_to_select=["document_key", "vector"],
