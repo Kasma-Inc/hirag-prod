@@ -19,7 +19,7 @@ class BaseVDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def query_by_key(
+    async def query_by_keys(
         self,
         document_key: str,
     ) -> List[dict]:

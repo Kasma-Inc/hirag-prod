@@ -264,9 +264,9 @@ class LanceDB(BaseVDB):
         )
         return await reranked_query.to_list()
 
-    async def query_by_key(
+    async def query_by_keys(
         self,
-        document_key: str,
+        document_keys: List[str],
         table: lancedb.AsyncTable,
         key_column: str = "document_key",
         columns_to_select: Optional[List[str]] = None,
@@ -295,8 +295,9 @@ class LanceDB(BaseVDB):
             ]
 
         # Build the query with filter for the document key
-        query = table.query().where(f"{key_column} = '{document_key}'").select(columns_to_select)
-        
+        query = table.query().where(f"{key_column} IN ({', '.join(map(repr, document_keys))})").select(columns_to_select)
+
+        # Apply limit if specified
         if limit is not None:
             query = query.limit(limit)
 

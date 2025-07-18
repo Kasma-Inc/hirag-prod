@@ -906,21 +906,25 @@ class QueryService:
 
         res = {}
         try:
-            for chunk_id in chunk_ids:
+            # Query chunk embeddings by keys
+            chunk_data = await self.storage.vdb.query_by_keys(
+                document_keys=chunk_ids,
+                key_column="document_key",
+                table=self.storage.chunks_table,
+                columns_to_select=["document_key", "vector"],
+            )
 
-                chunk_data = await self.storage.vdb.query_by_key(
-                    document_key=chunk_id,
-                    key_column="document_key",
-                    table=self.storage.chunks_table,
-                    columns_to_select=["vector"],
-                    limit=1,
-                )
-
-                if chunk_data:
-                    res[chunk_id] = chunk_data[0].get("vector", None)
+            # chunk data is a list of dicts with 'vector' key
+            for chunk in chunk_data:
+                if "vector" in chunk and chunk["vector"] is not None:
+                    res[chunk["document_key"]] = chunk["vector"]
                 else:
-                    res[chunk_id] = None
-        
+                    # Log missing vector data and raise exception
+                    logger.warning(
+                        f"Chunk {chunk['document_key']} has no vector data"
+                    )
+                    res[chunk["document_key"]] = None
+
         except Exception as e:
             logger.error(f"Failed to query chunk embeddings: {e}")
             return {}
