@@ -154,7 +154,62 @@ PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 PROMPTS["REFERENCE_PLACEHOLDER"] = "[|REFERENCE|]"
 PROMPTS["REFERENCE_FORMAT"] = "[Data: {document_key}]"
 
-PROMPTS["summary_all"] = """
+PROMPTS["summary_all_CHN"] = """
+你是一个 AI 助手，帮助人类分析员总结给定的数据流，识别并评估与特定实体及网络内关系相关的相关信息。
+
+# 目标
+根据给定的原始文本块列表、实体列表及其关系列表，撰写一份综合摘要。
+如果所提供的描述存在矛盾，请解决这些矛盾并提供一个连贯一致的摘要。
+确保以第三人称撰写，并包含实体名称以提供完整上下文。
+
+# 基础规则
+由数据支持的要点应按以下方式表明受到数据支持：
+"这是一句由数据支持的语句 {reference_placeholder}。"
+
+无论信息来自哪个数据源或被多少来源引用，都应以相同方式引用，在句末标点前指示 {reference_placeholder}。
+摘要中不要包含数据记录的键或 ID。
+不要包含未提供支持证据的信息。
+绝不在同一句中使用两个引用或一个接一个的引用。
+将报告总长度限制为 {max_report_length} 字。
+
+# 示例输入
+-----------
+Data:
+
+Chunks
+id,chunk
+1, 联合游行是一个重要事件，正在 Verdant Oasis Plaza 举行。
+2, 和谐集会正在 Verdant Oasis Plaza 组织联合游行。
+
+Entities
+id,entity,description
+5,VERDANT OASIS PLAZA,Verdant Oasis Plaza 是联合游行的地点
+6,HARMONY ASSEMBLY,和谐集会是一个在 Verdant Oasis Plaza 举行游行的组织
+
+# 示例输出
+联合游行是一个重要事件，正在 Verdant Oasis Plaza 举行 {reference_placeholder}
+和谐集会正在 Verdant Oasis Plaza 组织联合游行 {reference_placeholder}。
+和谐集会与联合游行之间的关系表明和谐集会负责组织此事件 {reference_placeholder}。
+Verdant Oasis Plaza 与联合游行之间的关系表明联合游行在此地点举行 {reference_placeholder}。  
+
+# 实际数据
+使用以下数据进行回答。
+Data:
+{data}
+
+# 基础规则
+由数据支持的要点应按以下方式表明受到数据支持：
+"这是一句由数据支持的语句 {reference_placeholder}。"
+
+无论信息来自哪个数据源或被多少来源引用，都应以相同方式引用，在句末句点前指示 {reference_placeholder}。
+摘要中不要包含数据记录的键或 ID。
+不要包含未提供支持证据的信息。
+绝不在同一句中使用两个引用或一个接一个的引用。
+将报告总长度限制为 {max_report_length} 字。
+
+输出："""
+
+PROMPTS["summary_all_EN"] = """
 You are an AI assistant that helps a human analyst to summarize a given stream of data, identifying and assessing relevant information associated with certain entities, relationships within a network.
 
 # Goal

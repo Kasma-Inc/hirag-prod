@@ -81,6 +81,8 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.5  # Default threshold for similarity, only sho
 DEFAULT_SIMILARITY_MAX_DIFFERENCE = 0.15  # If found a most similar reference already, only accept other references with similarity having this difference or less
 DEFAULT_MAX_REFERENCES = 3  # Maximum number of references to return
 
+SUPPORTED_LANGUAGES = ["EN", "CHN"]
+
 # Vector and Schema Configuration
 try:
     EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
@@ -992,6 +994,7 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
+    _language: str = field(default="EN", init=False)
 
     # Services
     chat_service: Optional[ChatCompletion] = field(default=None, init=False)
@@ -1006,6 +1009,13 @@ class HiRAG:
         instance = cls(config=config)
         await instance._initialize(**kwargs)
         return instance
+    
+    async def set_language(self, language: str) -> None:
+        """Set the language for the HiRAG instance"""
+        if language not in SUPPORTED_LANGUAGES:
+            raise ValueError(f"Unsupported language: {language}")
+        self._language = language
+        logger.info(f"Language set to {self._language}")
 
     # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
     # outside of the HiRAG class for better management of resources
@@ -1111,7 +1121,7 @@ class HiRAG:
         relationships: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks, entities, and relations"""
-        DEBUG = True  # Set to True for debugging output
+        DEBUG = False  # Set to True for debugging output
 
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
@@ -1120,7 +1130,7 @@ class HiRAG:
         start_time = time.perf_counter()
 
         try:
-            prompt = PROMPTS["summary_all"]
+            prompt = PROMPTS["summary_all_" + self._language]
 
             placeholder = PROMPTS["REFERENCE_PLACEHOLDER"]
 
