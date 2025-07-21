@@ -5,7 +5,7 @@ from datetime import datetime
 import pytest
 from dotenv import load_dotenv
 
-from hirag_prod._llm import EmbeddingService
+from hirag_prod._llm import create_embedding_service
 from hirag_prod.schema import Entity
 from hirag_prod.storage.lancedb import LanceDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
@@ -31,7 +31,7 @@ async def test_lancedb():
     try:
         strategy_provider = RetrievalStrategyProvider()
         lance_db = await LanceDB.create(
-            embedding_func=EmbeddingService().create_embeddings,
+            embedding_func=create_embedding_service().create_embeddings,
             db_url=db_path,
             strategy_provider=strategy_provider,
         )
@@ -157,7 +157,7 @@ async def test_lancedb_with_entity():
         ]
         strategy_provider = RetrievalStrategyProvider()
         lance_db = await LanceDB.create(
-            embedding_func=EmbeddingService().create_embeddings,
+            embedding_func=create_embedding_service().create_embeddings,
             db_url=db_path,
             strategy_provider=strategy_provider,
         )
@@ -195,7 +195,7 @@ async def test_lancedb_upsert_texts():
     try:
         strategy_provider = RetrievalStrategyProvider()
         lance_db = await LanceDB.create(
-            embedding_func=EmbeddingService().create_embeddings,
+            embedding_func=create_embedding_service().create_embeddings,
             db_url=db_path,
             strategy_provider=strategy_provider,
         )

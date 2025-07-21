@@ -434,7 +434,7 @@ class VanillaEntity(BaseEntity):
             entity_name: Name of the entity for logging
 
         Returns:
-            Tuple of (merged_descriptions, merged_chunk_ids)
+            Tuple of (merged_descriptions, merged_chunk_ids) - limited to at most 6 descriptions
         """
         merged_descriptions = []
         merged_chunk_ids = []
@@ -455,6 +455,11 @@ class VanillaEntity(BaseEntity):
 
             merged_descriptions.extend(descriptions)
             merged_chunk_ids.extend(chunk_ids)
+
+        # Limit to at most 6 descriptions
+        # TODO: change to random sampling or other sampling strategies?
+        if len(merged_descriptions) > 6:
+            merged_descriptions = merged_descriptions[:6]
 
         return merged_descriptions, merged_chunk_ids
 

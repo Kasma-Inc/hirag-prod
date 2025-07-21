@@ -7,7 +7,8 @@ wheels/
 *.egg-info
 *.db
 *.gpickle
-kb/*
+kb/
+tests/output/
 
 # Virtual environments
 .venv

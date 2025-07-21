@@ -394,4 +394,4 @@ class TestIntegration:
 
         if isinstance(service, LocalEmbeddingService):
             assert hasattr(service.client, "_http_client")
-            assert not service.client._http_client.is_closed
+            assert service.client._http_client.is_closed
