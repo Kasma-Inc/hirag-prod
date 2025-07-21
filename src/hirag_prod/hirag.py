@@ -81,7 +81,7 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.5  # Default threshold for similarity, only sho
 DEFAULT_SIMILARITY_MAX_DIFFERENCE = 0.15  # If found a most similar reference already, only accept other references with similarity having this difference or less
 DEFAULT_MAX_REFERENCES = 3  # Maximum number of references to return
 
-SUPPORTED_LANGUAGES = ["EN", "CHN"]
+SUPPORTED_LANGUAGES = ["en", "cn"]  # Supported languages for generation
 
 # Vector and Schema Configuration
 try:
@@ -994,7 +994,7 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
-    _language: str = field(default="EN", init=False)
+    _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
     chat_service: Optional[ChatCompletion] = field(default=None, init=False)
