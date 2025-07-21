@@ -76,6 +76,11 @@ DEFAULT_RELATION_UPSERT_CONCURRENCY = 32
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 1.0
 
+# Reference Configuration
+DEFAULT_SIMILARITY_THRESHOLD = 0.5  # Default threshold for similarity, only shows references with similarity above this value
+DEFAULT_SIMILARITY_MAX_DIFFERENCE = 0.15  # If found a most similar reference already, only accept other references with similarity having this difference or less
+DEFAULT_MAX_REFERENCES = 3  # Maximum number of references to return
+
 # Vector and Schema Configuration
 try:
     EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
@@ -933,6 +938,40 @@ class QueryService:
         
         return res
 
+    async def query_entity_embeddings(
+        self, entity_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Query entity embeddings"""
+        if not entity_ids:
+            return {}
+
+        res = {}
+        try:
+            # Query entity embeddings by keys
+            entity_data = await self.storage.vdb.query_by_keys(
+                key_value=entity_ids,
+                key_column="document_key",
+                table=self.storage.entities_table,
+                columns_to_select=["document_key", "vector"],
+            )
+
+            # entity data is a list of dicts with 'vector' key
+            for entity in entity_data:
+                if "vector" in entity and entity["vector"] is not None:
+                    res[entity["document_key"]] = entity["vector"]
+                else:
+                    # Log missing vector data and raise exception
+                    logger.warning(
+                        f"Entity {entity['document_key']} has no vector data"
+                    )
+                    res[entity["document_key"]] = None
+
+        except Exception as e:
+            logger.error(f"Failed to query entity embeddings: {e}")
+            return {}
+
+        return res
+
 # ============================================================================
 # Main HiRAG class
 # ============================================================================
@@ -1033,6 +1072,23 @@ class HiRAG:
     # Chat service methods
     # ========================================================================
 
+    # Helper function for similarity calcuation
+    async def calculate_similarity(self, sentence_embedding: List[float], references: Dict[str, List[float]]) -> List[Dict[str, float]]:
+        """Calculate similarity between sentence embedding and reference embeddings"""
+        from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
+
+        similar_refs = []
+        for entity_key, embedding in references.items():
+            if embedding is not None:
+                similarity = sklearn_cosine_similarity(
+                    [sentence_embedding], [embedding]
+                )[0][0]
+                similar_refs.append({
+                    "document_key": entity_key,
+                    "similarity": similarity
+                })
+        return similar_refs
+
     async def chat_complete(self, prompt: str, **kwargs: Any) -> str:
         """Chat with the user"""
         if not self.chat_service:
@@ -1055,7 +1111,7 @@ class HiRAG:
         relationships: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks, entities, and relations"""
-        DEBUG = False  # Set to True for debugging output
+        DEBUG = True  # Set to True for debugging output
 
         if not self.chat_service:
             raise HiRAGException("HiRAG instance not properly initialized")
@@ -1073,7 +1129,7 @@ class HiRAG:
             # Should use parser to better format the data
             data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
             data += "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
-            data += "Relationships:\n" + str(relationships) + "\n\n"
+            # data += "Relations:\n" + str(relationships) + "\n\n"
 
             prompt = prompt.format(data=data, max_report_length="5000", reference_placeholder=placeholder)
 
@@ -1102,16 +1158,25 @@ class HiRAG:
             # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
             result = []
 
-            chunks_keys = [c["document_key"] for c in chunks]
+            chunk_keys = [c["document_key"] for c in chunks]
+            entity_keys = [e["document_key"] for e in entities]
 
             # Generate embeddings for each reference sentence
             if not ref_sentences:
                 logger.warning("No reference sentences found in summary")
                 return summary
 
-            sentence_embeddings = await self.embedding_service.create_embeddings(
-                texts=ref_sentences
-            )
+            sentence_embeddings = await self.embedding_service.create_embeddings(texts=ref_sentences)
+            chunk_embeddings = await self._query_service.query_chunk_embeddings(chunk_keys)
+            entity_embeddings = await self._query_service.query_entity_embeddings(entity_keys)
+
+            # relation_descriptions = [rel.properties["description"] for rel in relationships]
+            # relation_embeddings = await self.embedding_service.create_embeddings(texts=relation_descriptions)
+            # # make relation embeddings be a dict with key as "source:target" and value as the embedding
+            # relation_embeddings = {
+            #     f"rel({rel.source}:{rel.target})": embedding
+            #     for rel, embedding in zip(relationships, relation_embeddings)
+            # }
 
             for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
                 found = False
@@ -1121,34 +1186,70 @@ class HiRAG:
                     result.append("")
                     continue
 
-                chunk_embeddings = await self._query_service.query_chunk_embeddings(chunks_keys)
-
-                # Similarity search to find the most similar chunks
-                similar_chunks = []
-                for chunk_key, embedding in chunk_embeddings.items():
-                    if embedding is not None:
-                        similarity = sklearn_cosine_similarity(
-                            [sentence_embedding], [embedding]
-                        )[0][0]
-                        similar_chunks.append({
-                            "document_key": chunk_key,
-                            "similarity": similarity
-                        })
-                
-                # Sort by similarity
-                similar_chunks.sort(key=lambda x: x["similarity"], reverse=True)
+                similar_chunks = await self.calculate_similarity(sentence_embedding, chunk_embeddings)
 
                 if DEBUG:
                     print("\n\n\nSimilar Chunks for Sentence:", sentence, "\n", similar_chunks)
 
+                similar_entities = await self.calculate_similarity(sentence_embedding, entity_embeddings)
+
+                if DEBUG:
+                    print("\n\n\nSimilar Entities for Sentence:", sentence, "\n", similar_entities)
+
+                # similar_relations = await self.calculate_similarity(sentence_embedding, relation_embeddings)
+
+                # if DEBUG:
+                #     print("\n\n\nSimilar Relations for Sentence:", sentence, "\n", similar_relations)
+
+                # Sort by similarity
+                # reference_list = similar_chunks + similar_entities + similar_relations
+                reference_list = similar_chunks + similar_entities
+                reference_list.sort(key=lambda x: x["similarity"], reverse=True)
+
                 # If no similar chunks found, append empty string
-                if not similar_chunks:
+                if not reference_list:
                     result.append("")
                     continue
 
-                # Get the top similar chunk
-                top_chunk = similar_chunks[0]["document_key"]
-                result.append(top_chunk)
+                reference_threshold = DEFAULT_SIMILARITY_THRESHOLD
+                max_similarity_difference = DEFAULT_SIMILARITY_MAX_DIFFERENCE
+
+                # If we have a most similar reference, only accept others with similarity having this difference or less
+                most_similar = reference_list[0]
+                if most_similar["similarity"] > reference_threshold:
+                    reference_threshold = max(
+                        most_similar["similarity"] - max_similarity_difference, reference_threshold
+                    )
+                
+                # Filter references based on similarity threshold
+                filtered_references = [
+                    ref for ref in reference_list if ref["similarity"] >= reference_threshold
+                ]
+
+                # Limit the number of references to DEFAULT_MAX_REFERENCES
+                filtered_references = filtered_references[:DEFAULT_MAX_REFERENCES]
+
+                # If no references found, append empty string
+                if not filtered_references:
+                    result.append("")
+                    continue
+                
+                # Separate the references by "," and sort by type as primary, similarity as secondary
+                filtered_references.sort(
+                    key=lambda x: (x["document_key"].split("_")[0], -x["similarity"])
+                )
+
+                # Append the document keys to the result
+                if DEBUG:
+                    print("\n\n\nFiltered References for Sentence:", sentence, "\n", filtered_references)
+
+                if len(filtered_references) == 1:
+                    result.append(filtered_references[0]["document_key"])
+                else:
+                    # Join the document keys with ", "
+                    result.append(
+                        ", ".join(ref["document_key"] for ref in filtered_references)
+                    )
 
             format_prompt = PROMPTS["REFERENCE_FORMAT"]
 

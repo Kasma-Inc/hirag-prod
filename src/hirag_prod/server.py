@@ -96,7 +96,7 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
 
     try:
         result = await asyncio.wait_for(
-            hirag_instance.query_all(query), timeout=DEFAULT_TIMEOUT
+            hirag_instance.query_all(query, summary=True), timeout=DEFAULT_TIMEOUT
         )
         return result
     except asyncio.TimeoutError:
