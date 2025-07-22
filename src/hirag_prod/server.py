@@ -109,7 +109,7 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
 
     
 @mcp.tool()
-async def set_language(language: str, ctx: Context = None) -> str:
+async def hi_set_language(language: str, ctx: Context = None) -> str:
     """
     Set the language for HiRAG summary generation.
     
