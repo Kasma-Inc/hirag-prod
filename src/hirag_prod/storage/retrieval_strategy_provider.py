@@ -1,10 +1,12 @@
 #! /usr/bin/env python3
-
 import logging
+import os
 from typing import Any, Dict, List, Union
 
 from lancedb.query import AsyncQuery, AsyncVectorQuery, LanceQueryBuilder
 from lancedb.rerankers import VoyageAIReranker
+
+from hirag_prod.reranker import LocalReranker
 
 
 class BaseRetrievalStrategyProvider:
@@ -43,18 +45,30 @@ class RetrievalStrategyProvider(BaseRetrievalStrategyProvider):
         self, query: Union[LanceQueryBuilder, AsyncQuery], text: str
     ):
         # TODO(tatiana): add rerank logic
-        # import lancedb.rerankers as rerankers
-        # query.rerank(rerankers.RRFReranker(), text)
         logging.info("TODO: add rerank logic for %s", text)
         return query
 
     def rerank_chunk_query(self, query: AsyncVectorQuery, text: str, topn: int):
-        # token limit:16,000
-        reranker = VoyageAIReranker(
-            model_name="rerank-2", top_n=topn, return_score="relevance"
-        )
-        reranked_query = query.rerank(reranker=reranker, query_string=text)
-        return reranked_query
+        """
+        Rerank chunk query using either API-based or local reranker
+        """
+        reranker_type = os.getenv("RERANKER_TYPE", "api")
+
+        if reranker_type == "local":
+            # Use deployed reranker
+            reranker = LocalReranker(top_n=topn)
+            reranked_query = query.rerank(reranker=reranker, query_string=text)
+            return reranked_query
+        else:
+            # Use API-based reranker (VoyageAI)
+            reranker = VoyageAIReranker(
+                api_key=os.getenv("VOYAGE_API_KEY"),
+                model_name=os.getenv("API_RERANKER_MODEL", "rerank-2"),
+                top_n=topn,
+                return_score="relevance",
+            )
+            reranked_query = query.rerank(reranker=reranker, query_string=text)
+            return reranked_query
 
     def format_catalog_search_result_to_llm(
         self, input_data: List[Dict[str, Any]]
