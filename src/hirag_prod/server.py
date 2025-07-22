@@ -107,6 +107,43 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
         logger.error(f"Error in hi_search: {e}")
         return f"Search error: {str(e)}"
 
+    
+@mcp.tool()
+async def set_language(language: str, ctx: Context = None) -> str:
+    """
+    Set the language for HiRAG summary generation.
+    
+    Args:
+        language: The language code ("en" for English, "cn" for Chinese)
+        
+    Returns:
+        Confirmation message
+    """
+    if not language:
+        return "Error: Language parameter cannot be empty"
+    
+    try:
+        hirag_instance = ctx.request_context.lifespan_context.get("hirag")
+        if not hirag_instance:
+            raise ValueError("HiRAG instance not initialized")
+    except (KeyError, AttributeError) as e:
+        logger.error(f"Context access error: {e}")
+        return "Service temporarily unavailable"
+    except Exception as e:
+        logger.error(f"Unexpected error accessing HiRAG instance: {e}")
+        return "Internal server error"
+    
+    try:
+        await hirag_instance.set_language(language)
+        logger.info(f"Language successfully set to: {language}")
+        return f"Language successfully set to: {language}"
+    except ValueError as e:
+        logger.error(f"Invalid language: {e}")
+        return f"Error: {str(e)}"
+    except Exception as e:
+        logger.error(f"Error setting language: {e}")
+        return f"Error setting language: {str(e)}"
+
 
 def main():
     mcp.run(transport="stdio")
