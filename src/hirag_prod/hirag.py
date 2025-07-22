@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pyarrow as pa
 from dotenv import load_dotenv
 
-# from hirag_prod.similarity import CosineSimilarity
-
 from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
@@ -42,6 +40,9 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
+
+# from hirag_prod.similarity import CosineSimilarity
+
 
 load_dotenv("/chatbot/.env", override=True)
 
