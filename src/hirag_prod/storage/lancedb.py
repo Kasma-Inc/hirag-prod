@@ -289,13 +289,17 @@ class LanceDB(BaseVDB):
             columns_to_select = [
                 "text",
                 "uri",
-                "filename", 
+                "filename",
                 "private",
                 key_column,
             ]
 
         # Build the query with filter for the document key
-        query = table.query().where(f"{key_column} IN ({', '.join(map(repr, key_value))})").select(columns_to_select)
+        query = (
+            table.query()
+            .where(f"{key_column} IN ({', '.join(map(repr, key_value))})")
+            .select(columns_to_select)
+        )
 
         # Apply limit if specified
         if limit is not None:
