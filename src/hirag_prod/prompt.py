@@ -154,7 +154,9 @@ PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 PROMPTS["REFERENCE_PLACEHOLDER"] = "[|REFERENCE|]"
 PROMPTS["REFERENCE_FORMAT"] = "[Data: {document_key}]"
 
-PROMPTS["summary_all_cn"] = """
+PROMPTS[
+    "summary_all_cn"
+] = """
 你是一个 AI 助手，帮助人类分析员总结给定的数据流，识别并评估与特定实体及网络内关系相关的相关信息。
 
 # 目标
@@ -209,7 +211,9 @@ Data:
 
 输出："""
 
-PROMPTS["summary_all_en"] = """
+PROMPTS[
+    "summary_all_en"
+] = """
 You are an AI assistant that helps a human analyst to summarize a given stream of data, identifying and assessing relevant information associated with certain entities, relationships within a network.
 
 # Goal
