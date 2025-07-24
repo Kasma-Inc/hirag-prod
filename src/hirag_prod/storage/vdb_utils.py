@@ -1,64 +1,4 @@
 #!/usr/bin/env python3
-"""
-Vector Database Utilities
-(now use lancedb(https://www.lancedb.com/) as the vector database)
-
--------------
-Database Path:
--------------
-By default, the tool looks for the database at 'kb/hirag.db'. You can specify a different
-database path using the --db-path parameter:
-
-python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/your/database.db --overview
-
-------------------
-Command Line Usage:
-------------------
-# Basic operations (uses default db: kb/hirag.db)
-python -m src.hirag_prod.storage.vdb_utils --help
-python -m src.hirag_prod.storage.vdb_utils --list-tables
-python -m src.hirag_prod.storage.vdb_utils --overview
-
-# Custom database path
-python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/custom.db --overview
-
-# Export single table (use --output for specific file)
-python -m src.hirag_prod.storage.vdb_utils --table chunks --output chunks.csv
-
-# Export all tables (use --output-dir for batch directory)
-python -m src.hirag_prod.storage.vdb_utils --export all --output-dir exports
-
-# Export with custom database and exclude columns
-python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/db --table entities \
-    --output entities.csv --exclude-columns vector description
-
-# Export with row limit
-python -m src.hirag_prod.storage.vdb_utils --table chunks --output chunks_sample.csv --limit 100
-
---------------
-Output Options:
---------------
-- --output: Specify output file for single table export (used with --table)
-- --output-dir: Specify directory for batch export (used with --export all)
-- --exclude-columns: List of columns to exclude from export (default: vector)
-- --limit: Maximum number of rows to export
-
-------------
-Module Usage:
-------------
-from vdb_utils import VDBManager
-
-async with VDBManager("path/to/db") as vdb:
-    # List tables
-    tables = await vdb.list_tables()
-
-    # Get table info
-    info = await vdb.get_table_info("chunks")
-
-    # Export data
-    await vdb.export_table_to_csv("chunks", "output.csv")
-"""
-
 import argparse
 import asyncio
 import json
@@ -81,7 +21,64 @@ console = Console()
 
 
 class VDBManager:
-    """Async context manager for LanceDB operations"""
+    """Vector Database Utilities
+    (now use lancedb(https://www.lancedb.com/) as the vector database)
+
+    -------------
+    Database Path:
+    -------------
+    By default, the tool looks for the database at 'kb/hirag.db'. You can specify a different
+    database path using the --db-path parameter:
+
+    python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/your/database.db --overview
+
+    ------------------
+    Command Line Usage:
+    ------------------
+    # Basic operations (uses default db: kb/hirag.db)
+    python -m src.hirag_prod.storage.vdb_utils --help
+    python -m src.hirag_prod.storage.vdb_utils --list-tables
+    python -m src.hirag_prod.storage.vdb_utils --overview
+
+    # Custom database path
+    python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/custom.db --overview
+
+    # Export single table (use --output for specific file)
+    python -m src.hirag_prod.storage.vdb_utils --table chunks --output chunks.csv
+
+    # Export all tables (use --output-dir for batch directory)
+    python -m src.hirag_prod.storage.vdb_utils --export all --output-dir exports
+
+    # Export with custom database and exclude columns
+    python -m src.hirag_prod.storage.vdb_utils --db-path /path/to/db --table entities \
+        --output entities.csv --exclude-columns vector description
+
+    # Export with row limit
+    python -m src.hirag_prod.storage.vdb_utils --table chunks --output chunks_sample.csv --limit 100
+
+    --------------
+    Output Options:
+    --------------
+    - --output: Specify output file for single table export (used with --table)
+    - --output-dir: Specify directory for batch export (used with --export all)
+    - --exclude-columns: List of columns to exclude from export (default: vector)
+    - --limit: Maximum number of rows to export
+
+    ------------
+    Module Usage:
+    ------------
+    from vdb_utils import VDBManager
+
+    async with VDBManager("path/to/db") as vdb:
+        # List tables
+        tables = await vdb.list_tables()
+
+        # Get table info
+        info = await vdb.get_table_info("chunks")
+
+        # Export data
+        await vdb.export_table_to_csv("chunks", "output.csv")
+    """
 
     def __init__(self, db_path: str = "kb/hirag.db"):
         """
