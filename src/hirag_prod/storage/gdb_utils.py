@@ -21,62 +21,55 @@ console = Console()
 
 
 class GDBManager:
-    """Graph Database Utilities
-    (now use networkx https://networkx.org/ as the graph database)
+    """## Graph Database Utilities
+    (now use [networkx](https://networkx.org/) as the graph database)
 
-    -------------
-    Database Path:
-    -------------
-    By default, the tool looks for the graph database at 'kb/hirag.gpickle'. You can specify a different
-    database path using the --db-path parameter:
+    ### Database Path:
+    By default, the tool looks for the graph database at `kb/hirag.gpickle`. You can specify a different
+    database path using the `--db-path` parameter:
 
-    python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/your/graph.gpickle --overview
+    `python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/your/graph.gpickle --overview`
 
-    ------------------
-    Command Line Usage:
-    ------------------
-    # Basic operations (uses default db: kb/hirag.gpickle)
-    python -m src.hirag_prod.storage.gdb_utils --help
-    python -m src.hirag_prod.storage.gdb_utils --overview
-    python -m src.hirag_prod.storage.gdb_utils --stats
+    ### Command Line Usage:
+    - Basic operations (uses default db: `kb/hirag.gpickle`)
+        - `python -m src.hirag_prod.storage.gdb_utils --help`
+        - `python -m src.hirag_prod.storage.gdb_utils --overview`
+        - `python -m src.hirag_prod.storage.gdb_utils --stats`
 
-    # Custom database path
-    python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/custom_graph.gpickle --overview
+    - Custom database path
+        - `python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/custom_graph.gpickle --overview`
 
-    # Export nodes and edges
-    python -m src.hirag_prod.storage.gdb_utils --export nodes --output nodes.csv
-    python -m src.hirag_prod.storage.gdb_utils --export edges --output edges.csv
-    python -m src.hirag_prod.storage.gdb_utils --export all --output-dir exports
+    - Export nodes and edges
+        - `python -m src.hirag_prod.storage.gdb_utils --export nodes --output nodes.csv`
+        - `python -m src.hirag_prod.storage.gdb_utils --export edges --output edges.csv`
+        - `python -m src.hirag_prod.storage.gdb_utils --export all --output-dir exports`
 
-    # Export with custom database and row limit
-    python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/graph.gpickle --export nodes \
-        --output nodes.csv --limit 100
+    - Export with custom database and row limit
+        - `python -m src.hirag_prod.storage.gdb_utils --db-path /path/to/graph.gpickle --export nodes --output nodes.csv --limit 100`
 
-    # Query specific node neighbors
-    python -m src.hirag_prod.storage.gdb_utils --query-node "ent-xxx" --output neighbors.csv
+    - Query specific node neighbors
+        - `python -m src.hirag_prod.storage.gdb_utils --query-node "ent-xxx" --output neighbors.csv`
 
-    --------------
-    Output Options:
-    --------------
-    - --output: Specify output file for single export (used with --export or --query-node)
-    - --output-dir: Specify directory for batch export (used with --export all)
-    - --limit: Maximum number of rows to export
+    ### Output Options:
+    - `--output`: Specify output file for single export (used with `--export` or `--query-node`)
+    - `--output-dir`: Specify directory for batch export (used with `--export all`)
+    - `--limit`: Maximum number of rows to export
 
-    ------------
-    Module Usage:
-    ------------
+    ### Module Usage:
+    ```python
     from gdb_utils import GDBManager
 
     async with GDBManager("path/to/graph.gpickle") as gdb:
         # Get graph stats
         stats = await gdb.get_graph_stats()
-        
+
         # Export nodes/edges
         await gdb.export_nodes_to_csv("nodes.csv")
         await gdb.export_edges_to_csv("edges.csv")
-        
+
         # Query node neighbors
         neighbors = await gdb.query_node_neighbors("ent-xxx")
+    ```
     """
 
     def __init__(
