@@ -1286,9 +1286,7 @@ class HiRAG:
                     result.append([filtered_references[0]["document_key"]])
                 else:
                     # Join the document keys with ", "
-                    result.append(
-                        [ref["document_key"] for ref in filtered_references]
-                    )
+                    result.append([ref["document_key"] for ref in filtered_references])
 
             format_prompt = PROMPTS["REFERENCE_FORMAT"]
 
