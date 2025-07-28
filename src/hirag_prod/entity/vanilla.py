@@ -14,10 +14,9 @@ from hirag_prod._utils import (
     pack_user_ass_to_openai_messages,
     split_string_by_multi_markers,
 )
+from hirag_prod.entity.base import BaseEntity
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.schema import Chunk, Entity, Relation
-
-from .base import BaseEntity
 
 
 @dataclass
@@ -29,52 +28,82 @@ class VanillaEntity(BaseEntity):
     # === Core Components ===
     llm_model_name: str = field(default="gpt-4o-mini")
     extract_func: Callable
-    continue_prompt: str = field(
-        default_factory=lambda: PROMPTS["entity_continue_extraction"]
-    )
+    language: str = field(default="en")  # en | cn
 
     # === Entity Extraction Configuration ===
-    entity_extract_prompt: str = field(
-        default_factory=lambda: PROMPTS["hi_entity_extraction"]
-    )
+    entity_extract_prompt: str = field(init=False)
     entity_extract_max_gleaning: int = field(default=1)
-    entity_extract_termination_prompt: str = field(
-        default_factory=lambda: PROMPTS["entity_if_loop_extraction"]
-    )
-    entity_extract_context: dict = field(
-        default_factory=lambda: {
-            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
-            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
-            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
-            "entity_types": ",".join(PROMPTS["DEFAULT_ENTITY_TYPES"]),
-        }
-    )
+    entity_continue_prompt: str = field(init=False)
+    entity_extract_termination_prompt: str = field(init=False)
+    entity_extract_context: dict = field(init=False)
 
     # === Relation Extraction Configuration ===
-    relation_extract_prompt: str = field(
-        default_factory=lambda: PROMPTS["hi_relation_extraction"]
-    )
+    relation_extract_prompt: str = field(init=False)
     relation_extract_max_gleaning: int = field(default=1)
-    relation_extract_termination_prompt: str = field(
-        default_factory=lambda: PROMPTS["relation_if_loop_extraction"]
-    )
-    relation_extract_context: dict = field(
-        default_factory=lambda: {
-            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
-            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
-            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
-        }
-    )
+    relation_continue_prompt: str = field(init=False)
+    relation_extract_termination_prompt: str = field(init=False)
+    relation_extract_context: dict = field(init=False)
 
     # === Concurrency Configuration ===
     entity_extraction_concurrency: int = field(default=64)
     entity_merge_concurrency: int = field(default=64)
     relation_extraction_concurrency: int = field(default=64)
 
+    def __post_init__(self):
+        self._update_language_config()
+
+    def _update_language_config(self):
+        """Update all language-specific configurations based on current language setting."""
+        self.entity_continue_prompt = PROMPTS[
+            f"entity_continue_extraction_{self.language}"
+        ]
+        self.relation_continue_prompt = PROMPTS[
+            f"relation_continue_extraction_{self.language}"
+        ]
+
+        self.entity_extract_prompt = PROMPTS[f"hi_entity_extraction_{self.language}"]
+        self.entity_extract_termination_prompt = PROMPTS[
+            f"entity_if_loop_extraction_{self.language}"
+        ]
+        self.entity_extract_context = {
+            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
+            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
+            "entity_types": ",".join(PROMPTS[f"DEFAULT_ENTITY_TYPES_{self.language}"]),
+        }
+
+        self.relation_extract_prompt = PROMPTS[
+            f"hi_relation_extraction_{self.language}"
+        ]
+        self.relation_extract_termination_prompt = PROMPTS[
+            f"relation_if_loop_extraction_{self.language}"
+        ]
+        self.relation_extract_context = {
+            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
+            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
+            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
+        }
+
+    def set_language(self, language: str):
+        """
+        Update the language setting and refresh all language-specific configurations.
+
+        Args:
+            language: Language code ('en' or 'cn')
+        """
+        if language not in ["en", "cn"]:
+            raise ValueError(
+                f"Unsupported language: {language}. Supported languages: ['en', 'cn']"
+            )
+
+        self.language = language
+        self._update_language_config()
+        logging.info(f"[VanillaEntity] Language updated to {language}")
+
     @classmethod
-    def create(cls, **kwargs) -> "VanillaEntity":
+    def create(cls, language: str = "en", **kwargs) -> "VanillaEntity":
         """Factory method to create a VanillaEntity instance with custom configuration."""
-        return cls(**kwargs)
+        return cls(language=language, **kwargs)
 
     async def entity(self, chunks: List[Chunk]) -> List[Entity]:
         """
@@ -198,12 +227,12 @@ class VanillaEntity(BaseEntity):
             # Get additional entities through gleaning
             glean_result = await self.extract_func(
                 model=self.llm_model_name,
-                prompt=self.continue_prompt,
+                prompt=self.entity_continue_prompt,
                 history_messages=history,
             )
 
             history += pack_user_ass_to_openai_messages(
-                self.continue_prompt, glean_result
+                self.entity_continue_prompt, glean_result
             )
             entity_result += glean_result
 
@@ -642,12 +671,12 @@ class VanillaEntity(BaseEntity):
         for glean_idx in range(self.relation_extract_max_gleaning):
             glean_result = await self.extract_func(
                 model=self.llm_model_name,
-                prompt=self.continue_prompt,
+                prompt=self.relation_continue_prompt,
                 history_messages=history,
             )
 
             history += pack_user_ass_to_openai_messages(
-                self.continue_prompt, glean_result
+                self.relation_continue_prompt, glean_result
             )
             relation_result += glean_result
 

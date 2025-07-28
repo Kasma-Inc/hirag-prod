@@ -988,6 +988,7 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
+    _entity_extractor: Optional[VanillaEntity] = field(default=None, init=False)
     _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
@@ -1007,8 +1008,13 @@ class HiRAG:
     async def set_language(self, language: str) -> None:
         """Set the language for the HiRAG instance"""
         if language not in SUPPORTED_LANGUAGES:
-            raise ValueError(f"Unsupported language: {language}")
+            raise ValueError(
+                f"Unsupported language: {language}. Supported languages: {SUPPORTED_LANGUAGES}"
+            )
+
         self._language = language
+        self._entity_extractor.set_language(language)
+
         logger.info(f"Language set to {self._language}")
 
     # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
@@ -1047,9 +1053,10 @@ class HiRAG:
             chunk_size=self.config.chunk_size, chunk_overlap=self.config.chunk_overlap
         )
 
-        entity_extractor = VanillaEntity.create(
+        self._entity_extractor = VanillaEntity.create(
             extract_func=self.chat_service.complete,
             llm_model_name=self.config.llm_model_name,
+            language=self._language,
         )
 
         # Initialize resume tracker
@@ -1065,7 +1072,7 @@ class HiRAG:
         self._processor = DocumentProcessor(
             storage=self._storage,
             chunker=chunker,
-            entity_extractor=entity_extractor,
+            entity_extractor=self._entity_extractor,
             resume_tracker=resume_tracker,
             config=self.config,
             metrics=self._metrics,

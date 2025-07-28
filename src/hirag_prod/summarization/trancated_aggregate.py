@@ -49,7 +49,7 @@ class TrancatedAggregateSummarizer(BaseSummarizer):
                 tokens[: self.input_max_tokens], model_name=self.tiktoken_model_name
             ).split(sep)
 
-        summary_prompt_template = PROMPTS["summarize_entity_descriptions"]
+        summary_prompt_template = PROMPTS["summarize_entity_descriptions_en"]
 
         context_for_prompt = {
             "entity_name": entity_name,

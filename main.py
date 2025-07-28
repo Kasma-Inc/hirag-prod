@@ -14,7 +14,7 @@ load_dotenv("/chatbot/.env")
 async def index():
     index = await HiRAG.create()
 
-    await index.set_language("cn")  # Set language to Chinese
+    await index.set_language("en")  # en | cn
 
     # TODO: the insertion prompt would also need to support Chinese
     document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
