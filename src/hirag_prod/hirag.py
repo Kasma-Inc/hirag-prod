@@ -180,6 +180,7 @@ class ProcessingMetrics:
         return {
             "total_chunks": self.total_chunks,
             "processed_chunks": self.processed_chunks,
+            "processed_chats": self.processed_chats,
             "total_entities": self.total_entities,
             "total_relations": self.total_relations,
             "processing_time": self.processing_time,
@@ -462,7 +463,7 @@ class StorageManager:
                 properties={
                     "text": content,  # Required for the schema
                     "chat_id": chat_id,
-                    "role": role,
+                    "role": role.lower(),  # Normalize to lowercase
                     "content": content,
                 },
                 table=self.chats_table,
@@ -1045,14 +1046,22 @@ class QueryService:
         if not chat_id:
             raise ValueError("chat_id must be provided")
 
+        if role is not None:
+            role = role.lower()  # Normalize to lowercase
+
         try:
+            # Build where clause safely to prevent injection
+            where_clause = f"chat_id == '{chat_id}'"
+            if role:
+                where_clause += f" AND role == '{role}'"
+                
             return await self.storage.vdb.query(
                 query=query,
-                where=f"chat_id == '{chat_id}'" + (f" AND role == '{role}'" if role else ""),
+                where=where_clause,
                 table=self.storage.chats_table,
                 topk=topk,
                 topn=topn,
-                columns_to_select=["text", "role", "content"],
+                columns_to_select=["text", "role", "content", "chat_id"],
             )
         except Exception as e:
             logger.error(f"Failed to query chat messages: {e}")
@@ -1610,8 +1619,13 @@ class HiRAG:
             chat_id: Unique identifier for the chat session
             role: Role of the message sender (user, assistant, tool)
             content: Content of the message
+            
         Returns:
             ProcessingMetrics: Metrics for the insertion operation
+            
+        Raises:
+            HiRAGException: If the HiRAG instance is not properly initialized
+            ValueError: If any required parameter is missing or invalid
         """
 
         if not self._processor:
@@ -1653,7 +1667,12 @@ class HiRAG:
             topn: Number of results per chunk to return
 
         Returns:
-            List[Dict[str, Any]]: List of chat messages matching the query
+            List[Dict[str, Any]]: List of chat messages matching the query,
+                                 sorted by relevance score
+                                 
+        Raises:
+            HiRAGException: If the HiRAG instance is not properly initialized
+            ValueError: If required parameters are missing or invalid
         """
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
