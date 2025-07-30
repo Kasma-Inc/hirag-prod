@@ -107,6 +107,100 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
         logger.error(f"Error in hi_search: {e}")
         return f"Search error: {str(e)}"
 
+@mcp.tool()
+async def hi_insert_chat(
+    chat_id: str, role: str, content: str, ctx: Context = None
+) -> str:
+    """
+    Insert a User / Assistant / Tool message into the chat history.
+
+    Args:
+        chat_id: Unique identifier for the chat session
+        role: Role of the message sender (user, assistant, tool)
+        content: Content of the message
+
+    Returns:
+        Success or error message
+    """
+    # Validate inputs
+    if not chat_id or not chat_id.strip() or not content or not content.strip() or not role or not role.strip():
+        return "Error: chat_id, role, and content cannot be empty"
+    
+    # Validate role
+    valid_roles = {"user", "assistant", "tool"}
+    if role.lower() not in valid_roles:
+        return f"Error: role must be one of {valid_roles}"
+
+    try:
+        hirag_instance = ctx.request_context.lifespan_context.get("hirag")
+        if not hirag_instance:
+            raise ValueError("HiRAG instance not initialized")
+    except (KeyError, AttributeError) as e:
+        logger.error(f"Context access error: {e}")
+        return "Service temporarily unavailable"
+    except Exception as e:
+        logger.error(f"Unexpected error accessing HiRAG instance: {e}")
+        return "Internal server error"
+
+    try:
+        metrics = await hirag_instance.insert_chat_message(chat_id, role.lower(), content)
+        logger.info(f"Chat message inserted: chat_id={chat_id}, role={role}, content_length={len(content)}")
+        return f"Chat message inserted successfully. Total processed chats: {metrics.processed_chats}"
+    except Exception as e:
+        logger.error(f"Error inserting chat message: {e}")
+        return f"Error inserting chat message: {str(e)}"
+
+@mcp.tool()
+async def hi_search_chat(
+    user_query: str, chat_id: str, role: str = None, ctx: Context = None
+) -> Union[str, dict]:
+    """
+    Search the chat history for messages related to the user's query.
+
+    Args:
+        user_query: The search query to find relevant chat messages
+        chat_id: Unique identifier for the chat session
+        role: Optional role filter (user, assistant, tool)
+
+    Returns:
+        Search results as formatted string or error message
+    """
+    # Validate inputs
+    if not user_query or not user_query.strip() or not chat_id or not chat_id.strip():
+        return "Error: user_query and chat_id cannot be empty"
+    
+    # Validate role if provided
+    if role:
+        valid_roles = {"user", "assistant", "tool"}
+        if role.lower() not in valid_roles:
+            return f"Error: role must be one of {valid_roles} or None"
+
+    try:
+        hirag_instance = ctx.request_context.lifespan_context.get("hirag")
+        if not hirag_instance:
+            raise ValueError("HiRAG instance not initialized")
+    except (KeyError, AttributeError) as e:
+        logger.error(f"Context access error: {e}")
+        return "Service temporarily unavailable"
+    except Exception as e:
+        logger.error(f"Unexpected error accessing HiRAG instance: {e}")
+        return "Internal server error"
+
+    try:
+        results = await hirag_instance.search_chat_history(
+            user_query=user_query, 
+            chat_id=chat_id, 
+            role=role.lower() if role else None
+        )
+        
+        if not results:
+            return f"No chat messages found for query '{user_query}' in chat '{chat_id}'"
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error searching chat history: {e}")
+        return f"Error searching chat history: {str(e)}"
 
 @mcp.tool()
 async def hi_set_language(language: str, ctx: Context = None) -> str:

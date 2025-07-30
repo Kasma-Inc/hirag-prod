@@ -201,6 +201,7 @@ class LanceDB(BaseVDB):
         self,
         query: str,
         table: lancedb.AsyncTable,
+        where: Optional[str] = None,
         topk: Optional[int] = TOPK,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
@@ -213,6 +214,8 @@ class LanceDB(BaseVDB):
         Args:
             query (str): The query string.
             table (Union[lancedb.AsyncTable, lancedb.table.Table]): The lancedb table to search.
+            where (Optional[str]): Additional filter expression to apply.
+                This can be used to filter results based on specific conditions.
             topk (Optional[int]): The number of results to return. Defaults to 10.
             uri_list (Optional[List[str]]): The list of documents (by uri) to search in.
             require_access (Optional[Literal["private", "public"]]): The access level of the documents to search in.
@@ -243,6 +246,10 @@ class LanceDB(BaseVDB):
 
         # We use the cosine distance to calculate the distance between the query and the embeddings
         query = table.query().nearest_to(embedding).distance_type("cosine")
+        
+        # Apply the where filter if provided
+        if where is not None:
+            query = query.where(where)
 
         # Set nprobes to avoid the warning - adjust the value based on your needs
         # Higher values = more accurate but slower, lower values = faster but less accurate

@@ -170,6 +170,7 @@ class ProcessingMetrics:
 
     total_chunks: int = 0
     processed_chunks: int = 0
+    processed_chats: int = 0
     total_entities: int = 0
     total_relations: int = 0
     processing_time: float = 0.0
@@ -272,6 +273,7 @@ class StorageManager:
         """Initialize storage tables"""
         await self._initialize_chunks_table()
         await self._initialize_entities_table()
+        await self._initialize_chats_table()
 
     async def _initialize_chunks_table(self) -> None:
         """Initialize chunks table"""
@@ -332,6 +334,30 @@ class StorageManager:
                 )
             else:
                 raise StorageError(f"Failed to initialize entities table: {e}")
+    
+    async def _initialize_chats_table(self) -> None:
+        """Initialize chats table"""
+        try:
+            self.chats_table = await self.vdb.db.open_table("chats")
+        except Exception as e:
+            if "was not found" in str(e):
+                self.chats_table = await self.vdb.db.create_table(
+                    "chats",
+                    schema=pa.schema(
+                        [
+                            pa.field("text", pa.string()),
+                            pa.field("chat_id", pa.string()),
+                            pa.field("role", pa.string()),
+                            pa.field("content", pa.string()),
+                            pa.field("timestamp", pa.timestamp("ms")),
+                            pa.field(
+                                "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
+                            ),
+                        ]
+                    ),
+                )
+            else:
+                raise StorageError(f"Failed to initialize chats table: {e}")
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
@@ -423,6 +449,27 @@ class StorageManager:
                 )
         except Exception as e:
             raise StorageError(f"Failed to upsert entities: {e}")
+    
+    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
+    async def upsert_chat_message(self, chat_id: str, role: str, content: str) -> None:
+        """Upsert a chat message"""
+        if not chat_id or not role or not content:
+            raise ValueError("chat_id, role, and content must be provided")
+
+        try:
+            await self.vdb.upsert_text(
+                text_to_embed=content,
+                properties={
+                    "text": content,  # Required for the schema
+                    "chat_id": chat_id,
+                    "role": role,
+                    "content": content,
+                },
+                table=self.chats_table,
+                mode="append",
+            )
+        except Exception as e:
+            raise StorageError(f"Failed to upsert chat message: {e}")
 
     async def get_existing_chunks(self, uri: str) -> List[str]:
         """Get existing chunk IDs"""
@@ -823,6 +870,30 @@ class DocumentProcessor:
         except Exception as e:
             logger.warning(f"Failed to mark relation extraction complete: {e}")
 
+    
+    async def _process_chat_message(
+        self, chat_id: str, role: str, content: str
+    ) -> None:
+        """Process a chat message"""
+        async with self.metrics.track_operation("process_chat_message"):
+            if not chat_id or not role or not content:
+                raise ValueError("chat_id, role, and content must be provided")
+
+            # Insert the chat message into the knowledge base
+            await self.storage.upsert_chat_message(chat_id, role, content)
+            logger.info(f"Chat message processed: {content} (Role: {role}, Chat ID: {chat_id})")
+
+    async def insert_chat_message(
+        self, chat_id: str, role: str, content: str
+    ) -> ProcessingMetrics:
+        """Insert a chat message into the knowledge base"""
+        async with self.metrics.track_operation("insert_chat_message"):
+            await self._process_chat_message(chat_id, role, content)
+            
+            # Update metrics and return current state
+            self.metrics.metrics.processed_chats += 1
+            
+            return self.metrics.metrics
 
 # ============================================================================
 # Query Service
@@ -966,6 +1037,26 @@ class QueryService:
             return {}
 
         return res
+
+    async def query_chat_messages(
+        self, query: str, chat_id: str, role: Optional[str] = None, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+    ) -> List[Dict[str, Any]]:
+        """Query chat messages"""
+        if not chat_id:
+            raise ValueError("chat_id must be provided")
+
+        try:
+            return await self.storage.vdb.query(
+                query=query,
+                where=f"chat_id == '{chat_id}'" + (f" AND role == '{role}'" if role else ""),
+                table=self.storage.chats_table,
+                topk=topk,
+                topn=topn,
+                columns_to_select=["text", "role", "content"],
+            )
+        except Exception as e:
+            logger.error(f"Failed to query chat messages: {e}")
+            return []
 
 
 # ============================================================================
@@ -1504,6 +1595,72 @@ class HiRAG:
 
         except Exception as e:
             logger.warning(f"⚠️ Cleanup failed: {e}")
+    
+    # ========================================================================
+    # Chat Message Storage and Retrieval
+    # ========================================================================
+
+    async def insert_chat_to_kb(
+        self, chat_id: str, role: str, content: str,
+    ) -> ProcessingMetrics:
+        """
+        Insert a User / Assistant / Tool message into the chat history.
+
+        Args:
+            chat_id: Unique identifier for the chat session
+            role: Role of the message sender (user, assistant, tool)
+            content: Content of the message
+        Returns:
+            ProcessingMetrics: Metrics for the insertion operation
+        """
+
+        if not self._processor:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        logger.info(f"🚀 Inserting chat message into KB: {chat_id}, Role: {role}")
+        start_time = time.perf_counter()
+
+        try:
+            metrics = await self._processor.insert_chat_message(
+                chat_id=chat_id,
+                role=role,
+                content=content,
+            )
+
+            total_time = time.perf_counter() - start_time
+            metrics.processing_time = total_time
+            logger.info(f"🏁 Chat message insertion completed in {total_time:.3f}s")
+
+            return metrics
+
+        except Exception as e:
+            total_time = time.perf_counter() - start_time
+            logger.error(f"❌ Chat message insertion failed after {total_time:.3f}s: {e}")
+            raise
+    
+    async def search_chat_history(
+        self, user_query: str, chat_id: str, role: Optional[str] = None,
+        topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+    ) -> List[Dict[str, Any]]:
+        """
+        Search the chat history for messages related to the user's query.
+
+        Args:
+            user_query: User's query to search for in the chat history
+            chat_id: Unique identifier for the chat session
+            role: Optional role filter (user, assistant, tool)
+            topk: Number of top results to return
+            topn: Number of results per chunk to return
+
+        Returns:
+            List[Dict[str, Any]]: List of chat messages matching the query
+        """
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        return await self._query_service.query_chat_messages(
+            query=user_query, chat_id=chat_id, role=role, topk=topk, topn=topn
+        )
 
     # ========================================================================
     # Context manager support
@@ -1530,6 +1687,11 @@ class HiRAG:
     def entities_table(self):
         """Backward compatibility: access entities table"""
         return self._storage.entities_table if self._storage else None
+
+    @property
+    def chats_table(self):
+        """Backward compatibility: access chats table"""
+        return self._storage.chats_table if self._storage else None
 
     @property
     def vdb(self):
