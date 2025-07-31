@@ -159,7 +159,7 @@ async def hi_insert_chat(
 
 @mcp.tool()
 async def hi_search_chat(
-    user_query: str, chat_id: str, role: List[str] = None, ctx: Context = None
+    user_query: str, chat_id: str, role: Union[str, List[str]] = None, ctx: Context = None
 ) -> Union[str, dict]:
     """
     Search the chat history for messages related to the user's query.
@@ -177,6 +177,8 @@ async def hi_search_chat(
         return "Error: user_query and chat_id cannot be empty"
     
     # Validate role if provided
+    if role is not None and isinstance(role, str):
+        role = [role.lower()]
     if role and not isinstance(role, list):
         return "Error: role must be a list of roles (user, assistant, tool)"
     if role and not all(r.lower() in {"user", "assistant", "tool"} for r in role):
