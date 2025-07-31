@@ -1,6 +1,6 @@
 import pytest
 
-from hirag_prod._llm import ChatCompletion
+from hirag_prod._llm import create_chat_service
 from hirag_prod.entity.vanilla import VanillaEntity
 from hirag_prod.schema import Chunk, Entity, Relation
 
@@ -8,7 +8,7 @@ from hirag_prod.schema import Chunk, Entity, Relation
 @pytest.mark.asyncio
 async def test_vanilla_entity():
     entity_handler = VanillaEntity.create(
-        extract_func=ChatCompletion().complete,
+        extract_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
 
@@ -131,7 +131,7 @@ async def test_vanilla_relation():
         ),
     ]
     entity_handler = VanillaEntity.create(
-        extract_func=ChatCompletion().complete,
+        extract_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
     relations = await entity_handler.relation(chunks, entities)

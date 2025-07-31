@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
+    LocalChatService,
     LocalEmbeddingService,
+    create_chat_service,
     create_embedding_service,
 )
 from hirag_prod._utils import _limited_gather_with_factory
@@ -992,7 +994,9 @@ class HiRAG:
     _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
-    chat_service: Optional[ChatCompletion] = field(default=None, init=False)
+    chat_service: Optional[Union[ChatCompletion, LocalChatService]] = field(
+        default=None, init=False
+    )
     embedding_service: Optional[Union[EmbeddingService, LocalEmbeddingService]] = field(
         default=None, init=False
     )
@@ -1075,7 +1079,7 @@ class HiRAG:
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
         # Initialize services
-        self.chat_service = ChatCompletion()
+        self.chat_service = create_chat_service()
         self.embedding_service = create_embedding_service(
             default_batch_size=self.config.embedding_batch_size
         )
