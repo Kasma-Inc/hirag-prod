@@ -242,27 +242,31 @@ class TestS3Operations:
         # Verify test file exists
         assert os.path.exists(test_file_path), f"Test file not found: {test_file_path}"
 
+        # Get bucket name from environment
+        bucket_name = os.getenv("AWS_BUCKET_NAME")
+        s3_file_path = f"{file_type}/{test_file_name}"
+
         # Step 1: Upload file to S3
-        upload_success = await upload_file_to_s3(test_file_path, file_type)
+        upload_success = upload_file_to_s3(test_file_path, s3_file_path)
         assert upload_success, "Failed to upload file to S3"
 
         # Step 2: List S3 files to verify upload
-        list_success = await list_s3_files(prefix=f"{os.getenv('AWS_UPLOAD_PATH', '')}")
+        list_success = list_s3_files(prefix=file_type)
         assert list_success, "Failed to list S3 files"
 
         # Step 3: Download file from S3
-        download_success = await download_s3_file(
-            test_file_name, file_type, temp_download_dir
+        downloaded_file_path = os.path.join(temp_download_dir, test_file_name)
+        download_success = download_s3_file(
+            bucket_name, s3_file_path, downloaded_file_path
         )
         assert download_success, "Failed to download file from S3"
 
         # Verify downloaded file exists and has content
-        downloaded_file_path = os.path.join(temp_download_dir, test_file_name)
         assert os.path.exists(downloaded_file_path), "Downloaded file not found"
         assert os.path.getsize(downloaded_file_path) > 0, "Downloaded file is empty"
 
         # Step 4: Delete file from S3
-        delete_success = await delete_s3_file(test_file_name, file_type)
+        delete_success = delete_s3_file(bucket_name, s3_file_path)
         assert delete_success, "Failed to delete file from S3"
 
 

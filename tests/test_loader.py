@@ -55,7 +55,7 @@ class TestDoclingLoader:
     @pytest.fixture
     def test_files_dir(self) -> str:
         """Get the test files directory path"""
-        return os.path.join(os.path.dirname(__file__), "test_files")
+        return os.path.join("file://", os.path.dirname(__file__), "test_files")
 
     def _create_document_meta(
         self, doc_type: str, filename: str, uri: str

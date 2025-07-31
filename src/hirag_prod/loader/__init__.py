@@ -1,5 +1,7 @@
+import logging
 from typing import Any, Literal, Optional, Tuple
 
+from hirag_prod._utils import route_file_path
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
@@ -9,6 +11,14 @@ from hirag_prod.loader.ppt_loader import PowerPointLoader
 from hirag_prod.loader.txt_loader import TxtLoader
 from hirag_prod.loader.word_loader import WordLoader
 from hirag_prod.schema import File
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
+logger = logging.getLogger("HiRAG")
 
 DEFAULT_LOADER_CONFIGS = {
     "application/pdf": {
@@ -84,6 +94,11 @@ def load_document(
         raise ValueError(f"Unsupported document type: {content_type}")
     loader_conf = loader_configs[content_type]
     loader = loader_conf["loader"]()
+
+    try:
+        document_path = route_file_path(document_path)
+    except Exception as e:
+        logger.warning(f"Unexpected error in route_file_path, using original path: {e}")
 
     if loader_type == "docling":
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)
