@@ -433,7 +433,7 @@ class LocalLLMClient:
 
     def __init__(self, config: LocalLLMConfig):
         self.config = config
-        self._http_client = httpx.AsyncClient(timeout=60.0)
+        self._http_client = httpx.AsyncClient(timeout=120.0)
 
     async def create_chat_completion(
         self, messages: List[Dict[str, str]], **kwargs: Any
