@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Union
+from typing import AsyncIterator, Union, List
 
 from mcp.server.fastmcp import Context, FastMCP
 
