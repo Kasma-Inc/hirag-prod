@@ -143,7 +143,14 @@ async def hi_insert_chat(
         return "Internal server error"
 
     try:
-        metrics = await hirag_instance.search_chat_history(chat_id, role.lower(), content)
+        metrics = await hirag_instance.insert_chat_to_kb(
+            chat_id=chat_id,
+            role=role.lower(),
+            content=content.strip()
+        )
+        if not metrics:
+            return f"No chat message inserted for chat_id={chat_id}, role={role}, content_length={len(content)}"
+        
         logger.info(f"Chat message inserted: chat_id={chat_id}, role={role}, content_length={len(content)}")
         return f"Chat message inserted successfully. Total processed chats: {metrics.processed_chats}"
     except Exception as e:
