@@ -152,7 +152,7 @@ async def hi_insert_chat(
 
 @mcp.tool()
 async def hi_search_chat(
-    user_query: str, chat_id: str, role: str = None, ctx: Context = None
+    user_query: str, chat_id: str, role: List[str] = None, ctx: Context = None
 ) -> Union[str, dict]:
     """
     Search the chat history for messages related to the user's query.
@@ -170,10 +170,10 @@ async def hi_search_chat(
         return "Error: user_query and chat_id cannot be empty"
     
     # Validate role if provided
-    if role:
-        valid_roles = {"user", "assistant", "tool"}
-        if role.lower() not in valid_roles:
-            return f"Error: role must be one of {valid_roles} or None"
+    if role and not isinstance(role, list):
+        return "Error: role must be a list of roles (user, assistant, tool)"
+    if role and not all(r.lower() in {"user", "assistant", "tool"} for r in role):
+        return "Error: role must be one of ['user', 'assistant', 'tool']"
 
     try:
         hirag_instance = ctx.request_context.lifespan_context.get("hirag")
@@ -190,9 +190,10 @@ async def hi_search_chat(
         # if role is None, it will search all roles one by one
         results = {}
         if role:
-            results[role.lower()] = await hirag_instance.search_chat_history(
-                user_query=user_query, chat_id=chat_id, role=role.lower()
-            )
+            for r in role:
+                results[r] = await hirag_instance.search_chat_history(
+                    user_query=user_query, chat_id=chat_id, role=r
+                )
         else:
             for r in ["user", "assistant", "tool"]:
                 results[r] = await hirag_instance.search_chat_history(
