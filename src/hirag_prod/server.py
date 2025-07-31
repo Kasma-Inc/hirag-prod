@@ -143,7 +143,7 @@ async def hi_insert_chat(
         return "Internal server error"
 
     try:
-        metrics = await hirag_instance.insert_chat_to_kb(chat_id, role.lower(), content)
+        metrics = await hirag_instance.search_chat_history(chat_id, role.lower(), content)
         logger.info(f"Chat message inserted: chat_id={chat_id}, role={role}, content_length={len(content)}")
         return f"Chat message inserted successfully. Total processed chats: {metrics.processed_chats}"
     except Exception as e:
@@ -187,12 +187,18 @@ async def hi_search_chat(
         return "Internal server error"
 
     try:
-        results = await hirag_instance.search_chat_history(
-            user_query=user_query, 
-            chat_id=chat_id, 
-            role=role.lower() if role else None
-        )
-        
+        # if role is None, it will search all roles one by one
+        results = {}
+        if role:
+            results[role.lower()] = await hirag_instance.search_chat_history(
+                user_query=user_query, chat_id=chat_id, role=role.lower()
+            )
+        else:
+            for r in ["user", "assistant", "tool"]:
+                results[r] = await hirag_instance.search_chat_history(
+                    user_query=user_query, chat_id=chat_id, role=r
+                )
+
         if not results:
             return f"No chat messages found for query '{user_query}' in chat '{chat_id}'"
         
