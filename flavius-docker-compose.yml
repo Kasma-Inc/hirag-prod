@@ -1,0 +1,151 @@
+name: &name flavius-test
+
+x-common-config: &flavius-common-config
+  pull_policy: if_not_present
+  environment:
+    AWS_EC2_METADATA_DISABLED: true
+    ETCD_ENDPOINT: etcd-0:2379
+    CATALOG_NAME: flavius_llm
+    OTLP_ENDPOINT: http://alloy:4317
+    OTLP_HTTP_URL: http://alloy:4318/v1/traces
+    ROOT_DIR: "oss://flavius/flavius_llm"
+    AWS_ACCESS_KEY_ID:  $DC_AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY: $DC_AWS_SECRET_ACCESS_KEY
+    AWS_ENDPOINT: "http://minio:9000"
+    AWS_REGION: $DC_AWS_REGION
+    AWS_BUCKET_NAME: flavius
+  networks:
+    default:
+  volumes:
+    - ./config/flavius/:/Flavius/config/
+  restart: on-failure
+  depends_on:
+    - etcd-0
+
+x-health-config: &flavius-health-config
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 10s
+
+volumes:
+  etcd_data:
+  minio-data:
+
+networks:
+  default:
+    driver: bridge
+    name:  ${COMPOSE_PROJECT_NAME}
+    
+services:
+  etcd-0:
+    hostname: etcd-0
+    image: quay.io/coreos/etcd:v3.5.0  # Use an appropriate etcd version
+    volumes:
+      - etcd_data:/etcd-data  # Persistent storage for etcd data
+    networks:
+      default:
+    # ports:
+    #   - "2379:2379"  # Client communication
+    #   - "2380:2380"  # Server-to-server communication
+    command:
+      - /usr/local/bin/etcd
+      - --data-dir=/etcd-data
+      - --name=etcd-0
+      - --initial-advertise-peer-urls=http://etcd-0:2380
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --advertise-client-urls=http://etcd-0:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --initial-cluster=etcd-0=http://etcd-0:2380
+      - --initial-cluster-token=etcd-cluster
+      - --initial-cluster-state=new
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://localhost:2379", "endpoint", "health"]
+      <<: *flavius-health-config
+    restart: always
+
+  minio:
+    hostname: minio
+    image: quay.io/minio/minio
+    networks:
+      default:
+        aliases:
+          - flavius.minio # for AWS virtual host style
+    ports:
+      - 30900:9000
+    #   - 9001:9001
+    volumes:
+      - minio-data:/data
+    environment:
+      MINIO_DOMAIN: minio # for AWS virtual host style
+      MINIO_ROOT_USER: $DC_MINIO_USER
+      MINIO_ROOT_PASSWORD: $DC_MINIO_USER_PASSWORD
+      AWS_ACCESS_KEY_ID: $DC_AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY: $DC_AWS_SECRET_ACCESS_KEY
+    command: server --console-address ":9001" /data
+  mc:
+    depends_on:
+      - minio
+    image: quay.io/minio/mc
+    networks:
+      default:
+    environment:
+      MINIO_ROOT_USER: $DC_MINIO_USER
+      MINIO_ROOT_PASSWORD: $DC_MINIO_USER_PASSWORD
+      AWS_ACCESS_KEY_ID: $DC_AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY: $DC_AWS_SECRET_ACCESS_KEY
+    volumes:
+      - ./config/minio/init_flavius.sh:/ops/bin/init_flavius.sh
+    entrypoint:
+      - /bin/sh
+      - /ops/bin/init_flavius.sh
+
+  ms-0:
+    <<: *flavius-common-config
+    image: registry-intl.cn-hongkong.aliyuncs.com/flavius/flavius:HEAD-05545db
+    hostname: ms-0
+    # ports:
+    #   - 55521:55521
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        sh /Flavius/config/config_gen.sh /Flavius/config/ms.toml.template /Flavius/ms.toml
+        exec /Flavius/MetaService -config=/Flavius/ms.toml -logtostderr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:55521/health"]
+      <<: *flavius-health-config
+
+  cn-0:
+    <<: *flavius-common-config
+    image: registry-intl.cn-hongkong.aliyuncs.com/flavius/flavius:HEAD-05545db
+    hostname: cn-0
+    # ports:
+    #   - 55532:55532
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        sh /Flavius/config/config_gen.sh /Flavius/config/cn.toml.template /Flavius/cn.toml
+        # export MALLOC_CONF="prof:true" # enable profiling for jemalloc
+        # export TCMALLOC_SAMPLE_PARAMETER=524288
+        exec /Flavius/FlaviusCN -config=/Flavius/cn.toml -logtostderr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:55532/health"]
+      <<: *flavius-health-config
+
+  fe-0:
+    <<: *flavius-common-config
+    image: registry-intl.cn-hongkong.aliyuncs.com/flavius/flavius:HEAD-05545db
+    hostname: fe-0
+    ports:
+    - 30000:30000
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        sh /Flavius/config/config_gen.sh /Flavius/config/fe.toml.template /Flavius/fe.toml
+        exec /Flavius/frontend/frontend -c /Flavius/fe.toml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:30000/health"]
+      <<: *flavius-health-config
