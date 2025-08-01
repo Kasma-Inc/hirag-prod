@@ -1,13 +1,13 @@
 import pytest
 
-from hirag_prod._llm import ChatCompletion
+from hirag_prod._llm import create_chat_service
 from hirag_prod.summarization import TrancatedAggregateSummarizer
 
 
 @pytest.mark.asyncio
 async def test_summarizer():
     summarizer = TrancatedAggregateSummarizer(
-        extract_func=ChatCompletion().complete,
+        extract_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
     summary = await summarizer.summarize_entity(

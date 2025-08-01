@@ -1,7 +1,7 @@
 import pytest
 from dotenv import load_dotenv
 
-from hirag_prod._llm import ChatCompletion
+from hirag_prod._llm import create_chat_service
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.networkx import NetworkXGDB
 
@@ -51,7 +51,7 @@ async def test_networkx_gdb():
 
     gdb = NetworkXGDB.create(
         path="test.gpickle",
-        llm_func=ChatCompletion().complete,
+        llm_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
     for relation in relations:
@@ -63,7 +63,7 @@ async def test_networkx_gdb():
 async def test_merge_node():
     gdb = NetworkXGDB.create(
         path="test.gpickle",
-        llm_func=ChatCompletion().complete,
+        llm_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
     description1 = "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."
@@ -98,7 +98,9 @@ async def test_merge_node():
 
 @pytest.mark.asyncio
 async def test_query_one_hop():
-    gdb = NetworkXGDB.create(path="test.gpickle", llm_func=ChatCompletion().complete)
+    gdb = NetworkXGDB.create(
+        path="test.gpickle", llm_func=create_chat_service().complete
+    )
 
     relations = [
         Relation(
@@ -150,7 +152,7 @@ async def test_query_one_hop():
 
     gdb = NetworkXGDB.create(
         path="test.gpickle",
-        llm_func=ChatCompletion().complete,
+        llm_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
 
@@ -176,7 +178,7 @@ async def test_query_one_hop():
 async def test_merge_nodes():
     gdb = NetworkXGDB.create(
         path="test.gpickle",
-        llm_func=ChatCompletion().complete,
+        llm_func=create_chat_service().complete,
         llm_model_name="gpt-4o-mini",
     )
     description1 = "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."

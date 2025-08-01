@@ -11,15 +11,19 @@ from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
 from typing import Any, Callable, Coroutine, Iterable, List, Optional, TypeVar
+from urllib.parse import urlparse
 
 import boto3
 import numpy as np
 import tiktoken
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
+S3_DOWNLOAD_DIR = "/chatbot/files/s3"
+OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
 load_dotenv("/chatbot/.env", override=True)
 
 
@@ -400,26 +404,16 @@ async def _limited_gather_with_factory(
 
 
 # Upload files to s3
-async def upload_file_to_s3(
-    file_obj: str, upload_obj_type: str, upload_obj: str = None
-) -> bool:
+def upload_file_to_s3(input_file_path: str, s3_file_path: str) -> bool:
     if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
         raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    s3_client = boto3.client("s3")
-
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    if aws_bucket_name is None:
+    if os.getenv("AWS_BUCKET_NAME", None) is None:
         raise ValueError("AWS_BUCKET_NAME is not set")
-    # If S3 object_name was not specified, use file_name
-    if upload_obj is None:
-        upload_obj = os.path.join(
-            os.getenv("AWS_UPLOAD_PATH", None),
-            upload_obj_type,
-            os.path.basename(file_obj),
-        )
+    s3_client = boto3.client("s3")
+    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
     try:
-        s3_client.upload_file(file_obj, aws_bucket_name, upload_obj)
-        print(f"✅ Successfully uploaded {file_obj} to {upload_obj}")
+        s3_client.upload_file(input_file_path, aws_bucket_name, s3_file_path)
+        print(f"✅ Successfully uploaded {input_file_path} to {s3_file_path}")
     except ClientError as e:
         logger.error(e)
         return False
@@ -427,7 +421,7 @@ async def upload_file_to_s3(
 
 
 # List files in s3
-async def list_s3_files(prefix: str = None) -> bool:
+def list_s3_files(prefix: str = None) -> bool:
     """
     List files in an Amazon S3 bucket.
 
@@ -439,11 +433,10 @@ async def list_s3_files(prefix: str = None) -> bool:
     """
     if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
         raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    s3_client = boto3.client("s3")
-
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    if aws_bucket_name is None:
+    if os.getenv("AWS_BUCKET_NAME", None) is None:
         raise ValueError("AWS_BUCKET_NAME is not set")
+    s3_client = boto3.client("s3")
+    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
 
     try:
         if prefix is None:
@@ -466,7 +459,9 @@ async def list_s3_files(prefix: str = None) -> bool:
 
 
 # Download files from s3
-async def download_s3_file(file_name: str, file_type: str, download_path: str) -> bool:
+def download_s3_file(
+    bucket_name: str, s3_file_path: str, download_file_path: str
+) -> bool:
     """
     Download a file from an Amazon S3 bucket to a local path.
 
@@ -479,64 +474,105 @@ async def download_s3_file(file_name: str, file_type: str, download_path: str) -
     """
     if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
         raise ValueError("AWS_ACCESS_KEY_ID is not set")
+
     s3_client = boto3.client("s3")
 
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    if aws_bucket_name is None:
-        raise ValueError("AWS_BUCKET_NAME is not set")
-
-    aws_obj_name = os.path.join(
-        os.getenv("AWS_UPLOAD_PATH", None), file_type, file_name
-    )
-    local_obj_name = os.path.join(download_path, file_name)
     try:
-        s3_client.download_file(aws_bucket_name, aws_obj_name, local_obj_name)
-        print(f"✅ Successfully downloaded {aws_obj_name} to {local_obj_name}")
+        s3_client.download_file(bucket_name, s3_file_path, download_file_path)
+        print(f"✅ Successfully downloaded {s3_file_path} to {download_file_path}")
         return True
     except ClientError as e:
         logger.error(e)
         return False
 
 
-# Delete files from s3
-async def delete_s3_file(file_name: str, file_type: str) -> bool:
-    """
-    Delete a file from an Amazon S3 bucket.
-
-    Args:
-        bucket_name (str): The name of the S3 bucket.
-        file_key (str): The key (path) of the file to delete.
-
-    Returns:
-        bool: True if deletion was successful, False otherwise.
-    """
+def delete_s3_file(bucket_name: str, s3_file_path: str) -> bool:
     if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
         raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    s3_client = boto3.client("s3")
-
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    if aws_bucket_name is None:
+    if os.getenv("AWS_BUCKET_NAME", None) is None:
         raise ValueError("AWS_BUCKET_NAME is not set")
-
-    aws_obj_name = os.path.join(
-        os.getenv("AWS_UPLOAD_PATH", None), file_type, file_name
-    )
-
+    s3_client = boto3.client("s3")
+    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
     try:
-        s3_client.delete_object(Bucket=aws_bucket_name, Key=aws_obj_name)
-        print(f"✅ Successfully deleted {aws_obj_name} from bucket {aws_bucket_name}")
+        s3_client.delete_object(Bucket=aws_bucket_name, Key=s3_file_path)
+        print(f"✅ Successfully deleted {s3_file_path} from {bucket_name}")
         return True
     except ClientError as e:
-        logger.error(f"Error deleting {aws_obj_name}: {e}")
+        logger.error(e)
         return False
 
 
-if __name__ == "__main__":
-    print("LIST S3 FILES:")
-    if os.getenv("AWS_UPLOAD_PATH"):
-        aws_upload_path = os.getenv("AWS_UPLOAD_PATH")
-        asyncio.run(list_s3_files(aws_upload_path))
+# ========================================================================
+# Aliyun OSS utils
+# ========================================================================
+def download_oss_file(
+    bucket_name: str, oss_file_path: str, download_file_path: str
+) -> bool:
+    """
+    Download a file from an Aliyun OSS bucket to a local path.
+    """
+    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_ID is not set")
+    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
+    if os.getenv("OSS_ENDPOINT", None) is None:
+        raise ValueError("OSS_ENDPOINT is not set")
+    endpoint = os.getenv("OSS_ENDPOINT")
+    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
 
-    if os.getenv("AWS_DOWNLOAD_PATH"):
-        aws_download_path = os.getenv("AWS_DOWNLOAD_PATH")
-        asyncio.run(list_s3_files(aws_download_path))
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        endpoint_url=endpoint,
+        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
+    )
+
+    try:
+        s3_client.download_file(bucket_name, oss_file_path, download_file_path)
+        print(f"✅ Successfully downloaded {oss_file_path} to {download_file_path}")
+        return True
+    except ClientError as e:
+        logger.error(e)
+        return False
+
+
+# ========================================================================
+# File path router
+# ========================================================================
+def route_file_path(url_path: str) -> str:
+    """
+    Parse a url path to a located file path
+    """
+    local_file_path = None
+    parsed_url = urlparse(url_path)
+    if parsed_url.scheme == "file":
+        local_file_path = parsed_url.path
+        return local_file_path
+
+    bucket_name = parsed_url.netloc
+    file_path = parsed_url.path.lstrip("/")
+    file_name = os.path.basename(file_path)
+
+    if parsed_url.scheme == "s3":
+        local_file_path = os.path.join(S3_DOWNLOAD_DIR, file_name)
+        os.makedirs(S3_DOWNLOAD_DIR, exist_ok=True)
+        flag = download_s3_file(bucket_name, file_path, local_file_path)
+        if not flag:
+            raise ValueError(f"Failed to download {file_path} from {bucket_name}")
+        return local_file_path
+    elif parsed_url.scheme == "oss":
+        local_file_path = os.path.join(OSS_DOWNLOAD_DIR, file_name)
+        os.makedirs(OSS_DOWNLOAD_DIR, exist_ok=True)
+        flag = download_oss_file(bucket_name, file_path, local_file_path)
+        if not flag:
+            raise ValueError(f"Failed to download {file_path} from {bucket_name}")
+        return local_file_path
+    else:
+        raise ValueError(f"Unsupported scheme: '{parsed_url.scheme}'")
+
+
+if __name__ == "__main__":
+    print("========== LIST S3 FILES ==========")
+    list_s3_files()

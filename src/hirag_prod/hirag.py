@@ -14,7 +14,9 @@ from dotenv import load_dotenv
 from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
+    LocalChatService,
     LocalEmbeddingService,
+    create_chat_service,
     create_embedding_service,
 )
 from hirag_prod._utils import _limited_gather_with_factory
@@ -51,7 +53,7 @@ load_dotenv("/chatbot/.env", override=True)
 # ============================================================================
 
 # Database Configuration
-DEFAULT_DB_URL = "kb/hirag.db"
+DEFAULT_VECTOR_DB_PATH = "kb/hirag.db"
 DEFAULT_GRAPH_DB_PATH = "kb/hirag.gpickle"
 
 # Redis Configuration for resume tracker
@@ -133,7 +135,7 @@ class HiRAGConfig:
     """HiRAG system configuration"""
 
     # Database configuration
-    db_url: str = DEFAULT_DB_URL
+    vector_db_path: str = DEFAULT_VECTOR_DB_PATH
     graph_db_path: str = DEFAULT_GRAPH_DB_PATH
 
     # Resume tracker configuration (Redis-based)
@@ -988,18 +990,34 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
+    _entity_extractor: Optional[VanillaEntity] = field(default=None, init=False)
     _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
-    chat_service: Optional[ChatCompletion] = field(default=None, init=False)
+    chat_service: Optional[Union[ChatCompletion, LocalChatService]] = field(
+        default=None, init=False
+    )
     embedding_service: Optional[Union[EmbeddingService, LocalEmbeddingService]] = field(
         default=None, init=False
     )
 
     @classmethod
-    async def create(cls, config: Optional[HiRAGConfig] = None, **kwargs) -> "HiRAG":
+    async def create(
+        cls,
+        config: Optional[HiRAGConfig] = None,
+        vector_db_path: Optional[str] = None,
+        graph_db_path: Optional[str] = None,
+        **kwargs,
+    ) -> "HiRAG":
         """Create HiRAG instance"""
         config = config or HiRAGConfig()
+
+        # Override the default database paths if provided
+        config.vector_db_path = (
+            vector_db_path if vector_db_path else DEFAULT_VECTOR_DB_PATH
+        )
+        config.graph_db_path = graph_db_path if graph_db_path else DEFAULT_GRAPH_DB_PATH
+
         instance = cls(config=config)
         await instance._initialize(**kwargs)
         return instance
@@ -1007,16 +1025,61 @@ class HiRAG:
     async def set_language(self, language: str) -> None:
         """Set the language for the HiRAG instance"""
         if language not in SUPPORTED_LANGUAGES:
-            raise ValueError(f"Unsupported language: {language}")
+            raise ValueError(
+                f"Unsupported language: {language}. Supported languages: {SUPPORTED_LANGUAGES}"
+            )
+
         self._language = language
+        self._entity_extractor.set_language(language)
+
         logger.info(f"Language set to {self._language}")
+
+    async def set_db_paths(self, vector_db_path: str, graph_db_path: str) -> None:
+        """Set the database paths for the HiRAG instance"""
+        self.config.vector_db_path = vector_db_path
+        self.config.graph_db_path = graph_db_path
+
+        # Reinitialize storage with new paths
+        await self._reinitialize_storage()
+
+        logger.info(
+            f"Database paths updated - VDB: {self.config.vector_db_path}, GDB: {self.config.graph_db_path}"
+        )
+
+    async def _reinitialize_storage(self) -> None:
+        """Reinitialize storage components with current configuration"""
+        if not self.chat_service or not self.embedding_service:
+            raise HiRAGException(
+                "Services not initialized - cannot reinitialize storage"
+            )
+
+        vdb = await LanceDB.create(
+            embedding_func=self.embedding_service.create_embeddings,
+            db_url=self.config.vector_db_path,
+            strategy_provider=RetrievalStrategyProvider(),
+        )
+
+        gdb = NetworkXGDB.create(
+            path=self.config.graph_db_path,
+            llm_func=self.chat_service.complete,
+        )
+
+        # Initialize new storage manager
+        self._storage = StorageManager(vdb, gdb)
+        await self._storage.initialize()
+
+        # Update dependent components
+        if self._processor:
+            self._processor.storage = self._storage
+        if self._query_service:
+            self._query_service.storage = self._storage
 
     # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
     # outside of the HiRAG class for better management of resources
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
         # Initialize services
-        self.chat_service = ChatCompletion()
+        self.chat_service = create_chat_service()
         self.embedding_service = create_embedding_service(
             default_batch_size=self.config.embedding_batch_size
         )
@@ -1025,7 +1088,7 @@ class HiRAG:
         if kwargs.get("vdb") is None:
             vdb = await LanceDB.create(
                 embedding_func=self.embedding_service.create_embeddings,
-                db_url=self.config.db_url,
+                db_url=self.config.vector_db_path,
                 strategy_provider=RetrievalStrategyProvider(),
             )
         else:
@@ -1047,9 +1110,10 @@ class HiRAG:
             chunk_size=self.config.chunk_size, chunk_overlap=self.config.chunk_overlap
         )
 
-        entity_extractor = VanillaEntity.create(
+        self._entity_extractor = VanillaEntity.create(
             extract_func=self.chat_service.complete,
             llm_model_name=self.config.llm_model_name,
+            language=self._language,
         )
 
         # Initialize resume tracker
@@ -1065,7 +1129,7 @@ class HiRAG:
         self._processor = DocumentProcessor(
             storage=self._storage,
             chunker=chunker,
-            entity_extractor=entity_extractor,
+            entity_extractor=self._entity_extractor,
             resume_tracker=resume_tracker,
             config=self.config,
             metrics=self._metrics,

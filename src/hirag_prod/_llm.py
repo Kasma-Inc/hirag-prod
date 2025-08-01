@@ -32,6 +32,13 @@ class EmbeddingServiceType(Enum):
     LOCAL = "local"
 
 
+class LLMServiceType(Enum):
+    """Types of LLM services"""
+
+    OPENAI = "openai"
+    LOCAL = "local"
+
+
 class APIConstants:
     """API configuration constants"""
 
@@ -58,6 +65,7 @@ class LoggerNames:
 
     TOKEN_USAGE = "HiRAG.TokenUsage"
     EMBEDDING = "HiRAG.Embedding"
+    CHAT = "HiRAG.Chat"
 
 
 # ============================================================================
@@ -145,6 +153,38 @@ class LocalEmbeddingConfig:
 
 
 @dataclass
+class LocalLLMConfig:
+    """Configuration for local LLM service"""
+
+    base_url: str
+    model_name: str
+    entry_point: str
+    authorization_token: str
+
+    @classmethod
+    def from_env(cls) -> "LocalLLMConfig":
+        """Create local LLM config from environment variables"""
+        base_url = os.getenv("LOCAL_LLM_BASE_URL")
+        model_name = os.getenv("LOCAL_LLM_MODEL_NAME")
+        entry_point = os.getenv("LOCAL_LLM_ENTRY_POINT", "/v1/chat/completions")
+        authorization_token = os.getenv("LOCAL_LLM_AUTH_TOKEN")
+
+        if not base_url:
+            raise ValueError("LOCAL_LLM_BASE_URL environment variable is not set")
+        if not model_name:
+            raise ValueError("LOCAL_LLM_MODEL_NAME environment variable is not set")
+        if not authorization_token:
+            raise ValueError("LOCAL_LLM_AUTH_TOKEN environment variable is not set")
+
+        return cls(
+            base_url=base_url,
+            model_name=model_name,
+            entry_point=entry_point,
+            authorization_token=authorization_token,
+        )
+
+
+@dataclass
 class EmbeddingConfig:
     """Configuration for embedding service with service type selection"""
 
@@ -171,6 +211,34 @@ class EmbeddingConfig:
             return cls(service_type=service_type, openai_config=openai_config)
         else:
             local_config = LocalEmbeddingConfig.from_env()
+            return cls(service_type=service_type, local_config=local_config)
+
+
+@dataclass
+class LLMConfig:
+    """Configuration for LLM service with service type selection"""
+
+    service_type: LLMServiceType
+    openai_config: Optional[APIConfig] = None
+    local_config: Optional[LocalLLMConfig] = None
+
+    @classmethod
+    def from_env(cls) -> "LLMConfig":
+        """Create LLM config from environment variables"""
+        service_type_str = os.getenv("LLM_SERVICE_TYPE", "openai").lower()
+
+        try:
+            service_type = LLMServiceType(service_type_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid LLM_SERVICE_TYPE: {service_type_str}. Must be 'openai' or 'local'"
+            )
+
+        if service_type == LLMServiceType.OPENAI:
+            openai_config = APIConfig.from_env("LLM_API_KEY", "LLM_BASE_URL")
+            return cls(service_type=service_type, openai_config=openai_config)
+        else:
+            local_config = LocalLLMConfig.from_env()
             return cls(service_type=service_type, local_config=local_config)
 
 
@@ -360,6 +428,40 @@ class LocalEmbeddingClient:
         await self._http_client.aclose()
 
 
+class LocalLLMClient:
+    """Client for local LLM service"""
+
+    def __init__(self, config: LocalLLMConfig):
+        self.config = config
+        self._http_client = httpx.AsyncClient(timeout=120.0)
+
+    async def create_chat_completion(
+        self, messages: List[Dict[str, str]], **kwargs: Any
+    ) -> Dict[str, Any]:
+        """Create chat completion using local service API"""
+        headers = {
+            "Content-Type": "application/json",
+            "Model-Name": self.config.model_name,
+            "Entry-Point": self.config.entry_point,
+            "Authorization": f"Bearer {self.config.authorization_token}",
+        }
+
+        payload = {"messages": messages, **kwargs}
+
+        response = await self._http_client.post(
+            self.config.base_url, headers=headers, json=payload
+        )
+
+        response.raise_for_status()
+        result = response.json()
+
+        return result
+
+    async def close(self):
+        """Close the HTTP client"""
+        await self._http_client.aclose()
+
+
 # ============================================================================
 # Token Usage Tracking
 # ============================================================================
@@ -527,6 +629,100 @@ class ChatCompletion(metaclass=SingletonMeta):
     def log_final_stats(self) -> None:
         """Log final token usage statistics summary"""
         self._token_tracker.log_final_stats()
+
+    async def close(self):
+        """Close underlying client"""
+        await self.client.close()
+
+
+class LocalChatService:
+    """Chat service for local LLM services"""
+
+    def __init__(self):
+        """Initialize with direct local client (no singleton)"""
+        self.config = LocalLLMConfig.from_env()
+        self.client = LocalLLMClient(self.config)
+        self._logger = logging.getLogger(LoggerNames.CHAT)
+        self._token_tracker = TokenUsageTracker()
+
+        self._logger.info(
+            f"🔧 LocalChatService initialized with model: {self.config.model_name}"
+        )
+
+    async def complete(
+        self,
+        model: str,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        history_messages: Optional[List[Dict[str, str]]] = None,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Complete a chat prompt using local service.
+
+        Args:
+            model: The model identifier (ignored for local service, uses configured model)
+            prompt: The user prompt
+            system_prompt: Optional system prompt
+            history_messages: Optional conversation history
+            **kwargs: Additional parameters for the API call
+
+        Returns:
+            The completion response as a string
+        """
+        model = self.config.model_name
+        messages = self._build_messages(system_prompt, history_messages, prompt)
+
+        self._logger.info(
+            f"🔄 Processing chat completion with {len(messages)} messages"
+        )
+
+        response = await self.client.create_chat_completion(messages, **kwargs)
+
+        class UsageData:
+            def __init__(self, usage_dict):
+                self.prompt_tokens = usage_dict["prompt_tokens"]
+                self.completion_tokens = usage_dict["completion_tokens"]
+                self.total_tokens = usage_dict["total_tokens"]
+
+        usage_data = UsageData(response["usage"])
+        self._token_tracker.track_usage(usage_data, model, prompt)
+
+        return response["choices"][0]["message"]["content"]
+
+    def _build_messages(
+        self,
+        system_prompt: Optional[str],
+        history_messages: Optional[List[Dict[str, str]]],
+        prompt: str,
+    ) -> List[Dict[str, str]]:
+        """Build messages list for API call"""
+        messages = []
+
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if history_messages:
+            messages.extend(history_messages)
+
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def get_token_usage_stats(self) -> Dict[str, Union[int, float]]:
+        """Get cumulative token usage statistics"""
+        return self._token_tracker.get_stats()
+
+    def reset_token_usage_stats(self) -> None:
+        """Reset cumulative token usage statistics"""
+        self._token_tracker.reset_stats()
+
+    def log_final_stats(self) -> None:
+        """Log final token usage statistics summary"""
+        self._token_tracker.log_final_stats()
+
+    async def close(self):
+        """Close the underlying client"""
+        await self.client.close()
 
 
 # ============================================================================
@@ -808,3 +1004,19 @@ def create_embedding_service(
         return LocalEmbeddingService(default_batch_size)
     else:
         return EmbeddingService(default_batch_size)
+
+
+def create_chat_service() -> Union[ChatCompletion, LocalChatService]:
+    """
+    Factory function to create appropriate chat service.
+
+    For local services, returns LocalChatService.
+    For OpenAI services, returns the singleton ChatCompletion.
+    """
+    # Check service type from environment
+    service_type = os.getenv("LLM_SERVICE_TYPE", "openai").lower()
+
+    if service_type == "local":
+        return LocalChatService()
+    else:
+        return ChatCompletion()

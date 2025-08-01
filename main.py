@@ -10,11 +10,17 @@ from dotenv import load_dotenv
 
 load_dotenv("/chatbot/.env")
 
+# Default Database Configuration
+VECTOR_DB_PATH = "kb/hirag.db"
+GRAPH_DB_PATH = "kb/hirag.gpickle"
+
 
 async def index():
-    index = await HiRAG.create()
+    index = await HiRAG.create(
+        vector_db_path=VECTOR_DB_PATH, graph_db_path=GRAPH_DB_PATH
+    )
 
-    await index.set_language("cn")  # Set language to Chinese
+    await index.set_language("en")  # en | cn
 
     # TODO: the insertion prompt would also need to support Chinese
     document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
