@@ -1,0 +1,24 @@
+server_ip = "{{HOSTNAME}}"
+server_port = 55521
+idle_timeout_sec = 100
+enable_multi_meta_server = true
+etcd_url = "{{ETCD_ENDPOINT}}"
+
+root_dir = "{{ROOT_DIR}}"
+
+catalog_type = "S3FSCatalog"
+catalog_metadata_manager_type = "EtcdBased"
+catalog_name = "{{CATALOG_NAME}}"
+
+s3_access_key_id = "{{AWS_ACCESS_KEY_ID}}"
+s3_secret_access_key = "{{AWS_SECRET_ACCESS_KEY}}"
+s3_region = "{{AWS_REGION}}"
+oss_endpoint = "{{AWS_ENDPOINT}}"
+
+trace_exporter_url = "{{OTLP_HTTP_URL}}"
+## True do disable SSL, default false
+# trace_exporter_ssl_insecure_skip_verify = false
+## CLIENT KEY, as a string
+# trace_exporter_ssl_client_key_string = ""
+## CLIENT CERT, as a string
+# trace_exporter_client_cert_string = ""

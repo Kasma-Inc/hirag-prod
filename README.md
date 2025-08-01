@@ -56,3 +56,19 @@ Run the script:
 ```bash
 python main.py
 ```
+
+## Launch Flavius Cluster as GDB Backend
+To launch a local Flavius cluster for use as the graph database backend (GDB) of HiRAG, run:
+```bash
+docker compose -f flavius-docker-compose.yml -p flavius up -d
+```
+
+### Check Cluster Status
+```bash
+docker compose -f flavius-docker-compose.yml -p flavius ps
+```
+
+### Run test via
+```bash
+python -m pytest tests/test_flavius.py -v
+```
