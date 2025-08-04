@@ -191,7 +191,3 @@ def chunk_langchain_document(
         chunks.append(chunk_obj)
 
     return chunks
-
-
-# ======================== OCR chunker ========================
-# TODO: Implement OCR chunker

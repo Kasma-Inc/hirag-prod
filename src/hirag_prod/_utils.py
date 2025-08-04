@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Callable, Coroutine, Iterable, List, Optional, TypeVar
+from typing import Any, Callable, Coroutine, Iterable, List, Literal, Optional, TypeVar
 from urllib.parse import urlparse
 
 import boto3
@@ -541,10 +541,15 @@ def download_oss_file(
 # ========================================================================
 # File path router
 # ========================================================================
-def route_file_path(url_path: str) -> str:
+def route_file_path(
+    loader_type: Literal["docling", "docling_cloud", "langchain"], url_path: str
+) -> str:
     """
     Parse a url path to a located file path
     """
+    if loader_type == "docling_cloud":
+        return url_path
+
     local_file_path = None
     parsed_url = urlparse(url_path)
     if parsed_url.scheme == "file":

@@ -5,6 +5,7 @@ from hirag_prod._utils import route_file_path
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
+from hirag_prod.loader.image_loader import ImageLoader
 from hirag_prod.loader.md_loader import MdLoader
 from hirag_prod.loader.pdf_loader import PDFLoader
 from hirag_prod.loader.ppt_loader import PowerPointLoader
@@ -53,7 +54,17 @@ DEFAULT_LOADER_CONFIGS = {
         "loader": TxtLoader,
         "args": {},
     },
+    "multimodal/image": {
+        "loader": ImageLoader,
+        "args": {},
+    },
 }
+
+
+def check_docling_cloud_health() -> bool:
+    """Check if the docling cloud is healthy"""
+    # TODO: check if the docling cloud service is healthy
+    return True
 
 
 def load_document(
@@ -61,7 +72,7 @@ def load_document(
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: Literal["docling", "OCR", "langchain"] = "docling",
+    loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
 ) -> Tuple[Any, File]:
     """Load a document from the given path and content type
 
@@ -81,11 +92,11 @@ def load_document(
     # TODO: Add async support for concurrent document loading
     if content_type == "text/plain":
         loader_type = "langchain"
-    # TODO: OCR NOT SUPPORTED YET
-    # elif content_type == "application/pdf":
-    #     loader_type = "OCR"
     else:
-        loader_type = "docling"
+        if check_docling_cloud_health():
+            loader_type = "docling_cloud"
+        else:
+            loader_type = "docling"
 
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
@@ -96,21 +107,19 @@ def load_document(
     loader = loader_conf["loader"]()
 
     try:
-        document_path = route_file_path(document_path)
+        document_path = route_file_path(loader_type, document_path)
     except Exception as e:
         logger.warning(f"Unexpected error in route_file_path, using original path: {e}")
 
-    if loader_type == "docling":
+    if loader_type == "docling_cloud":
+        docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)
+        return docling_doc, doc_md
+    elif loader_type == "docling":
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)
         return docling_doc, doc_md
     elif loader_type == "langchain":
         langchain_doc = loader.load_langchain(document_path, document_meta)
         return None, langchain_doc
-    elif loader_type == "OCR":
-        if loader is not isinstance(PDFLoader):
-            raise ValueError("OCR loader only supports PDF documents")
-        ocr_doc, doc_md = loader.load_ocr(document_path, document_meta)
-        return ocr_doc, doc_md
 
 
 __all__ = [

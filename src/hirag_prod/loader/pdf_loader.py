@@ -3,7 +3,7 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMo
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from hirag_prod.loader.base_loader import BaseLoader
-from hirag_prod.loader.ocr import OCRClient
+from hirag_prod.loader.docling_cloud import DoclingCloudClient
 
 
 class PDFLoader(BaseLoader):
@@ -19,4 +19,4 @@ class PDFLoader(BaseLoader):
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
             }
         )
-        self.loader_ocr = OCRClient()
+        self.loader_docling_cloud = DoclingCloudClient()
