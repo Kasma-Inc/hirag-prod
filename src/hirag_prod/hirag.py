@@ -46,7 +46,7 @@ from hirag_prod.storage import (
 # from hirag_prod.similarity import CosineSimilarity
 
 
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 # ============================================================================
 # Constants and Default Values

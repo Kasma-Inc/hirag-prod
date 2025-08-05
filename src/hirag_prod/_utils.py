@@ -24,7 +24,7 @@ logger = logging.getLogger("HiRAG")
 ENCODER = None
 S3_DOWNLOAD_DIR = "/chatbot/files/s3"
 OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 
 def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
