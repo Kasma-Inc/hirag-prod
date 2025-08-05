@@ -166,7 +166,10 @@ class GDBManager:
             # Node types analysis
             node_types = {}
             for node_id, node_data in graph.nodes(data=True):
-                entity_type = node_data.get("entity_type", "UNKNOWN")
+                if node_id.startswith("chunk-"):
+                    entity_type = "CHUNK"
+                else:
+                    entity_type = node_data.get("entity_type", "UNKNOWN")
                 node_types[entity_type] = node_types.get(entity_type, 0) + 1
 
             # Calculate density based on graph type

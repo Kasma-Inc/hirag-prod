@@ -33,7 +33,7 @@ from hirag_prod.parser import (
 )
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resume_tracker import ResumeTracker
-from hirag_prod.schema import Entity
+from hirag_prod.schema import Entity, Relation
 from hirag_prod.schema.entity import EntityMetadata
 from hirag_prod.storage import (
     BaseGDB,
@@ -42,9 +42,6 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
-
-# from hirag_prod.similarity import CosineSimilarity
-
 
 load_dotenv("/chatbot/.env")
 
@@ -86,7 +83,7 @@ SUPPORTED_LANGUAGES = ["en", "cn"]  # Supported languages for generation
 
 # Vector and Schema Configuration
 try:
-    EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
+    EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION"))
 except ValueError as e:
     raise ValueError(f"EMBEDDING_DIMENSION must be an integer: {e}")
 
@@ -562,6 +559,7 @@ class DocumentProcessor:
             if with_graph:
                 entities = await self._process_entities(chunks)
                 await self._process_relations(chunks, entities)
+                await self._dense_sparse_integration(entities)
 
             # Mark as complete
             if self.resume_tracker:
@@ -824,6 +822,51 @@ class DocumentProcessor:
                 )
         except Exception as e:
             logger.warning(f"Failed to mark relation extraction complete: {e}")
+
+    async def _dense_sparse_integration(self, entities: List[Entity]) -> None:
+        """
+        Dense Sparse Integration
+        - Dense: chunk node
+        - Sparse: entity node
+        
+        Each chunk in the corpus is treated as a dense node, with the context edge labeled "contains" connecting \
+        the chunk to all entities derived from the chunk.
+
+        Args:
+            entities: List of extracted entities with chunk metadata
+        """
+        if not entities:
+            return
+
+        # Build chunk-to-entity containment relations
+        relations = [
+            Relation(
+                source=chunk_id,
+                target=entity.id,
+                properties={
+                    "relation_type": "contains",
+                    "description": f"Chunk contains entity {entity.metadata.entity_type}",
+                    "weight": 1.0,
+                },
+            )
+            for entity in entities
+            for chunk_id in entity.metadata.chunk_ids
+        ]
+
+        if not relations:
+            logger.info("No chunk-entity relations to create")
+            return
+
+        # Batch upsert relations with concurrency control
+        await _limited_gather_with_factory(
+            [
+                lambda rel=rel: self.storage.gdb.upsert_relation(rel)
+                for rel in relations
+            ],
+            limit=self.config.relation_upsert_concurrency,
+        )
+
+        logger.info(f"Created {len(relations)} chunk-entity containment relations")
 
 
 # ============================================================================
