@@ -21,7 +21,7 @@ from hirag_prod._llm import (
 )
 from hirag_prod._utils import _limited_gather_with_factory
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
-from hirag_prod.entity import BaseEntity, VanillaEntity
+from hirag_prod.entity import BaseKG, VanillaKG
 from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
@@ -502,7 +502,7 @@ class DocumentProcessor:
         self,
         storage: StorageManager,
         chunker: BaseChunk,
-        entity_extractor: BaseEntity,
+        entity_extractor: BaseKG,
         resume_tracker: Optional[object] = None,
         config: Optional[HiRAGConfig] = None,
         metrics: Optional[MetricsCollector] = None,
@@ -1033,7 +1033,7 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
-    _entity_extractor: Optional[VanillaEntity] = field(default=None, init=False)
+    _entity_extractor: Optional[VanillaKG] = field(default=None, init=False)
     _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
@@ -1153,7 +1153,7 @@ class HiRAG:
             chunk_size=self.config.chunk_size, chunk_overlap=self.config.chunk_overlap
         )
 
-        self._entity_extractor = VanillaEntity.create(
+        self._entity_extractor = VanillaKG.create(
             extract_func=self.chat_service.complete,
             llm_model_name=self.config.llm_model_name,
             language=self._language,

@@ -2,6 +2,7 @@
 References:
  - [graphrag](https://github.com/microsoft/graphrag)
  - [HippoRAG](https://github.com/OSU-NLP-Group/HippoRAG)
+ - [AutoSchemaKG](https://github.com/HKUST-KnowComp/AutoSchemaKG)
  - [Claude](https://www.anthropic.com)
 """
 
@@ -45,7 +46,8 @@ Your objective is to accurately identify and extract all significant entities me
   {{
     "entities": [
       "Entity 1",
-      "Entity 2"
+      "Entity 2",
+      ...
     ]
   }}
 
@@ -80,26 +82,19 @@ Here is the given text to extract entities from.
 **Output:**
 """
 
-PROMPTS[
-    "continue_entity_extraction_en"
-] = """
-
-"""
-
 
 PROMPTS[
     "triplet_extraction_en"
 ] = """
 ## Role and Objective
 
-You are an expert in extracting triplets from texts.
+You are an expert in extracting triplets from text and output triplets in VALID JSON format.
 
 ## Extraction Guidelines
+
 - Avoid duplicate triplets.
-- Do not use long sentences as any element.
-- Every triplet must have exactly THREE elements.
 - Clearly resolve pronouns to their specific names to maintain clarity.
-- Each triplet should contain at least one, but preferably two, of the given entity list reference.
+- Each triplet should contain **at least ONE, but preferably TWO**, of the given entity list reference.
 - The **verb** should be a concise, normalized verb phrase that describes the core of the relationship.
 
 ## Output Format
@@ -107,10 +102,14 @@ You are an expert in extracting triplets from texts.
 - Output **only** a single valid JSON object.
 - The JSON must have one key: `"triplets"`, whose value is a list of triplets.
 - Do **not** return any explanations, headers, code blocks, or additional text outside the JSON.
-- You must **strictly output in the following JSON format**:\n
+- Example output:
 {{
   "triplets": [
-    ["a noun", "a verb", "a noun"],
+    {{
+      "Head": "a noun",
+      "Relation": "a verb",
+      "Tail": "a noun",
+    }},
     ...
   ]
 }}
@@ -130,18 +129,71 @@ Radio City is India's first private FM radio station and was started on 3 July 2
 **Output:**
 {{
   "triplets": [
-    ["Radio City", "located in", "India"],
-    ["Radio City", "is", "private FM radio station"],
-    ["Radio City", "started on", "3 July 2001"],
-    ["Radio City", "plays songs in", "Hindi"],
-    ["Radio City", "plays songs in", "English"],
-    ["Radio City", "forayed into", "New Media"],
-    ["Radio City", "launched", "PlanetRadiocity.com"],
-    ["PlanetRadiocity.com", "launched in", "May 2008"],
-    ["PlanetRadiocity.com", "is", "music portal"],
-    ["PlanetRadiocity.com", "offers", "news"],
-    ["PlanetRadiocity.com", "offers", "videos"],
-    ["PlanetRadiocity.com", "offers", "songs"]
+    {{
+      "Head": "Radio City",
+      "Relation": "located in",
+      "Tail": "India",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "is",
+      "Tail": "private FM radio station",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "started on",
+      "Tail": "3 July 2001",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "plays songs in",
+      "Tail": "Hindi",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "plays songs in",
+      "Tail": "English",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "plays",
+      "Tail": "regional songs",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "forayed into",
+      "Tail": "New Media",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "launched",
+      "Tail": "PlanetRadiocity.com",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "launched in",
+      "Tail": "May 2008",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "is",
+      "Tail": "music portal",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "offers",
+      "Tail": "news",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "offers",
+      "Tail": "videos",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "offers",
+      "Tail": "songs",
+    }},
   ]
 }}
 
@@ -160,12 +212,6 @@ Here is the given text and entity list to extract triplets from.
 ---
 
 **Output:**
-"""
-
-PROMPTS[
-    "continue_triplet_extraction_en"
-] = """
-
 """
 
 PROMPTS[
@@ -257,18 +303,6 @@ PROMPTS[
 
 PROMPTS[
     "triplet_extraction_cn"
-] = """
-
-"""
-
-PROMPTS[
-    "continue_entity_extraction_cn"
-] = """
-
-"""
-
-PROMPTS[
-    "continue_triplet_extraction_cn"
 ] = """
 
 """
