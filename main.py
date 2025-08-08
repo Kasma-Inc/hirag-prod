@@ -37,16 +37,16 @@ async def index():
         document_meta=document_meta,
     )
 
-    ret = await index.query_all("When did Lothair Ii's mother die?", summary=True)
+    # ret = await index.query_all("When did Lothair Ii's mother die?", summary=True)
 
-    print("———————————————————— Chunks ————————————————————\n")
-    print(ret["chunks"])
-    print("\n\n———————————————————— Entities ————————————————————\n")
-    print(ret["entities"])
-    print("\n\n———————————————————— Relations ————————————————————\n")
-    print(ret["relations"])
-    print("\n\n———————————————————— Summary ————————————————————\n")
-    print(ret["summary"])
+    # print("———————————————————— Chunks ————————————————————\n")
+    # print(ret["chunks"])
+    # print("\n\n———————————————————— Entities ————————————————————\n")
+    # print(ret["entities"])
+    # print("\n\n———————————————————— Relations ————————————————————\n")
+    # print(ret["relations"])
+    # print("\n\n———————————————————— Summary ————————————————————\n")
+    # print(ret["summary"])
 
 
 if __name__ == "__main__":

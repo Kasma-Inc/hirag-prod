@@ -65,6 +65,42 @@ class VanillaKG(BaseKG):
         """Factory method to create a VanillaKG instance with custom configuration."""
         return cls(language=language, **kwargs)
 
+    async def _dense_sparse_integration(
+        self, entities: List[Entity], chunk: Chunk
+    ) -> List[Relation]:
+        """
+        Dense Sparse Integration
+        - Dense: chunk node
+        - Sparse: entity node
+        
+        Each chunk in the corpus is treated as a dense node, with the context edge labeled "contains" connecting \
+        the chunk to all entities derived from the chunk.
+
+        Args:
+            entities: List of extracted entities with chunk metadata
+        """
+        if not entities:
+            return
+
+        dense_sparse_relations = []
+        for entity in entities:
+            dense_sparse_relations.append(
+                Relation(
+                    source=chunk.id,
+                    target=entity.id,
+                    properties={
+                        "source": chunk.id,
+                        "relation": "contains",
+                        "target": entity.page_content,
+                        "description": f"Chunk {chunk.id} contains Entity {entity.page_content}",
+                        "weight": 1.0,
+                        "chunk_id": chunk.id,
+                    },
+                )
+            )
+
+        return dense_sparse_relations
+
     async def _extract_entities_from_chunk(self, chunk: Chunk) -> List[Entity]:
         """
         Extract entities from a single text chunk using LLM with iterative gleaning.
@@ -133,7 +169,7 @@ class VanillaKG(BaseKG):
                     id=entity_id,
                     page_content=entity,
                     metadata={
-                        "entity_type": "UNKNOWN",
+                        "entity_type": "entity",
                         "description": [],
                         "chunk_ids": [chunk_id],
                     },
@@ -165,7 +201,7 @@ class VanillaKG(BaseKG):
 
             # Create entity list for prompt
             entity_names = [entity.page_content for entity in entities]
-            
+
             relation_prompt = self.relation_extract_prompt.format(
                 entity_list=entity_names,
                 input_text=chunk.page_content,
@@ -223,9 +259,9 @@ class VanillaKG(BaseKG):
             target_id = compute_mdhash_id(tail, prefix="ent-")
 
             properties = {
-                "head": head,
+                "source": head,
                 "relation": relation,
-                "tail": tail,
+                "target": tail,
                 "description": f"{head} {relation} {tail}",
                 "weight": 1.0,
                 "chunk_id": chunk.id,
@@ -238,82 +274,109 @@ class VanillaKG(BaseKG):
             )
             relations.append(rel)
 
+            source_entity = Entity(
+                id=source_id,
+                page_content=head,
+                metadata={
+                    "entity_type": "entity",
+                    "description": [],
+                    "chunk_ids": [chunk.id],
+                },
+            )
+            target_entity = Entity(
+                id=target_id,
+                page_content=tail,
+                metadata={
+                    "entity_type": "entity",
+                    "description": [],
+                    "chunk_ids": [chunk.id],
+                },
+            )
+
+            dense_sparse_relations = await self._dense_sparse_integration(
+                entities=[source_entity, target_entity],
+                chunk=chunk,
+            )
+            relations.extend(dense_sparse_relations)
+
         return relations
 
-
-    async def construct_kg(self, chunks: List[Chunk]) -> Tuple[List[Entity], List[Relation]]:
+    async def construct_kg(
+        self, chunks: List[Chunk]
+    ) -> Tuple[List[Entity], List[Relation]]:
         """
         Process chunks to extract entities and relations concurrently.
-        
+
         This is the main entry point that processes all chunks in parallel,
         extracting both entities and relations for each chunk simultaneously.
-        
+
         Args:
             chunks: List of text chunks to process
-            
+
         Returns:
             Tuple of (all_entities, all_relations) extracted from all chunks
         """
         logging.info(f"[ProcessChunks] Starting processing of {len(chunks)} chunks")
-        
+
         if not chunks:
             return [], []
 
         # Create chunk processing factories for concurrent execution
         chunk_factories = [
-            lambda chunk=chunk: self._process_single_chunk(chunk)
-            for chunk in chunks
+            lambda chunk=chunk: self._process_single_chunk(chunk) for chunk in chunks
         ]
-        
+
         # Process all chunks concurrently
         chunk_results = await _limited_gather_with_factory(
             chunk_factories, self.chunk_processing_concurrency
         )
-        
+
         # Aggregate results from all chunks
         all_entities = []
         all_relations = []
-        
+
         for entities, relations in chunk_results:
             if entities:
                 all_entities.extend(entities)
             if relations:
                 all_relations.extend(relations)
-        
+
         logging.info(
             f"[ProcessChunks] Completed processing: "
             f"{len(all_entities)} entities, {len(all_relations)} relations"
         )
-        
+
         return all_entities, all_relations
 
-    async def _process_single_chunk(self, chunk: Chunk) -> Tuple[List[Entity], List[Relation]]:
+    async def _process_single_chunk(
+        self, chunk: Chunk
+    ) -> Tuple[List[Entity], List[Relation]]:
         """
         Process a single chunk to extract both entities and relations.
-        
+
         Args:
             chunk: Text chunk to process
-            
+
         Returns:
             Tuple of (entities, relations) extracted from this chunk
         """
         try:
             start_time = time.time()
-            
+
             # Extract entities first
             entities = await self._extract_entities_from_chunk(chunk)
-            
+
             # Extract relations using the entities from this chunk
             relations = await self._extract_relations_from_chunk(chunk, entities)
-            
+
             elapsed = time.time() - start_time
             logging.info(
                 f"[SingleChunk] Processed chunk {chunk.id}: "
                 f"{len(entities)} entities, {len(relations)} relations in {elapsed:.2f}s"
             )
-            
+
             return entities, relations
-            
+
         except Exception as e:
             logging.exception(f"[SingleChunk] Failed to process chunk {chunk.id}")
             warnings.warn(f"Chunk processing failed for {chunk.id}: {e}")
