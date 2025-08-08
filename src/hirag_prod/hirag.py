@@ -656,6 +656,7 @@ class QueryService:
             topk=topk,
             topn=topn,
             columns_to_select=["source", "target", "description"],
+            rerank=False,
         )
 
     async def query_relations_graph(
@@ -728,40 +729,6 @@ class QueryService:
 
         except Exception as e:
             logger.error(f"Failed to query chunk embeddings: {e}")
-            return {}
-
-        return res
-
-    async def query_relation_embeddings(
-        self, relation_ids: List[str]
-    ) -> Dict[str, Any]:
-        """Query relation embeddings"""
-        if not relation_ids:
-            return {}
-
-        res = {}
-        try:
-            # Query relation embeddings by keys
-            relation_data = await self.storage.vdb.query_by_keys(
-                key_value=relation_ids,
-                key_column="relation_id",
-                table=self.storage.relations_table,
-                columns_to_select=["relation_id", "vector"],
-            )
-
-            # relation data is a list of dicts with 'vector' key
-            for relation in relation_data:
-                if "vector" in relation and relation["vector"] is not None:
-                    res[relation["relation_id"]] = relation["vector"]
-                else:
-                    # Log missing vector data
-                    logger.warning(
-                        f"Relation {relation['relation_id']} has no vector data"
-                    )
-                    res[relation["relation_id"]] = None
-
-        except Exception as e:
-            logger.error(f"Failed to query relation embeddings: {e}")
             return {}
 
         return res
@@ -975,10 +942,8 @@ class HiRAG:
     async def generate_summary(
         self,
         chunks: List[Dict[str, Any]],
-        relations: List[Dict[str, Any]],
-        relationships: List[Dict[str, Any]],
     ) -> str:
-        """Generate summary from chunks, entities, and relations"""
+        """Generate summary from chunks"""
         DEBUG = False  # Set to True for debugging output
 
         if not self.chat_service:
@@ -996,10 +961,6 @@ class HiRAG:
 
             # Should use parser to better format the data
             data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
-            data += (
-                "Relations:\n" + parser.parse_list_of_dicts(relations, "table") + "\n\n"
-            )
-            # data += "Graph Relations:\n" + str(relationships) + "\n\n"
 
             prompt = prompt.format(
                 data=data, max_report_length="5000", reference_placeholder=placeholder
@@ -1027,11 +988,10 @@ class HiRAG:
             if DEBUG:
                 print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
 
-            # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
+            # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
 
             chunk_keys = [c["document_key"] for c in chunks]
-            relation_keys = [r["relation_id"] for r in relations]
 
             # Generate embeddings for each reference sentence
             if not ref_sentences:
@@ -1044,13 +1004,8 @@ class HiRAG:
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 chunk_keys
             )
-            relation_embeddings = await self._query_service.query_relation_embeddings(
-                relation_keys
-            )
 
             for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
-                found = False
-
                 # If the sentence is empty, continue
                 if not sentence.strip():
                     result.append("")
@@ -1068,20 +1023,8 @@ class HiRAG:
                         similar_chunks,
                     )
 
-                similar_relations = await self.calculate_similarity(
-                    sentence_embedding, relation_embeddings
-                )
-
-                if DEBUG:
-                    print(
-                        "\n\n\nSimilar Relations for Sentence:",
-                        sentence,
-                        "\n",
-                        similar_relations,
-                    )
-
                 # Sort by similarity
-                reference_list = similar_chunks + similar_relations
+                reference_list = similar_chunks
                 reference_list.sort(key=lambda x: x["similarity"], reverse=True)
 
                 # If no similar chunks found, append empty string
@@ -1249,8 +1192,6 @@ class HiRAG:
             query_all_results = await self._query_service.query_all(query)
             text_summary = await self.generate_summary(
                 chunks=query_all_results["chunks"],
-                relations=query_all_results["relations_semantic"],
-                relationships=query_all_results["relations_graph"],
             )
             query_all_results["summary"] = text_summary
             return query_all_results
