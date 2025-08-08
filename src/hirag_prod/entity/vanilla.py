@@ -6,13 +6,13 @@ from typing import Callable, List, Tuple
 
 import json_repair
 
-from hirag_prod._utils import (
+from .._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
 )
-from hirag_prod.entity.base import BaseKG
-from hirag_prod.prompt import PROMPTS
-from hirag_prod.schema import Chunk, Entity, Relation
+from ..prompt import PROMPTS
+from ..schema import Chunk, Entity, Relation
+from .base import BaseKG
 
 
 @dataclass
@@ -33,7 +33,7 @@ class VanillaKG(BaseKG):
     relation_extract_prompt: str = field(init=False)
 
     # === Concurrency Configuration ===
-    chunk_processing_concurrency: int = field(default=64)
+    chunk_processing_concurrency: int = field(default=16)
 
     def __post_init__(self):
         self._update_language_config()
@@ -326,9 +326,12 @@ class VanillaKG(BaseKG):
             lambda chunk=chunk: self._process_single_chunk(chunk) for chunk in chunks
         ]
 
-        # Process all chunks concurrently
+        # Process all chunks concurrently with progress bar
         chunk_results = await _limited_gather_with_factory(
-            chunk_factories, self.chunk_processing_concurrency
+            chunk_factories,
+            self.chunk_processing_concurrency,
+            desc=f"Processing {len(chunks)} chunks",
+            show_progress=True,
         )
 
         # Aggregate results from all chunks
@@ -381,7 +384,3 @@ class VanillaKG(BaseKG):
             logging.exception(f"[SingleChunk] Failed to process chunk {chunk.id}")
             warnings.warn(f"Chunk processing failed for {chunk.id}: {e}")
             return [], []
-
-
-# Alias for backward compatibility
-VanillaEntity = VanillaKG

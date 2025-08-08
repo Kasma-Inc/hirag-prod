@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import pyarrow as pa
 from dotenv import load_dotenv
 
-from hirag_prod._llm import (
+from ._llm import (
     ChatCompletion,
     EmbeddingService,
     LocalChatService,
@@ -19,22 +19,22 @@ from hirag_prod._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from hirag_prod._utils import _limited_gather_with_factory
-from hirag_prod.chunk import BaseChunk, FixTokenChunk
-from hirag_prod.entity import BaseKG, VanillaKG
-from hirag_prod.loader import load_document
-from hirag_prod.loader.chunk_split import (
+from ._utils import _limited_gather_with_factory
+from .chunk import BaseChunk, FixTokenChunk
+from .entity import BaseKG, VanillaKG
+from .loader import load_document
+from .loader.chunk_split import (
     chunk_docling_document,
     chunk_langchain_document,
 )
-from hirag_prod.parser import (
+from .parser import (
     DictParser,
     ReferenceParser,
 )
-from hirag_prod.prompt import PROMPTS
-from hirag_prod.resume_tracker import ResumeTracker
-from hirag_prod.schema import Relation
-from hirag_prod.storage import (
+from .prompt import PROMPTS
+from .resume_tracker import ResumeTracker
+from .schema import Relation
+from .storage import (
     BaseGDB,
     BaseVDB,
     LanceDB,
@@ -113,8 +113,8 @@ class DocumentProcessingError(HiRAGException):
     """Document processing exception"""
 
 
-class EntityExtractionError(HiRAGException):
-    """Entity extraction exception"""
+class KGConstructionError(HiRAGException):
+    """Knowledge graph construction exception"""
 
 
 class StorageError(HiRAGException):
@@ -357,11 +357,18 @@ class StorageManager:
             return
 
         try:
-            # Batch processing for multiple relations
-            texts_to_embed = [
-                relation.properties.get("description", "")
+            filtered_relations = [
+                relation
                 for relation in relations
                 if not relation.source.startswith("chunk-")
+            ]
+
+            if not filtered_relations:
+                return
+
+            texts_to_embed = [
+                relation.properties.get("description", "")
+                for relation in filtered_relations
             ]
             properties_list = [
                 {
@@ -369,7 +376,7 @@ class StorageManager:
                     "target": relation.target,
                     "description": relation.properties.get("description", ""),
                 }
-                for relation in relations
+                for relation in filtered_relations
             ]
 
             await self.vdb.upsert_texts(
@@ -576,7 +583,6 @@ class DocumentProcessor:
         logger.info(f"🔍 Constructing knowledge graph from {len(chunks)} chunks...")
 
         try:
-            # Extract entities and relations using construct_kg
             entities, relations = await self.kg_constructor.construct_kg(chunks)
 
             # Store entities only to graph database (not to vector database)
@@ -607,7 +613,7 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            raise EntityExtractionError(f"Failed to construct knowledge graph: {e}")
+            raise KGConstructionError(f"Failed to construct knowledge graph: {e}")
 
 
 # ============================================================================
