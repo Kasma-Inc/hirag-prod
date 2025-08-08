@@ -14,7 +14,7 @@ import redis
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 # Configure logging
 logger = logging.getLogger(__name__)

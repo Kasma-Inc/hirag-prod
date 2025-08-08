@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 
-load_dotenv("/chatbot/.env")
+load_dotenv("/chatbot/.env", override=True)
 
 # Default Database Configuration
 VECTOR_DB_PATH = "kb/hirag.db"
@@ -41,10 +41,6 @@ async def index():
 
     print("———————————————————— Chunks ————————————————————\n")
     print(ret["chunks"])
-    print("\n\n———————————————————— Entities ————————————————————\n")
-    print(ret["entities"])
-    print("\n\n———————————————————— Relations ————————————————————\n")
-    print(ret["relations"])
     print("\n\n———————————————————— Summary ————————————————————\n")
     print(ret["summary"])
 

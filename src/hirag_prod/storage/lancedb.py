@@ -207,6 +207,7 @@ class LanceDB(BaseVDB):
         columns_to_select: Optional[List[str]] = ["filename", "text"],
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
         topn: Optional[int] = TOPN,
+        rerank: bool = True,
     ) -> List[dict]:
         """Search the chunk table by text and return the topk results
 
@@ -223,6 +224,7 @@ class LanceDB(BaseVDB):
                 The default value is 0.7.
                 If the distance is greater than the threshold, the result will be excluded.
             topn (Optional[int]): The number of results to rerank. Defaults to 4.
+            rerank (bool): Whether to rerank the results. Defaults to True.
 
         Returns:
             List[dict]: _description_
@@ -259,10 +261,14 @@ class LanceDB(BaseVDB):
 
         if topn is None:
             topn = self.strategy_provider.default_topn
-        reranked_query = self.strategy_provider.rerank_chunk_query(
-            query, query_text, topn
-        )
-        return await reranked_query.to_list()
+
+        if rerank:
+            reranked_query = self.strategy_provider.rerank_chunk_query(
+                query, query_text, topn
+            )
+            return await reranked_query.to_list()
+
+        return await query.to_list()
 
     async def query_by_keys(
         self,

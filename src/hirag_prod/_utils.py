@@ -19,12 +19,13 @@ import tiktoken
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+from tqdm.asyncio import tqdm
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
 S3_DOWNLOAD_DIR = "/chatbot/files/s3"
 OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 
 def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
@@ -341,6 +342,8 @@ async def _limited_gather_with_factory(
     limit: int,
     max_retries: int = 3,
     retry_delay: float = 1.0,
+    desc: Optional[str] = None,
+    show_progress: bool = False,  # Default to False, only show when explicitly requested
 ) -> List[Optional[T]]:
     """Execute coroutine factories with concurrency limit and proper retry support.
 
@@ -351,12 +354,27 @@ async def _limited_gather_with_factory(
         limit: Maximum number of concurrent executions
         max_retries: Maximum number of retry attempts per task
         retry_delay: Base delay between retries (with exponential backoff)
+        desc: Description for the progress bar
+        show_progress: Whether to show progress bar (requires tqdm)
 
     Returns:
         List of results, with None for permanently failed tasks
     """
     # TODO: Add adaptive concurrency based on system resources and task complexity
     sem = asyncio.Semaphore(limit)
+
+    factory_list = list(coro_factories)
+    total_tasks = len(factory_list)
+
+    progress_bar = None
+    if show_progress and total_tasks > 0:
+        progress_bar = tqdm(
+            total=total_tasks,
+            desc=desc or "Processing",
+            unit="chunk",
+            ncols=100,
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+        )
 
     async def _worker(
         coro_factory: Callable[[], Coroutine[Any, Any, T]], task_id: int
@@ -365,9 +383,10 @@ async def _limited_gather_with_factory(
         async with sem:
             for attempt in range(max_retries):
                 try:
-                    # Create a fresh coroutine for each attempt
                     coro = coro_factory()
                     result = await coro
+                    if progress_bar:
+                        progress_bar.update(1)
                     return result
                 except Exception as e:
                     if attempt <= max_retries - 1:
@@ -382,19 +401,21 @@ async def _limited_gather_with_factory(
                             f"Task {task_id} failed permanently after {max_retries} attempts: "
                             f"{type(e).__name__}: {str(e)}"
                         )
+                        if progress_bar:
+                            progress_bar.update(1)
             return None
 
-    # Convert to list for indexing
-    factory_list = list(coro_factories)
-
-    # Create tasks for all factories
     tasks = [
         asyncio.create_task(_worker(factory, i))
         for i, factory in enumerate(factory_list)
     ]
 
-    # Wait for all tasks to complete
-    results = await asyncio.gather(*tasks, return_exceptions=False)
+    try:
+        results = await asyncio.gather(*tasks, return_exceptions=False)
+    finally:
+        if progress_bar:
+            progress_bar.close()
+
     return results
 
 

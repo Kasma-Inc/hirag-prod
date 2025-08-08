@@ -11,7 +11,7 @@ from hirag_prod._llm import (
     create_embedding_service,
 )
 
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 
 def clear_all_singletons():

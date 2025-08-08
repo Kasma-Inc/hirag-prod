@@ -29,7 +29,7 @@ class NetworkXGDB(BaseGDB):
         summarizer: Optional[BaseSummarizer] = None,
     ):
         if not os.path.exists(path):
-            graph = nx.Graph()
+            graph = nx.DiGraph()
         else:
             graph = cls.load(path)
         if summarizer is None:

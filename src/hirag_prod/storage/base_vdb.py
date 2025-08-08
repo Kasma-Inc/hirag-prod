@@ -15,6 +15,15 @@ class BaseVDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def upsert_texts(
+        self,
+        texts_to_embed: List[str],
+        properties: List[dict],
+        mode: Literal["append", "overwrite"] = "append",
+    ):
+        raise NotImplementedError
+
+    @abstractmethod
     async def query(self, query: str) -> List[dict]:
         raise NotImplementedError
 

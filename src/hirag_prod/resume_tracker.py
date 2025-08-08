@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 REDIS_EXPIRE_TTL = os.getenv("REDIS_EXPIRE_TTL", 3600 * 24)  # 1 day by default
 
