@@ -8,6 +8,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pyarrow as pa
 from dotenv import load_dotenv
 
@@ -90,6 +91,9 @@ except ValueError as e:
 MAX_CHUNK_IDS_PER_QUERY = 10
 DEFAULT_QUERY_TOPK = 10
 DEFAULT_QUERY_TOPN = 5
+DEFAULT_LINK_TOP_K = 30
+DEFAULT_PASSAGE_NODE_WEIGHT = 1.0
+DEFAULT_PAGERANK_DAMPING = 0.85
 
 # Configure Logging
 logging.basicConfig(
@@ -628,7 +632,11 @@ class QueryService:
         self.storage = storage
 
     async def query_chunks(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        rerank: bool = True,
     ) -> List[Dict[str, Any]]:
         """Query chunks"""
         return await self.storage.vdb.query(
@@ -644,9 +652,34 @@ class QueryService:
                 "uploaded_at",
                 "document_key",
             ],
+            rerank=rerank,
         )
 
-    async def query_relations_semantic(
+    async def recall_chunks(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        rerank: bool = True,
+    ) -> Dict[str, Any]:
+        """Recall chunks and return both raw results and extracted chunk_ids.
+
+        Args:
+            query: Query string.
+            topk: Number of results to return.
+            topn: Number of results to rerank.
+            rerank: Whether to rerank the results.
+
+        Returns:
+            Dict with keys:
+                - "chunks": raw chunk search results
+                - "chunk_ids": list of document_key values
+        """
+        chunks = await self.query_chunks(query, topk=topk, topn=topn, rerank=rerank)
+        chunk_ids = [c.get("document_key") for c in chunks if c.get("document_key")]
+        return {"chunks": chunks, "chunk_ids": chunk_ids}
+
+    async def query_triplets(
         self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
         """Query relations from vector database using semantic search"""
@@ -659,49 +692,45 @@ class QueryService:
             rerank=False,
         )
 
-    async def query_relations_graph(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> Tuple[List[str], List[str]]:
-        """Query relations from graph database"""
-        # First get semantic relations to find relevant entities
-        semantic_relations = await self.query_relations_semantic(query, topk, topn)
+    async def recall_triplets(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+    ) -> Dict[str, Any]:
+        """Recall triplets and return both raw results and aggregated entity_ids.
 
-        # Extract entity IDs from semantic relations
-        entity_ids = set()
-        for rel in semantic_relations:
-            entity_ids.add(rel["source"])
-            entity_ids.add(rel["target"])
+        Args:
+            query: Query string.
+            topk: Number of results to return.
+            topn: Optional rerank pool size for relations (forwarded to underlying query).
 
-        # Search graph relations
-        neighbors = []
-        edges = []
-        for entity_id in entity_ids:
-            entity_neighbors, entity_edges = await self.storage.gdb.query_one_hop(
-                entity_id
-            )
-            neighbors.extend(entity_neighbors)
-            edges.extend(entity_edges)
+        Returns:
+            Dict with keys:
+                - "relations": raw triplet search results
+                - "entity_ids": unique list of entity ids appearing as source/target
+        """
+        relations = await self.query_triplets(query, topk=topk, topn=topn)
+        entity_id_set = set()
+        for rel in relations:
+            src = rel.get("source")
+            tgt = rel.get("target")
+            if src:
+                entity_id_set.add(src)
+            if tgt:
+                entity_id_set.add(tgt)
+        return {"relations": relations, "entity_ids": list(entity_id_set)}
 
-        return neighbors, edges
-
-    async def query_all(self, query: str) -> Dict[str, Any]:
-        """Query all data sources"""
-        chunks = await self.query_chunks(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
+    async def pagerank_top_chunks(
+        self,
+        seed_chunk_ids: List[str],
+        seed_entity_ids: List[str],
+        topk: int,
+    ) -> List[Tuple[str, float]]:
+        """Delegate personalized PageRank on GDB to get top-k chunk nodes."""
+        return await self.storage.gdb.pagerank_top_chunks(
+            seed_chunk_ids=seed_chunk_ids, seed_entity_ids=seed_entity_ids, topk=topk
         )
-        relations_semantic = await self.query_relations_semantic(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
-        )
-        neighbors, relations_graph = await self.query_relations_graph(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
-        )
-
-        return {
-            "chunks": chunks,
-            "relations_semantic": relations_semantic,
-            "neighbors": neighbors,
-            "relations_graph": relations_graph,
-        }
 
     async def query_chunk_embeddings(self, chunk_ids: List[str]) -> Dict[str, Any]:
         """Query chunk embeddings"""
@@ -732,6 +761,172 @@ class QueryService:
             return {}
 
         return res
+
+    async def get_chunks_by_ids(
+        self,
+        chunk_ids: List[str],
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch chunk rows by document_key list, preserving input order where possible."""
+        if not chunk_ids:
+            return []
+        if columns_to_select is None:
+            columns_to_select = [
+                "text",
+                "uri",
+                "filename",
+                "private",
+                "uploaded_at",
+                "document_key",
+            ]
+        rows = await self.storage.vdb.query_by_keys(
+            key_value=chunk_ids,
+            key_column="document_key",
+            table=self.storage.chunks_table,
+            columns_to_select=columns_to_select,
+        )
+        # Build map for stable ordering
+        by_id = {row.get("document_key"): row for row in rows}
+        return [by_id[cid] for cid in chunk_ids if cid in by_id]
+
+    async def dual_recall_with_pagerank(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        link_top_k: int = DEFAULT_LINK_TOP_K,
+        passage_node_weight: float = DEFAULT_PASSAGE_NODE_WEIGHT,
+        damping: float = DEFAULT_PAGERANK_DAMPING,
+    ) -> Dict[str, Any]:
+        """Two-path retrieval + PageRank fusion.
+
+        - Recall chunks to form passage reset weights
+        - Recall triplets to form phrase (entity) reset weights with frequency penalty
+        - Build reset = phrase_weights + passage_weights and run Personalized PageRank
+        - If no facts, fall back to DPR order (query rerank order)
+        """
+        # Path 1: chunk recall (rerank happens in VDB query)
+        chunk_recall = await self.recall_chunks(query, topk=topk, topn=topn)
+        query_chunks = chunk_recall["chunks"]
+        query_chunk_ids = chunk_recall["chunk_ids"]
+
+        # Path 2: triplet recall -> entity seeds
+        triplet_recall = await self.recall_triplets(query, topk=topk, topn=topn)
+        query_triplets = triplet_recall["relations"]
+        query_entity_ids = triplet_recall["entity_ids"]
+
+        # Build passage weights from chunk ranks (approximate DPR)
+        passage_weights: Dict[str, float] = {}
+        if chunk_recall["chunk_ids"]:
+            # Inverse-rank weights then min-max normalize
+            raw_weights = []
+            for rank, cid in enumerate(query_chunk_ids):
+                if cid:
+                    w = 1.0 / (rank + 1)
+                    passage_weights[cid] = w
+                    raw_weights.append(w)
+            if raw_weights:
+                min_w, max_w = min(raw_weights), max(raw_weights)
+                scale = (max_w - min_w) if (max_w - min_w) > 0 else 1.0
+                for cid in list(passage_weights.keys()):
+                    passage_weights[cid] = (
+                        (passage_weights[cid] - min_w) / scale
+                    ) * passage_node_weight
+
+        # Build phrase weights from relations with frequency penalty and averaging
+        phrase_weights: Dict[str, float] = {}
+        if triplet_recall["relations"]:
+            occurrence_counts: Dict[str, int] = {}
+            # Accumulate inverse-rank weights to both source and target entities
+            for rank, rel in enumerate(query_triplets):
+                base_w = 1.0 / (rank + 1)
+                for ent_id in [rel.get("source"), rel.get("target")]:
+                    if not ent_id:
+                        continue
+                    phrase_weights[ent_id] = phrase_weights.get(ent_id, 0.0) + base_w
+                    occurrence_counts[ent_id] = occurrence_counts.get(ent_id, 0) + 1
+
+            async def _fetch_entity_chunk_count(ent: str) -> int:
+                try:
+                    node = await self.storage.gdb.query_node(ent)
+                    chunk_ids = (
+                        node.metadata.get("chunk_ids", [])
+                        if hasattr(node, "metadata")
+                        else []
+                    )
+                    return len(chunk_ids) if isinstance(chunk_ids, list) else 0
+                except Exception:
+                    return 0
+
+            counts = await asyncio.gather(
+                *[_fetch_entity_chunk_count(eid) for eid in query_entity_ids]
+            )
+            ent_to_chunk_count = {
+                eid: cnt for eid, cnt in zip(query_entity_ids, counts)
+            }
+
+            for ent_id in query_entity_ids:
+                freq_penalty = ent_to_chunk_count.get(ent_id, 0)
+                denom = (
+                    float(freq_penalty) if freq_penalty and freq_penalty > 0 else 1.0
+                )
+                phrase_weights[ent_id] = (phrase_weights[ent_id] / denom) / float(
+                    occurrence_counts.get(ent_id, 1)
+                )
+
+            # Keep only top link_top_k entities
+            sorted_entities = sorted(
+                phrase_weights.items(), key=lambda x: x[1], reverse=True
+            )[: max(1, link_top_k)]
+            phrase_weights = dict(sorted_entities)
+
+        # If no fact signal, return DPR order directly
+        if not phrase_weights:
+            return {
+                "pagerank": [],
+                "query_top": query_chunks,
+            }
+
+        # Combine phrase and passage weights
+        reset_weights: Dict[str, float] = {}
+        for k, v in passage_weights.items():
+            if v > 0:
+                reset_weights[k] = reset_weights.get(k, 0.0) + v
+        for k, v in phrase_weights.items():
+            if v > 0:
+                reset_weights[k] = reset_weights.get(k, 0.0) + v
+
+        # Personalized PageRank over graph using reset vector
+        pr_ranked = await self.storage.gdb.pagerank_top_chunks_with_reset(
+            reset_weights=reset_weights,
+            topk=topk,
+            alpha=damping,
+        )
+        pr_ids = [cid for cid, _ in pr_ranked]
+
+        pr_rows = await self.get_chunks_by_ids(pr_ids)
+        pr_score_map = {cid: score for cid, score in pr_ranked}
+        for row in pr_rows:
+            row["pagerank_score"] = pr_score_map.get(row.get("document_key"), 0.0)
+
+        return {
+            "pagerank": pr_rows,
+            "query_top": query_chunks,
+        }
+
+    async def query(self, query: str) -> Dict[str, Any]:
+        """Query Strategy (default: dual_recall_with_pagerank)"""
+        result = await self.dual_recall_with_pagerank(
+            query=query,
+            topk=DEFAULT_QUERY_TOPK,
+            topn=DEFAULT_QUERY_TOPN,
+        )
+        result["chunks"] = (
+            result.get("pagerank")
+            if result.get("pagerank")
+            else result.get("query_top", [])
+        )
+        return result
 
 
 # ============================================================================
@@ -1165,37 +1360,19 @@ class HiRAG:
 
         return await self._query_service.query_chunks(query, topk, topn)
 
-    async def query_relations(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> List[Dict[str, Any]]:
-        """Query relations using semantic search"""
-        if not self._query_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
-        return await self._query_service.query_relations_semantic(query, topk, topn)
-
-    async def query_relations_graph(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> Tuple[List[str], List[str]]:
-        """Query relations from graph database"""
-        if not self._query_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
-        return await self._query_service.query_relations_graph(query, topk, topn)
-
-    async def query_all(self, query: str, summary: bool = False) -> Dict[str, Any]:
+    async def query(self, query: str, summary: bool = False) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
         if summary:
-            query_all_results = await self._query_service.query_all(query)
+            query_results = await self._query_service.query(query)
             text_summary = await self.generate_summary(
-                chunks=query_all_results["chunks"],
+                chunks=query_results["chunks"],
             )
-            query_all_results["summary"] = text_summary
-            return query_all_results
-        return await self._query_service.query_all(query)
+            query_results["summary"] = text_summary
+            return query_results
+        return await self._query_service.query(query)
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
@@ -1263,3 +1440,90 @@ class HiRAG:
     def gdb(self):
         """Backward compatibility: access graph database"""
         return self._storage.gdb if self._storage else None
+
+    # ========================================================================
+    # DPR-like recall API
+    # ========================================================================
+
+    # TODO: whether to use this?
+    async def dpr_recall_chunks(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        pool_size: int = 500,
+    ) -> Dict[str, Any]:
+        """Dense Passage Retrieval-style recall using current embeddings and stored vectors.
+
+        Steps:
+          - Retrieve a candidate pool without rerank
+          - Fetch embeddings of candidates and the query
+          - Compute cosine similarities, min-max normalize
+          - Return top-k chunk rows with scores and ids
+        """
+        if not self._query_service or not self.embedding_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        # Step 1: candidate pool (no rerank)
+        candidates = await self._query_service.query_chunks(
+            query=query, topk=pool_size, topn=None, rerank=False
+        )
+        candidate_ids = [
+            c.get("document_key") for c in candidates if c.get("document_key")
+        ]
+        if not candidate_ids:
+            return {"chunk_ids": [], "scores": [], "chunks": []}
+
+        # Step 2: fetch candidate embeddings and query embedding
+        chunk_vec_map = await self._query_service.query_chunk_embeddings(candidate_ids)
+        # Filter out None vectors while preserving id order
+        filtered_ids = [
+            cid for cid in candidate_ids if chunk_vec_map.get(cid) is not None
+        ]
+        if not filtered_ids:
+            return {"chunk_ids": [], "scores": [], "chunks": []}
+
+        chunk_matrix = np.array(
+            [chunk_vec_map[cid] for cid in filtered_ids], dtype=np.float32
+        )
+        query_vec = await self.embedding_service.create_embeddings([query])
+        # embedding services return numpy array (n, d); take first row
+        if hasattr(query_vec, "shape"):
+            query_vec = np.array(query_vec[0], dtype=np.float32)
+        else:
+            # fallback for list-like
+            query_vec = np.array(query_vec[0], dtype=np.float32)
+
+        # Step 3: cosine similarity
+        # Normalize rows of chunk_matrix and query vector
+        def _l2_normalize(mat: np.ndarray, axis: int) -> np.ndarray:
+            denom = np.linalg.norm(mat, ord=2, axis=axis, keepdims=True)
+            denom[denom == 0] = 1.0
+            return mat / denom
+
+        chunk_matrix_norm = _l2_normalize(chunk_matrix, axis=1)
+        query_vec_norm = query_vec / (np.linalg.norm(query_vec) + 1e-12)
+        scores = chunk_matrix_norm @ query_vec_norm
+
+        # Min-max normalize
+        s_min = float(scores.min())
+        s_max = float(scores.max())
+        if s_max > s_min:
+            norm_scores = (scores - s_min) / (s_max - s_min)
+        else:
+            norm_scores = np.zeros_like(scores)
+
+        # Step 4: sort and select top-k
+        order = np.argsort(-norm_scores)[: max(0, topk)]
+        top_ids = [filtered_ids[i] for i in order]
+        top_scores = [float(norm_scores[i]) for i in order]
+        top_rows = await self._query_service.get_chunks_by_ids(top_ids)
+        # Attach score for convenience
+        by_id = {row.get("document_key"): row for row in top_rows}
+        result_rows = []
+        for cid, sc in zip(top_ids, top_scores):
+            row = by_id.get(cid, {"document_key": cid})
+            row = dict(row)
+            row["dpr_score"] = sc
+            result_rows.append(row)
+
+        return {"chunk_ids": top_ids, "scores": top_scores, "chunks": result_rows}

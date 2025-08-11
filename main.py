@@ -37,7 +37,7 @@ async def index():
         document_meta=document_meta,
     )
 
-    ret = await index.query_all("When did Lothair Ii's mother die?", summary=True)
+    ret = await index.query("When did Lothair Ii's mother die?", summary=True)
 
     print("———————————————————— Chunks ————————————————————\n")
     print(ret["chunks"])
