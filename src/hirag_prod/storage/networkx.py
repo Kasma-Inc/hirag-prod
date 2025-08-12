@@ -29,7 +29,7 @@ class NetworkXGDB(BaseGDB):
         summarizer: Optional[BaseSummarizer] = None,
     ):
         if not os.path.exists(path):
-            graph = nx.Graph()
+            graph = nx.DiGraph()
         else:
             graph = cls.load(path)
         if summarizer is None:
@@ -226,6 +226,63 @@ class NetworkXGDB(BaseGDB):
                 successful_edges.append(r)
 
         return successful_neighbors, successful_edges
+
+    async def pagerank_top_chunks_with_reset(
+        self,
+        reset_weights: dict[str, float],
+        topk: int,
+        alpha: float = 0.85,
+    ) -> List[tuple[str, float]]:
+        """Compute personalized PageRank with a provided reset/personalization vector.
+
+        Args:
+            reset_weights: Mapping from node id to non-negative weight. Will be normalized.
+            topk: Number of top chunk nodes to return.
+            alpha: PageRank damping factor.
+
+        Returns:
+            List of tuples (chunk_id, score) sorted by descending score.
+        """
+        if topk <= 0:
+            return []
+
+        # Use undirected view to ensure bidirectional influence
+        G = self.graph.to_undirected()
+        if G.number_of_nodes() == 0:
+            return []
+
+        # Sanitize and normalize personalization vector
+        personalization: dict[str, float] = {}
+        total_mass = 0.0
+        for node, weight in (reset_weights or {}).items():
+            if node in G:
+                try:
+                    w = float(weight)
+                except Exception:
+                    continue
+                if w > 0 and not (w != w):  # exclude NaN and non-positive
+                    personalization[node] = w
+                    total_mass += w
+
+        if total_mass <= 0:
+            return []
+
+        # Normalize to sum to 1
+        for node in personalization:
+            personalization[node] /= total_mass
+
+        pr = nx.pagerank(
+            G, alpha=alpha, personalization=personalization, weight="weight"
+        )
+
+        # Filter to chunk nodes only (by id prefix)
+        chunk_scores = [
+            (node, score)
+            for node, score in pr.items()
+            if str(node).startswith("chunk-")
+        ]
+        chunk_scores.sort(key=lambda x: x[1], reverse=True)
+        return chunk_scores[:topk]
 
     async def dump(self):
         if os.path.dirname(self.path) != "":

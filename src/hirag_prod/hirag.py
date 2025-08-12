@@ -8,10 +8,11 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import pyarrow as pa
 from dotenv import load_dotenv
 
-from hirag_prod._llm import (
+from ._llm import (
     ChatCompletion,
     EmbeddingService,
     LocalChatService,
@@ -19,23 +20,22 @@ from hirag_prod._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from hirag_prod._utils import _limited_gather_with_factory
-from hirag_prod.chunk import BaseChunk, FixTokenChunk
-from hirag_prod.entity import BaseEntity, VanillaEntity
-from hirag_prod.loader import load_document
-from hirag_prod.loader.chunk_split import (
+from ._utils import _limited_gather_with_factory
+from .chunk import BaseChunk, FixTokenChunk
+from .entity import BaseKG, VanillaKG
+from .loader import load_document
+from .loader.chunk_split import (
     chunk_docling_document,
     chunk_langchain_document,
 )
-from hirag_prod.parser import (
+from .parser import (
     DictParser,
     ReferenceParser,
 )
-from hirag_prod.prompt import PROMPTS
-from hirag_prod.resume_tracker import ResumeTracker
-from hirag_prod.schema import Entity
-from hirag_prod.schema.entity import EntityMetadata
-from hirag_prod.storage import (
+from .prompt import PROMPTS
+from .resume_tracker import ResumeTracker
+from .schema import Relation
+from .storage import (
     BaseGDB,
     BaseVDB,
     LanceDB,
@@ -43,10 +43,7 @@ from hirag_prod.storage import (
     RetrievalStrategyProvider,
 )
 
-# from hirag_prod.similarity import CosineSimilarity
-
-
-load_dotenv("/chatbot/.env", override=True)
+load_dotenv("/chatbot/.env")
 
 # ============================================================================
 # Constants and Default Values
@@ -61,7 +58,7 @@ DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/2")
 DEFAULT_REDIS_KEY_PREFIX = os.environ.get("REDIS_KEY_PREFIX", "hirag")
 
 # Model Configuration
-DEFAULT_LLM_MODEL_NAME = "gpt-4o-mini"
+DEFAULT_LLM_MODEL_NAME = "gpt-4o"
 DEFAULT_MAX_TOKENS = 16000  # Default max tokens for LLM
 
 # Chunking Configuration
@@ -86,7 +83,7 @@ SUPPORTED_LANGUAGES = ["en", "cn"]  # Supported languages for generation
 
 # Vector and Schema Configuration
 try:
-    EMBEDDING_DIMENSION = int(os.environ.get("EMBEDDING_DIMENSION"))
+    EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION"))
 except ValueError as e:
     raise ValueError(f"EMBEDDING_DIMENSION must be an integer: {e}")
 
@@ -94,6 +91,9 @@ except ValueError as e:
 MAX_CHUNK_IDS_PER_QUERY = 10
 DEFAULT_QUERY_TOPK = 10
 DEFAULT_QUERY_TOPN = 5
+DEFAULT_LINK_TOP_K = 30
+DEFAULT_PASSAGE_NODE_WEIGHT = 1.0
+DEFAULT_PAGERANK_DAMPING = 0.85
 
 # Configure Logging
 logging.basicConfig(
@@ -117,8 +117,8 @@ class DocumentProcessingError(HiRAGException):
     """Document processing exception"""
 
 
-class EntityExtractionError(HiRAGException):
-    """Entity extraction exception"""
+class KGConstructionError(HiRAGException):
+    """Knowledge graph construction exception"""
 
 
 class StorageError(HiRAGException):
@@ -268,12 +268,12 @@ class StorageManager:
         self.vdb = vdb
         self.gdb = gdb
         self.chunks_table = None
-        self.entities_table = None
+        self.relations_table = None
 
     async def initialize(self) -> None:
         """Initialize storage tables"""
         await self._initialize_chunks_table()
-        await self._initialize_entities_table()
+        await self._initialize_relations_table()
 
     async def _initialize_chunks_table(self) -> None:
         """Initialize chunks table"""
@@ -305,35 +305,27 @@ class StorageManager:
             else:
                 raise StorageError(f"Failed to initialize chunks table: {e}")
 
-    async def _initialize_entities_table(self) -> None:
-        """Initialize entities table"""
+    async def _initialize_relations_table(self) -> None:
+        """Initialize relations table"""
         try:
-            self.entities_table = await self.vdb.db.open_table("entities")
+            self.relations_table = await self.vdb.db.open_table("relations")
         except Exception as e:
             if "was not found" in str(e):
-                self.entities_table = await self.vdb.db.create_table(
-                    "entities",
+                self.relations_table = await self.vdb.db.create_table(
+                    "relations",
                     schema=pa.schema(
                         [
-                            pa.field("text", pa.string()),
-                            pa.field("document_key", pa.string()),
+                            pa.field("source", pa.string()),
+                            pa.field("target", pa.string()),
+                            pa.field("description", pa.string()),
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
-                            pa.field("entity_type", pa.string()),
-                            pa.field("description", pa.list_(pa.string())),
-                            pa.field("chunk_ids", pa.list_(pa.string())),
-                            pa.field(
-                                "extraction_timestamp",
-                                pa.timestamp("ms"),
-                                nullable=True,
-                            ),
-                            pa.field("source_document_id", pa.string(), nullable=True),
                         ]
                     ),
                 )
             else:
-                raise StorageError(f"Failed to initialize entities table: {e}")
+                raise StorageError(f"Failed to initialize relations table: {e}")
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
@@ -343,88 +335,62 @@ class StorageManager:
             return
 
         try:
-            if len(chunks) == 1:
-                chunk = chunks[0]
-                await self.vdb.upsert_text(
-                    text_to_embed=chunk.page_content,
-                    properties={
-                        "document_key": chunk.id,
-                        "text": chunk.page_content,
-                        **chunk.metadata.__dict__,
-                    },
-                    table=self.chunks_table,
-                    mode="append",
-                )
-            else:
-                texts_to_embed = [chunk.page_content for chunk in chunks]
-                properties_list = [
-                    {
-                        "document_key": chunk.id,
-                        "text": chunk.page_content,
-                        **chunk.metadata.__dict__,
-                    }
-                    for chunk in chunks
-                ]
+            texts_to_embed = [chunk.page_content for chunk in chunks]
+            properties_list = [
+                {
+                    "document_key": chunk.id,
+                    "text": chunk.page_content,
+                    **chunk.metadata.__dict__,
+                }
+                for chunk in chunks
+            ]
 
-                await self.vdb.upsert_texts(
-                    texts_to_embed=texts_to_embed,
-                    properties_list=properties_list,
-                    table=self.chunks_table,
-                    mode="append",
-                )
+            await self.vdb.upsert_texts(
+                texts_to_embed=texts_to_embed,
+                properties_list=properties_list,
+                table=self.chunks_table,
+                mode="append",
+            )
         except Exception as e:
             raise StorageError(f"Failed to upsert chunks: {e}")
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
-    async def upsert_entities(self, entities: List[Entity]) -> None:
-        """Batch insert entities"""
-        if not entities:
+    async def upsert_relations_to_vdb(self, relations: List[Relation]) -> None:
+        """Batch insert relations to vector database"""
+        if not relations:
             return
 
         try:
-            if len(entities) == 1:
-                entity = entities[0]
-                description_text = (
-                    " | ".join(entity.metadata.description)
-                    if entity.metadata.description
-                    else ""
-                )
-                await self.vdb.upsert_text(
-                    text_to_embed=description_text,
-                    properties={
-                        "document_key": entity.id,
-                        "text": entity.page_content,
-                        **entity.metadata.__dict__,
-                    },
-                    table=self.entities_table,
-                    mode="append",
-                )
-            else:
-                texts_to_embed = [
-                    (
-                        " | ".join(entity.metadata.description)
-                        if entity.metadata.description
-                        else ""
-                    )
-                    for entity in entities
-                ]
-                properties_list = [
-                    {
-                        "document_key": entity.id,
-                        "text": entity.page_content,
-                        **entity.metadata.__dict__,
-                    }
-                    for entity in entities
-                ]
+            filtered_relations = [
+                relation
+                for relation in relations
+                if not relation.source.startswith("chunk-")
+            ]
 
-                await self.vdb.upsert_texts(
-                    texts_to_embed=texts_to_embed,
-                    properties_list=properties_list,
-                    table=self.entities_table,
-                    mode="append",
-                )
+            if not filtered_relations:
+                return
+
+            texts_to_embed = [
+                relation.properties.get("description", "")
+                for relation in filtered_relations
+            ]
+            properties_list = [
+                {
+                    "source": relation.source,
+                    "target": relation.target,
+                    "description": relation.properties.get("description", ""),
+                }
+                for relation in filtered_relations
+            ]
+
+            await self.vdb.upsert_texts(
+                texts_to_embed=texts_to_embed,
+                properties_list=properties_list,
+                table=self.relations_table,
+                mode="append",
+            )
         except Exception as e:
-            raise StorageError(f"Failed to upsert entities: {e}")
+            raise StorageError(f"Failed to upsert relations: {e}")
 
     async def get_existing_chunks(self, uri: str) -> List[str]:
         """Get existing chunk IDs"""
@@ -435,33 +401,6 @@ class StorageManager:
             return [chunk["document_key"] for chunk in existing_data]
         except Exception as e:
             logger.warning(f"Failed to get existing chunks: {e}")
-            return []
-
-    async def get_existing_entities_for_chunks(
-        self, chunk_ids: List[str]
-    ) -> List[Dict[str, Any]]:
-        """Get existing entities for specified chunks"""
-        if not chunk_ids:
-            return []
-
-        try:
-            # Limit query conditions to avoid overly long queries
-            limited_chunk_ids = chunk_ids[:MAX_CHUNK_IDS_PER_QUERY]
-            chunk_conditions = " OR ".join(
-                [
-                    f"array_contains(chunk_ids, '{chunk_id}')"
-                    for chunk_id in limited_chunk_ids
-                ]
-            )
-
-            if chunk_conditions:
-                existing_entities = (
-                    await self.entities_table.query().where(chunk_conditions).to_list()
-                )
-                return existing_entities
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to get existing entities: {e}")
             return []
 
     async def health_check(self) -> Dict[str, bool]:
@@ -505,14 +444,14 @@ class DocumentProcessor:
         self,
         storage: StorageManager,
         chunker: BaseChunk,
-        entity_extractor: BaseEntity,
+        kg_constructor: BaseKG,
         resume_tracker: Optional[object] = None,
         config: Optional[HiRAGConfig] = None,
         metrics: Optional[MetricsCollector] = None,
     ):
         self.storage = storage
         self.chunker = chunker
-        self.entity_extractor = entity_extractor
+        self.kg_constructor = kg_constructor
         self.resume_tracker = resume_tracker
         self.config = config or HiRAGConfig()
         self.metrics = metrics or MetricsCollector()
@@ -560,8 +499,7 @@ class DocumentProcessor:
 
             # Process graph data
             if with_graph:
-                entities = await self._process_entities(chunks)
-                await self._process_relations(chunks, entities)
+                await self._construct_kg(chunks)
 
             # Mark as complete
             if self.resume_tracker:
@@ -644,186 +582,42 @@ class DocumentProcessor:
 
         return chunks
 
-    async def _process_entities(self, chunks: List[BaseChunk]) -> List[Entity]:
-        """Process entity extraction and storage"""
-        async with self.metrics.track_operation("process_entities"):
-            # Get chunks that need entity processing
-            pending_chunks = self._get_pending_entity_chunks(chunks)
+    async def _construct_kg(self, chunks: List[BaseChunk]) -> None:
+        """Construct knowledge graph from chunks"""
+        logger.info(f"🔍 Constructing knowledge graph from {len(chunks)} chunks...")
 
-            if not pending_chunks:
-                logger.info("⏭️ All chunks already have entities extracted")
-                return []
-
-            logger.info(f"🔍 Extracting entities from {len(pending_chunks)} chunks...")
-
-            # Mark start
-            if self.resume_tracker:
-                self.resume_tracker.mark_entity_extraction_started(pending_chunks)
-
-            try:
-                # Extract entities
-                entities = await self.entity_extractor.entity(pending_chunks)
-
-                if entities:
-                    # Store to vector database
-                    await self.storage.upsert_entities(entities)
-
-                    # Store to graph database
-                    await self.storage.gdb.upsert_nodes(
-                        entities, concurrency=self.config.entity_upsert_concurrency
-                    )
-
-                    self.metrics.metrics.total_entities += len(entities)
-
-                    # Mark complete
-                    if self.resume_tracker:
-                        entity_counts = self._count_entities_per_chunk(entities)
-                        await self._mark_entity_extraction_complete(
-                            pending_chunks, entity_counts
-                        )
-
-                logger.info(f"✅ Extracted and stored {len(entities)} entities")
-                return entities
-
-            except Exception as e:
-                raise EntityExtractionError(f"Failed to extract entities: {e}")
-
-    def _get_pending_entity_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
-        """Get chunks that need entity extraction"""
-        if self.resume_tracker:
-            return self.resume_tracker.get_pending_entity_chunks(chunks)
-        return chunks
-
-    def _count_entities_per_chunk(self, entities: List[Entity]) -> Dict[str, int]:
-        """Count entities per chunk"""
-        counts = {}
-        for entity in entities:
-            for chunk_id in entity.metadata.chunk_ids:
-                counts[chunk_id] = counts.get(chunk_id, 0) + 1
-        return counts
-
-    async def _mark_entity_extraction_complete(
-        self, chunks: List[BaseChunk], entity_counts: Dict[str, int]
-    ) -> None:
-        """Mark entity extraction complete"""
         try:
-            if self.resume_tracker:
-                self.resume_tracker.mark_entity_extraction_completed(
-                    chunks, entity_counts
+            entities, relations = await self.kg_constructor.construct_kg(chunks)
+
+            # Store entities only to graph database (not to vector database)
+            if entities:
+                await self.storage.gdb.upsert_nodes(
+                    entities, concurrency=self.config.entity_upsert_concurrency
                 )
+                self.metrics.metrics.total_entities += len(entities)
+
+            # Store relations to both graph database and vector database
+            if relations:
+                # Store to graph database for graph analysis
+                gdb_relation_factories = [
+                    lambda rel=rel: self.storage.gdb.upsert_relation(rel)
+                    for rel in relations
+                ]
+                await _limited_gather_with_factory(
+                    gdb_relation_factories, self.config.relation_upsert_concurrency
+                )
+
+                # Store to vector database for semantic search
+                await self.storage.upsert_relations_to_vdb(relations)
+
+                self.metrics.metrics.total_relations += len(relations)
+
+            logger.info(
+                f"✅ Extracted and stored {len(entities)} entities and {len(relations)} relations"
+            )
+
         except Exception as e:
-            logger.warning(f"Failed to mark entity extraction complete: {e}")
-
-    async def _process_relations(
-        self, chunks: List[BaseChunk], new_entities: List[Entity]
-    ) -> None:
-        """Process relation extraction and storage"""
-        async with self.metrics.track_operation("process_relations"):
-            # Get chunks that need relation processing
-            pending_chunks = self._get_pending_relation_chunks(chunks)
-
-            if not pending_chunks:
-                logger.info("⏭️ No chunks need relation extraction")
-                return
-
-            logger.info(f"🔗 Extracting relations from {len(pending_chunks)} chunks...")
-
-            # Mark start
-            if self.resume_tracker:
-                self.resume_tracker.mark_relation_extraction_started(pending_chunks)
-
-            try:
-                # Get all related entities
-                all_entities = await self._get_all_entities_for_chunks(
-                    pending_chunks, new_entities
-                )
-
-                # Extract relations
-                relations = await self.entity_extractor.relation(
-                    pending_chunks, all_entities
-                )
-
-                if relations:
-                    # Store relations
-                    relation_factories = [
-                        lambda rel=rel: self.storage.gdb.upsert_relation(rel)
-                        for rel in relations
-                    ]
-                    await _limited_gather_with_factory(
-                        relation_factories, self.config.relation_upsert_concurrency
-                    )
-
-                    self.metrics.metrics.total_relations += len(relations)
-
-                    logger.info(f"✅ Extracted and stored {len(relations)} relations")
-                else:
-                    logger.info("ℹ️ No relations extracted")
-
-                # Mark as complete
-                relation_counts = self._count_relations_per_chunk(relations)
-                await self._mark_relation_extraction_complete(
-                    pending_chunks, relation_counts
-                )
-
-            except Exception as e:
-                logger.error(f"Failed to extract relations: {e}")
-                # Still mark as complete to avoid duplicate processing
-                await self._mark_relation_extraction_complete(pending_chunks, {})
-
-    def _get_pending_relation_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
-        """Get chunks that need relation extraction"""
-        if self.resume_tracker:
-            return self.resume_tracker.get_pending_relation_chunks(chunks)
-        return chunks
-
-    async def _get_all_entities_for_chunks(
-        self, chunks: List[BaseChunk], new_entities: List[Entity]
-    ) -> List[Entity]:
-        """Get all entities for chunks"""
-        all_entities = list(new_entities)
-
-        # Get existing entities
-        chunk_ids = [chunk.id for chunk in chunks]
-        existing_entities_data = await self.storage.get_existing_entities_for_chunks(
-            chunk_ids
-        )
-
-        # Convert to entity objects
-        for ent_data in existing_entities_data:
-            if ent_data["document_key"] not in [e.id for e in new_entities]:
-                entity_obj = Entity(
-                    id=ent_data["document_key"],
-                    page_content=ent_data["text"],
-                    metadata=EntityMetadata(
-                        entity_type=ent_data.get("entity_type", ""),
-                        description=ent_data.get("description", []),
-                        chunk_ids=ent_data.get("chunk_ids", []),
-                    ),
-                )
-                all_entities.append(entity_obj)
-
-        return all_entities
-
-    def _count_relations_per_chunk(self, relations: List) -> Dict[str, int]:
-        """Count relations per chunk"""
-        counts = {}
-        for rel in relations:
-            chunk_id = rel.properties.get("chunk_id")
-            if chunk_id:
-                counts[chunk_id] = counts.get(chunk_id, 0) + 1
-        return counts
-
-    async def _mark_relation_extraction_complete(
-        self, chunks: List[BaseChunk], relation_counts: Dict[str, int]
-    ) -> None:
-        """Mark relation extraction complete"""
-        try:
-            if self.resume_tracker:
-                self.resume_tracker.mark_relation_extraction_completed(
-                    chunks, relation_counts
-                )
-        except Exception as e:
-            logger.warning(f"Failed to mark relation extraction complete: {e}")
+            raise KGConstructionError(f"Failed to construct knowledge graph: {e}")
 
 
 # ============================================================================
@@ -838,7 +632,11 @@ class QueryService:
         self.storage = storage
 
     async def query_chunks(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        rerank: bool = True,
     ) -> List[Dict[str, Any]]:
         """Query chunks"""
         return await self.storage.vdb.query(
@@ -854,58 +652,85 @@ class QueryService:
                 "uploaded_at",
                 "document_key",
             ],
+            rerank=rerank,
         )
 
-    async def query_entities(
+    async def recall_chunks(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        rerank: bool = True,
+    ) -> Dict[str, Any]:
+        """Recall chunks and return both raw results and extracted chunk_ids.
+
+        Args:
+            query: Query string.
+            topk: Number of results to return.
+            topn: Number of results to rerank.
+            rerank: Whether to rerank the results.
+
+        Returns:
+            Dict with keys:
+                - "chunks": raw chunk search results
+                - "chunk_ids": list of document_key values
+        """
+        chunks = await self.query_chunks(query, topk=topk, topn=topn, rerank=rerank)
+        chunk_ids = [c.get("document_key") for c in chunks if c.get("document_key")]
+        return {"chunks": chunks, "chunk_ids": chunk_ids}
+
+    async def query_triplets(
         self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
     ) -> List[Dict[str, Any]]:
-        """Query entities"""
+        """Query relations from vector database using semantic search"""
         return await self.storage.vdb.query(
             query=query,
-            table=self.storage.entities_table,
+            table=self.storage.relations_table,
             topk=topk,
             topn=topn,
-            columns_to_select=["text", "document_key", "entity_type", "description"],
+            columns_to_select=["source", "target", "description"],
+            rerank=False,
         )
 
-    async def query_relations(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> Tuple[List[str], List[str]]:
-        """Query relations"""
-        # Search related entities
-        entities = await self.query_entities(query, topk, topn)
-        entity_ids = [entity["document_key"] for entity in entities]
+    async def recall_triplets(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+    ) -> Dict[str, Any]:
+        """Recall triplets and return both raw results and aggregated entity_ids.
 
-        # Search relations
-        neighbors = []
-        edges = []
-        for entity_id in entity_ids:
-            entity_neighbors, entity_edges = await self.storage.gdb.query_one_hop(
-                entity_id
-            )
-            neighbors.extend(entity_neighbors)
-            edges.extend(entity_edges)
+        Args:
+            query: Query string.
+            topk: Number of results to return.
+            topn: Optional rerank pool size for relations (forwarded to underlying query).
 
-        return neighbors, edges
+        Returns:
+            Dict with keys:
+                - "relations": raw triplet search results
+                - "entity_ids": unique list of entity ids appearing as source/target
+        """
+        relations = await self.query_triplets(query, topk=topk, topn=topn)
+        entity_id_set = set()
+        for rel in relations:
+            src = rel.get("source")
+            tgt = rel.get("target")
+            if src:
+                entity_id_set.add(src)
+            if tgt:
+                entity_id_set.add(tgt)
+        return {"relations": relations, "entity_ids": list(entity_id_set)}
 
-    async def query_all(self, query: str) -> Dict[str, Any]:
-        """Query all"""
-        chunks = await self.query_chunks(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
+    async def pagerank_top_chunks(
+        self,
+        seed_chunk_ids: List[str],
+        seed_entity_ids: List[str],
+        topk: int,
+    ) -> List[Tuple[str, float]]:
+        """Delegate personalized PageRank on GDB to get top-k chunk nodes."""
+        return await self.storage.gdb.pagerank_top_chunks(
+            seed_chunk_ids=seed_chunk_ids, seed_entity_ids=seed_entity_ids, topk=topk
         )
-        entities = await self.query_entities(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
-        )
-        neighbors, relations = await self.query_relations(
-            query, topk=DEFAULT_QUERY_TOPK, topn=DEFAULT_QUERY_TOPN
-        )
-
-        return {
-            "chunks": chunks,
-            "entities": entities,
-            "neighbors": neighbors,
-            "relations": relations,
-        }
 
     async def query_chunk_embeddings(self, chunk_ids: List[str]) -> Dict[str, Any]:
         """Query chunk embeddings"""
@@ -937,37 +762,171 @@ class QueryService:
 
         return res
 
-    async def query_entity_embeddings(self, entity_ids: List[str]) -> Dict[str, Any]:
-        """Query entity embeddings"""
-        if not entity_ids:
-            return {}
+    async def get_chunks_by_ids(
+        self,
+        chunk_ids: List[str],
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Fetch chunk rows by document_key list, preserving input order where possible."""
+        if not chunk_ids:
+            return []
+        if columns_to_select is None:
+            columns_to_select = [
+                "text",
+                "uri",
+                "filename",
+                "private",
+                "uploaded_at",
+                "document_key",
+            ]
+        rows = await self.storage.vdb.query_by_keys(
+            key_value=chunk_ids,
+            key_column="document_key",
+            table=self.storage.chunks_table,
+            columns_to_select=columns_to_select,
+        )
+        # Build map for stable ordering
+        by_id = {row.get("document_key"): row for row in rows}
+        return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
-        res = {}
-        try:
-            # Query entity embeddings by keys
-            entity_data = await self.storage.vdb.query_by_keys(
-                key_value=entity_ids,
-                key_column="document_key",
-                table=self.storage.entities_table,
-                columns_to_select=["document_key", "vector"],
-            )
+    async def dual_recall_with_pagerank(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
+        link_top_k: int = DEFAULT_LINK_TOP_K,
+        passage_node_weight: float = DEFAULT_PASSAGE_NODE_WEIGHT,
+        damping: float = DEFAULT_PAGERANK_DAMPING,
+    ) -> Dict[str, Any]:
+        """Two-path retrieval + PageRank fusion.
 
-            # entity data is a list of dicts with 'vector' key
-            for entity in entity_data:
-                if "vector" in entity and entity["vector"] is not None:
-                    res[entity["document_key"]] = entity["vector"]
-                else:
-                    # Log missing vector data and raise exception
-                    logger.warning(
-                        f"Entity {entity['document_key']} has no vector data"
+        - Recall chunks to form passage reset weights
+        - Recall triplets to form phrase (entity) reset weights with frequency penalty
+        - Build reset = phrase_weights + passage_weights and run Personalized PageRank
+        - If no facts, fall back to DPR order (query rerank order)
+        """
+        # Path 1: chunk recall (rerank happens in VDB query)
+        chunk_recall = await self.recall_chunks(query, topk=topk, topn=topn)
+        query_chunks = chunk_recall["chunks"]
+        query_chunk_ids = chunk_recall["chunk_ids"]
+
+        # Path 2: triplet recall -> entity seeds
+        triplet_recall = await self.recall_triplets(query, topk=topk, topn=topn)
+        query_triplets = triplet_recall["relations"]
+        query_entity_ids = triplet_recall["entity_ids"]
+
+        # Build passage weights from chunk ranks (approximate DPR)
+        passage_weights: Dict[str, float] = {}
+        if chunk_recall["chunk_ids"]:
+            # Inverse-rank weights then min-max normalize
+            raw_weights = []
+            for rank, cid in enumerate(query_chunk_ids):
+                if cid:
+                    w = 1.0 / (rank + 1)
+                    passage_weights[cid] = w
+                    raw_weights.append(w)
+            if raw_weights:
+                min_w, max_w = min(raw_weights), max(raw_weights)
+                scale = (max_w - min_w) if (max_w - min_w) > 0 else 1.0
+                for cid in list(passage_weights.keys()):
+                    passage_weights[cid] = (
+                        (passage_weights[cid] - min_w) / scale
+                    ) * passage_node_weight
+
+        # Build phrase weights from relations with frequency penalty and averaging
+        phrase_weights: Dict[str, float] = {}
+        if triplet_recall["relations"]:
+            occurrence_counts: Dict[str, int] = {}
+            # Accumulate inverse-rank weights to both source and target entities
+            for rank, rel in enumerate(query_triplets):
+                base_w = 1.0 / (rank + 1)
+                for ent_id in [rel.get("source"), rel.get("target")]:
+                    if not ent_id:
+                        continue
+                    phrase_weights[ent_id] = phrase_weights.get(ent_id, 0.0) + base_w
+                    occurrence_counts[ent_id] = occurrence_counts.get(ent_id, 0) + 1
+
+            async def _fetch_entity_chunk_count(ent: str) -> int:
+                try:
+                    node = await self.storage.gdb.query_node(ent)
+                    chunk_ids = (
+                        node.metadata.get("chunk_ids", [])
+                        if hasattr(node, "metadata")
+                        else []
                     )
-                    res[entity["document_key"]] = None
+                    return len(chunk_ids) if isinstance(chunk_ids, list) else 0
+                except Exception:
+                    return 0
 
-        except Exception as e:
-            logger.error(f"Failed to query entity embeddings: {e}")
-            return {}
+            counts = await asyncio.gather(
+                *[_fetch_entity_chunk_count(eid) for eid in query_entity_ids]
+            )
+            ent_to_chunk_count = {
+                eid: cnt for eid, cnt in zip(query_entity_ids, counts)
+            }
 
-        return res
+            for ent_id in query_entity_ids:
+                freq_penalty = ent_to_chunk_count.get(ent_id, 0)
+                denom = (
+                    float(freq_penalty) if freq_penalty and freq_penalty > 0 else 1.0
+                )
+                phrase_weights[ent_id] = (phrase_weights[ent_id] / denom) / float(
+                    occurrence_counts.get(ent_id, 1)
+                )
+
+            # Keep only top link_top_k entities
+            sorted_entities = sorted(
+                phrase_weights.items(), key=lambda x: x[1], reverse=True
+            )[: max(1, link_top_k)]
+            phrase_weights = dict(sorted_entities)
+
+        # If no fact signal, return DPR order directly
+        if not phrase_weights:
+            return {
+                "pagerank": [],
+                "query_top": query_chunks,
+            }
+
+        # Combine phrase and passage weights
+        reset_weights: Dict[str, float] = {}
+        for k, v in passage_weights.items():
+            if v > 0:
+                reset_weights[k] = reset_weights.get(k, 0.0) + v
+        for k, v in phrase_weights.items():
+            if v > 0:
+                reset_weights[k] = reset_weights.get(k, 0.0) + v
+
+        # Personalized PageRank over graph using reset vector
+        pr_ranked = await self.storage.gdb.pagerank_top_chunks_with_reset(
+            reset_weights=reset_weights,
+            topk=topk,
+            alpha=damping,
+        )
+        pr_ids = [cid for cid, _ in pr_ranked]
+
+        pr_rows = await self.get_chunks_by_ids(pr_ids)
+        pr_score_map = {cid: score for cid, score in pr_ranked}
+        for row in pr_rows:
+            row["pagerank_score"] = pr_score_map.get(row.get("document_key"), 0.0)
+
+        return {
+            "pagerank": pr_rows,
+            "query_top": query_chunks,
+        }
+
+    async def query(self, query: str) -> Dict[str, Any]:
+        """Query Strategy (default: dual_recall_with_pagerank)"""
+        result = await self.dual_recall_with_pagerank(
+            query=query,
+            topk=DEFAULT_QUERY_TOPK,
+            topn=DEFAULT_QUERY_TOPN,
+        )
+        result["chunks"] = (
+            result.get("pagerank")
+            if result.get("pagerank")
+            else result.get("query_top", [])
+        )
+        return result
 
 
 # ============================================================================
@@ -990,7 +949,7 @@ class HiRAG:
     _processor: Optional[DocumentProcessor] = field(default=None, init=False)
     _query_service: Optional[QueryService] = field(default=None, init=False)
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
-    _entity_extractor: Optional[VanillaEntity] = field(default=None, init=False)
+    _kg_constructor: Optional[VanillaKG] = field(default=None, init=False)
     _language: str = field(default=SUPPORTED_LANGUAGES[0], init=False)
 
     # Services
@@ -1030,7 +989,7 @@ class HiRAG:
             )
 
         self._language = language
-        self._entity_extractor.set_language(language)
+        self._kg_constructor.set_language(language)
 
         logger.info(f"Language set to {self._language}")
 
@@ -1110,7 +1069,7 @@ class HiRAG:
             chunk_size=self.config.chunk_size, chunk_overlap=self.config.chunk_overlap
         )
 
-        self._entity_extractor = VanillaEntity.create(
+        self._kg_constructor = VanillaKG.create(
             extract_func=self.chat_service.complete,
             llm_model_name=self.config.llm_model_name,
             language=self._language,
@@ -1129,7 +1088,7 @@ class HiRAG:
         self._processor = DocumentProcessor(
             storage=self._storage,
             chunker=chunker,
-            entity_extractor=self._entity_extractor,
+            kg_constructor=self._kg_constructor,
             resume_tracker=resume_tracker,
             config=self.config,
             metrics=self._metrics,
@@ -1178,10 +1137,8 @@ class HiRAG:
     async def generate_summary(
         self,
         chunks: List[Dict[str, Any]],
-        entities: List[Dict[str, Any]],
-        relationships: List[Dict[str, Any]],
     ) -> str:
-        """Generate summary from chunks, entities, and relations"""
+        """Generate summary from chunks"""
         DEBUG = False  # Set to True for debugging output
 
         if not self.chat_service:
@@ -1199,10 +1156,6 @@ class HiRAG:
 
             # Should use parser to better format the data
             data = "Chunks:\n" + parser.parse_list_of_dicts(chunks, "table") + "\n\n"
-            data += (
-                "Entities:\n" + parser.parse_list_of_dicts(entities, "table") + "\n\n"
-            )
-            # data += "Relations:\n" + str(relationships) + "\n\n"
 
             prompt = prompt.format(
                 data=data, max_report_length="5000", reference_placeholder=placeholder
@@ -1230,11 +1183,10 @@ class HiRAG:
             if DEBUG:
                 print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
 
-            # for each sentence, do a query and find the best matching document key to find the referenced chunk, entity, or relationship
+            # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
 
             chunk_keys = [c["document_key"] for c in chunks]
-            entity_keys = [e["document_key"] for e in entities]
 
             # Generate embeddings for each reference sentence
             if not ref_sentences:
@@ -1247,21 +1199,8 @@ class HiRAG:
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 chunk_keys
             )
-            entity_embeddings = await self._query_service.query_entity_embeddings(
-                entity_keys
-            )
-
-            # relation_descriptions = [rel.properties["description"] for rel in relationships]
-            # relation_embeddings = await self.embedding_service.create_embeddings(texts=relation_descriptions)
-            # # make relation embeddings be a dict with key as "source:target" and value as the embedding
-            # relation_embeddings = {
-            #     f"rel({rel.source}:{rel.target})": embedding
-            #     for rel, embedding in zip(relationships, relation_embeddings)
-            # }
 
             for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
-                found = False
-
                 # If the sentence is empty, continue
                 if not sentence.strip():
                     result.append("")
@@ -1279,26 +1218,8 @@ class HiRAG:
                         similar_chunks,
                     )
 
-                similar_entities = await self.calculate_similarity(
-                    sentence_embedding, entity_embeddings
-                )
-
-                if DEBUG:
-                    print(
-                        "\n\n\nSimilar Entities for Sentence:",
-                        sentence,
-                        "\n",
-                        similar_entities,
-                    )
-
-                # similar_relations = await self.calculate_similarity(sentence_embedding, relation_embeddings)
-
-                # if DEBUG:
-                #     print("\n\n\nSimilar Relations for Sentence:", sentence, "\n", similar_relations)
-
                 # Sort by similarity
-                # reference_list = similar_chunks + similar_entities + similar_relations
-                reference_list = similar_chunks + similar_entities
+                reference_list = similar_chunks
                 reference_list.sort(key=lambda x: x["similarity"], reverse=True)
 
                 # If no similar chunks found, append empty string
@@ -1439,39 +1360,19 @@ class HiRAG:
 
         return await self._query_service.query_chunks(query, topk, topn)
 
-    async def query_entities(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> List[Dict[str, Any]]:
-        """Query entities"""
-        if not self._query_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
-        return await self._query_service.query_entities(query, topk, topn)
-
-    async def query_relations(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
-    ) -> Tuple[List[str], List[str]]:
-        """Query relations"""
-        if not self._query_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
-        return await self._query_service.query_relations(query, topk, topn)
-
-    async def query_all(self, query: str, summary: bool = False) -> Dict[str, Any]:
+    async def query(self, query: str, summary: bool = False) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
         if summary:
-            query_all_results = await self._query_service.query_all(query)
+            query_results = await self._query_service.query(query)
             text_summary = await self.generate_summary(
-                chunks=query_all_results["chunks"],
-                entities=query_all_results["entities"],
-                relationships=query_all_results["relations"],
+                chunks=query_results["chunks"],
             )
-            query_all_results["summary"] = text_summary
-            return query_all_results
-        return await self._query_service.query_all(query)
+            query_results["summary"] = text_summary
+            return query_results
+        return await self._query_service.query(query)
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
@@ -1531,11 +1432,6 @@ class HiRAG:
         return self._storage.chunks_table if self._storage else None
 
     @property
-    def entities_table(self):
-        """Backward compatibility: access entities table"""
-        return self._storage.entities_table if self._storage else None
-
-    @property
     def vdb(self):
         """Backward compatibility: access vector database"""
         return self._storage.vdb if self._storage else None
@@ -1544,3 +1440,90 @@ class HiRAG:
     def gdb(self):
         """Backward compatibility: access graph database"""
         return self._storage.gdb if self._storage else None
+
+    # ========================================================================
+    # DPR-like recall API
+    # ========================================================================
+
+    # TODO: whether to use this?
+    async def dpr_recall_chunks(
+        self,
+        query: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        pool_size: int = 500,
+    ) -> Dict[str, Any]:
+        """Dense Passage Retrieval-style recall using current embeddings and stored vectors.
+
+        Steps:
+          - Retrieve a candidate pool without rerank
+          - Fetch embeddings of candidates and the query
+          - Compute cosine similarities, min-max normalize
+          - Return top-k chunk rows with scores and ids
+        """
+        if not self._query_service or not self.embedding_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        # Step 1: candidate pool (no rerank)
+        candidates = await self._query_service.query_chunks(
+            query=query, topk=pool_size, topn=None, rerank=False
+        )
+        candidate_ids = [
+            c.get("document_key") for c in candidates if c.get("document_key")
+        ]
+        if not candidate_ids:
+            return {"chunk_ids": [], "scores": [], "chunks": []}
+
+        # Step 2: fetch candidate embeddings and query embedding
+        chunk_vec_map = await self._query_service.query_chunk_embeddings(candidate_ids)
+        # Filter out None vectors while preserving id order
+        filtered_ids = [
+            cid for cid in candidate_ids if chunk_vec_map.get(cid) is not None
+        ]
+        if not filtered_ids:
+            return {"chunk_ids": [], "scores": [], "chunks": []}
+
+        chunk_matrix = np.array(
+            [chunk_vec_map[cid] for cid in filtered_ids], dtype=np.float32
+        )
+        query_vec = await self.embedding_service.create_embeddings([query])
+        # embedding services return numpy array (n, d); take first row
+        if hasattr(query_vec, "shape"):
+            query_vec = np.array(query_vec[0], dtype=np.float32)
+        else:
+            # fallback for list-like
+            query_vec = np.array(query_vec[0], dtype=np.float32)
+
+        # Step 3: cosine similarity
+        # Normalize rows of chunk_matrix and query vector
+        def _l2_normalize(mat: np.ndarray, axis: int) -> np.ndarray:
+            denom = np.linalg.norm(mat, ord=2, axis=axis, keepdims=True)
+            denom[denom == 0] = 1.0
+            return mat / denom
+
+        chunk_matrix_norm = _l2_normalize(chunk_matrix, axis=1)
+        query_vec_norm = query_vec / (np.linalg.norm(query_vec) + 1e-12)
+        scores = chunk_matrix_norm @ query_vec_norm
+
+        # Min-max normalize
+        s_min = float(scores.min())
+        s_max = float(scores.max())
+        if s_max > s_min:
+            norm_scores = (scores - s_min) / (s_max - s_min)
+        else:
+            norm_scores = np.zeros_like(scores)
+
+        # Step 4: sort and select top-k
+        order = np.argsort(-norm_scores)[: max(0, topk)]
+        top_ids = [filtered_ids[i] for i in order]
+        top_scores = [float(norm_scores[i]) for i in order]
+        top_rows = await self._query_service.get_chunks_by_ids(top_ids)
+        # Attach score for convenience
+        by_id = {row.get("document_key"): row for row in top_rows}
+        result_rows = []
+        for cid, sc in zip(top_ids, top_scores):
+            row = by_id.get(cid, {"document_key": cid})
+            row = dict(row)
+            row["dpr_score"] = sc
+            result_rows.append(row)
+
+        return {"chunk_ids": top_ids, "scores": top_scores, "chunks": result_rows}

@@ -46,6 +46,7 @@ dependencies = [
     "redis==6.2.0",
     "boto3==1.39.7",
     "contextual-client==0.7.0",
+    "json-repair==0.48.0",
 ]
 
 [project.scripts]

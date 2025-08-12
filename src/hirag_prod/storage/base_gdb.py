@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from hirag_prod.schema import Entity, Relation
+from ..schema import Entity, Relation
 
 
 class BaseGDB(ABC):

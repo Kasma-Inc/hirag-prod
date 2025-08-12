@@ -1,88 +1,48 @@
 import logging
-import re
 import time
 import warnings
-from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Tuple
 
-from hirag_prod._utils import (
-    _handle_single_entity_extraction,
-    _handle_single_relationship_extraction,
+import json_repair
+
+from .._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
-    pack_user_ass_to_openai_messages,
-    split_string_by_multi_markers,
 )
-from hirag_prod.entity.base import BaseEntity
-from hirag_prod.prompt import PROMPTS
-from hirag_prod.schema import Chunk, Entity, Relation
+from ..prompt import PROMPTS
+from ..schema import Chunk, Entity, Relation
+from .base import BaseKG
 
 
 @dataclass
-class VanillaEntity(BaseEntity):
+class VanillaKG(BaseKG):
     """
-    Production-ready entity and relation extraction pipeline using LLM models.
+    Production-ready knowledge graph construction pipeline using LLM models.
     """
 
     # === Core Components ===
-    llm_model_name: str = field(default="gpt-4o-mini")
+    llm_model_name: str = field(default="gpt-4o")
     extract_func: Callable
     language: str = field(default="en")  # en | cn
 
     # === Entity Extraction Configuration ===
     entity_extract_prompt: str = field(init=False)
-    entity_extract_max_gleaning: int = field(default=1)
-    entity_continue_prompt: str = field(init=False)
-    entity_extract_termination_prompt: str = field(init=False)
-    entity_extract_context: dict = field(init=False)
 
     # === Relation Extraction Configuration ===
     relation_extract_prompt: str = field(init=False)
-    relation_extract_max_gleaning: int = field(default=1)
-    relation_continue_prompt: str = field(init=False)
-    relation_extract_termination_prompt: str = field(init=False)
-    relation_extract_context: dict = field(init=False)
 
     # === Concurrency Configuration ===
-    entity_extraction_concurrency: int = field(default=64)
-    entity_merge_concurrency: int = field(default=64)
-    relation_extraction_concurrency: int = field(default=64)
+    chunk_processing_concurrency: int = field(default=16)
 
     def __post_init__(self):
         self._update_language_config()
 
     def _update_language_config(self):
         """Update all language-specific configurations based on current language setting."""
-        self.entity_continue_prompt = PROMPTS[
-            f"entity_continue_extraction_{self.language}"
-        ]
-        self.relation_continue_prompt = PROMPTS[
-            f"relation_continue_extraction_{self.language}"
-        ]
 
-        self.entity_extract_prompt = PROMPTS[f"hi_entity_extraction_{self.language}"]
-        self.entity_extract_termination_prompt = PROMPTS[
-            f"entity_if_loop_extraction_{self.language}"
-        ]
-        self.entity_extract_context = {
-            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
-            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
-            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
-            "entity_types": ",".join(PROMPTS[f"DEFAULT_ENTITY_TYPES_{self.language}"]),
-        }
-
-        self.relation_extract_prompt = PROMPTS[
-            f"hi_relation_extraction_{self.language}"
-        ]
-        self.relation_extract_termination_prompt = PROMPTS[
-            f"relation_if_loop_extraction_{self.language}"
-        ]
-        self.relation_extract_context = {
-            "tuple_delimiter": PROMPTS["DEFAULT_TUPLE_DELIMITER"],
-            "record_delimiter": PROMPTS["DEFAULT_RECORD_DELIMITER"],
-            "completion_delimiter": PROMPTS["DEFAULT_COMPLETION_DELIMITER"],
-        }
+        self.entity_extract_prompt = PROMPTS[f"entity_extraction_{self.language}"]
+        self.relation_extract_prompt = PROMPTS[f"triplet_extraction_{self.language}"]
 
     def set_language(self, language: str):
         """
@@ -98,50 +58,48 @@ class VanillaEntity(BaseEntity):
 
         self.language = language
         self._update_language_config()
-        logging.info(f"[VanillaEntity] Language updated to {language}")
+        logging.info(f"[VanillaKG] Language updated to {language}")
 
     @classmethod
-    def create(cls, language: str = "en", **kwargs) -> "VanillaEntity":
-        """Factory method to create a VanillaEntity instance with custom configuration."""
+    def create(cls, language: str = "en", **kwargs) -> "VanillaKG":
+        """Factory method to create a VanillaKG instance with custom configuration."""
         return cls(language=language, **kwargs)
 
-    async def entity(self, chunks: List[Chunk]) -> List[Entity]:
+    async def _dense_sparse_integration(
+        self, entities: List[Entity], chunk: Chunk
+    ) -> List[Relation]:
         """
-        Extract and merge entities from text chunks.
-
-        This method orchestrates the complete entity extraction pipeline:
-        1. Concurrent extraction from all chunks
-        2. Flattening and validation of results
-        3. Merging of duplicate entities across chunks
+        Dense Sparse Integration
+        - Dense: chunk node
+        - Sparse: entity node
+        
+        Each chunk in the corpus is treated as a dense node, with the context edge labeled "contains" connecting \
+        the chunk to all entities derived from the chunk.
 
         Args:
-            chunks: List of text chunks to process for entity extraction
-
-        Returns:
-            List of unique, merged entities extracted from all chunks
+            entities: List of extracted entities with chunk metadata
         """
-        logging.info(f"[Entity] Starting extraction from {len(chunks)} chunks")
+        if not entities:
+            return
 
-        # TODO: Add progress bar for entity extraction to track processing of chunks
+        dense_sparse_relations = []
+        for entity in entities:
+            dense_sparse_relations.append(
+                Relation(
+                    source=chunk.id,
+                    target=entity.id,
+                    properties={
+                        "source": chunk.id,
+                        "relation": "contains",
+                        "target": entity.page_content,
+                        "description": f"Chunk {chunk.id} contains Entity {entity.page_content}",
+                        "weight": 1.0,
+                        "chunk_id": chunk.id,
+                    },
+                )
+            )
 
-        # Step 1: Extract entities from all chunks concurrently
-        extraction_factories = [
-            lambda chunk=chunk: self._extract_entities_from_chunk(chunk)
-            for chunk in chunks
-        ]
-        entities_lists = await _limited_gather_with_factory(
-            extraction_factories, self.entity_extraction_concurrency
-        )
-
-        # Step 2: Flatten and filter valid entities
-        entities = self._flatten_entity_lists(entities_lists)
-        logging.info(f"[Entity] Extracted {len(entities)} raw entities")
-
-        # Step 3: Merge duplicate entities
-        merged_entities = await self._merge_duplicate_entities(entities)
-        logging.info(f"[Entity] Completed with {len(merged_entities)} final entities")
-
-        return merged_entities
+        return dense_sparse_relations
 
     async def _extract_entities_from_chunk(self, chunk: Chunk) -> List[Entity]:
         """
@@ -161,15 +119,15 @@ class VanillaEntity(BaseEntity):
         try:
             start_time = time.time()
 
-            # Step 1: Initial entity extraction
-            entity_result, history = await self._perform_initial_entity_extraction(
-                chunk
+            entity_prompt = self.entity_extract_prompt.format(
+                input_text=chunk.page_content
             )
 
-            # Step 2: Iterative gleaning for improved quality
-            entity_result = await self._perform_entity_gleaning(entity_result, history)
+            entity_result = await self.extract_func(
+                model=self.llm_model_name,
+                prompt=entity_prompt,
+            )
 
-            # Step 3: Parse entities from LLM output
             entities = await self._parse_entities_from_result(entity_result, chunk.id)
 
             elapsed = time.time() - start_time
@@ -184,89 +142,6 @@ class VanillaEntity(BaseEntity):
             logging.exception(f"[Entity] Extraction failed for chunk {chunk.id}")
             warnings.warn(f"Entity extraction failed for chunk {chunk.id}: {e}")
             return []
-
-    async def _perform_initial_entity_extraction(
-        self, chunk: Chunk
-    ) -> Tuple[str, List]:
-        """
-        Perform the initial entity extraction using LLM.
-
-        Args:
-            chunk: Text chunk to process
-
-        Returns:
-            Tuple of (extraction_result, conversation_history)
-        """
-        entity_prompt = self.entity_extract_prompt.format(
-            **self.entity_extract_context, input_text=chunk.page_content
-        )
-
-        entity_result = await self.extract_func(
-            model=self.llm_model_name,
-            prompt=entity_prompt,
-        )
-
-        history = pack_user_ass_to_openai_messages(entity_prompt, entity_result)
-        return entity_result, history
-
-    async def _perform_entity_gleaning(self, entity_result: str, history: List) -> str:
-        """
-        Perform iterative gleaning to improve entity extraction quality.
-
-        Gleaning is an iterative process where the LLM is asked to continue
-        extraction, potentially finding entities missed in the initial pass.
-
-        Args:
-            entity_result: Initial extraction result
-            history: Conversation history for context
-
-        Returns:
-            Enhanced extraction result after gleaning
-        """
-        for glean_idx in range(self.entity_extract_max_gleaning):
-            # Get additional entities through gleaning
-            glean_result = await self.extract_func(
-                model=self.llm_model_name,
-                prompt=self.entity_continue_prompt,
-                history_messages=history,
-            )
-
-            history += pack_user_ass_to_openai_messages(
-                self.entity_continue_prompt, glean_result
-            )
-            entity_result += glean_result
-
-            # Check if we should continue gleaning (skip termination check on last iteration)
-            if glean_idx < self.entity_extract_max_gleaning - 1:
-                should_continue = await self._should_continue_extraction(
-                    history, self.entity_extract_termination_prompt
-                )
-                if not should_continue:
-                    break
-
-        return entity_result
-
-    async def _should_continue_extraction(
-        self, history: List, termination_prompt: str
-    ) -> bool:
-        """
-        Determine if extraction should continue based on LLM judgment.
-
-        Args:
-            history: Conversation history for context
-            termination_prompt: Prompt to ask LLM if extraction should continue
-
-        Returns:
-            True if extraction should continue, False otherwise
-        """
-        termination_response = await self.extract_func(
-            model=self.llm_model_name,
-            prompt=termination_prompt,
-            history_messages=history,
-        )
-
-        normalized_response = termination_response.strip().strip('"').strip("'").lower()
-        return normalized_response == "yes"
 
     async def _parse_entities_from_result(
         self, entity_result: str, chunk_id: str
@@ -284,292 +159,23 @@ class VanillaEntity(BaseEntity):
         Returns:
             List of parsed Entity objects
         """
-        # Split the result into individual records
-        records = split_string_by_multi_markers(
-            entity_result,
-            [
-                self.entity_extract_context["record_delimiter"],
-                self.entity_extract_context["completion_delimiter"],
-            ],
-        )
-
+        decoded_obj = json_repair.repair_json(entity_result, return_objects=True)
+        entity_list = decoded_obj.get("entities", [])
         entities = []
-        for record in records:
-            entity = await self._parse_single_entity_record(record, chunk_id)
-            if entity:
-                entities.append(entity)
-
+        for entity in entity_list:
+            entity_id = compute_mdhash_id(entity, prefix="ent-")
+            entities.append(
+                Entity(
+                    id=entity_id,
+                    page_content=entity,
+                    metadata={
+                        "entity_type": "entity",
+                        "description": [],
+                        "chunk_ids": [chunk_id],
+                    },
+                )
+            )
         return entities
-
-    async def _parse_single_entity_record(
-        self, record: str, chunk_id: str
-    ) -> Optional[Entity]:
-        """
-        Parse a single entity record from the LLM output.
-
-        Args:
-            record: Single entity record string from LLM output
-            chunk_id: ID of the source chunk
-
-        Returns:
-            Parsed Entity object or None if parsing fails
-        """
-        # Extract content within parentheses using regex
-        match = re.search(r"\((.*?)\)", record)
-        if not match:
-            return None
-
-        record_content = match.group(1)
-        record_attributes = split_string_by_multi_markers(
-            record_content, [self.entity_extract_context["tuple_delimiter"]]
-        )
-
-        entity_data = await _handle_single_entity_extraction(
-            record_attributes, chunk_id
-        )
-
-        if not entity_data:
-            return None
-
-        return Entity(
-            id=compute_mdhash_id(entity_data["entity_name"], prefix="ent-"),
-            page_content=entity_data["entity_name"],
-            metadata={
-                "entity_type": entity_data["entity_type"],
-                "description": [entity_data["description"]],
-                "chunk_ids": [chunk_id],
-            },
-        )
-
-    def _flatten_entity_lists(self, entities_lists: List[List[Entity]]) -> List[Entity]:
-        """
-        Flatten and filter entity lists from multiple chunks.
-
-        Args:
-            entities_lists: List of entity lists from different chunks
-
-        Returns:
-            Flattened list of all valid entities
-        """
-        return [
-            entity
-            for entity_list in entities_lists
-            if entity_list  # Filter out None/empty lists
-            for entity in entity_list
-        ]
-
-    async def _merge_duplicate_entities(self, entities: List[Entity]) -> List[Entity]:
-        """
-        Merge entities that appear in multiple chunks.
-
-        When the same entity is mentioned across multiple chunks, this method
-        consolidates them into a single entity with merged metadata.
-
-        Args:
-            entities: List of all extracted entities
-
-        Returns:
-            List of unique entities with duplicates merged
-        """
-        # Count entity occurrences by name
-        entity_counts = Counter(entity.page_content for entity in entities)
-
-        # Separate unique and duplicate entities
-        unique_entities = [
-            entity for entity in entities if entity_counts[entity.page_content] == 1
-        ]
-
-        duplicate_entities = [
-            entity for entity in entities if entity_counts[entity.page_content] > 1
-        ]
-
-        # Group duplicates by name for merging
-        entities_by_name = defaultdict(list)
-        for entity in duplicate_entities:
-            entities_by_name[entity.page_content].append(entity)
-
-        # Merge duplicate entities concurrently
-        merge_factories = [
-            lambda name=name, entity_list=entity_list: self._merge_entities_by_name(
-                name, entity_list
-            )
-            for name, entity_list in entities_by_name.items()
-        ]
-
-        merged_entities = await _limited_gather_with_factory(
-            merge_factories, self.entity_merge_concurrency
-        )
-        merged_entities = [entity for entity in merged_entities if entity]
-
-        return unique_entities + merged_entities
-
-    async def _merge_entities_by_name(
-        self, entity_name: str, entities: List[Entity]
-    ) -> Optional[Entity]:
-        """
-        Merge multiple entities with the same name into a single entity.
-
-        Args:
-            entity_name: Name of the entity to merge
-            entities: List of entity instances to merge
-
-        Returns:
-            Merged Entity object or None if merge fails
-        """
-        try:
-            logging.info(
-                f"[Entity-Merge] Merging {len(entities)} instances of '{entity_name}'"
-            )
-
-            # Collect and align descriptions with chunk IDs
-            merged_descriptions, merged_chunk_ids = self._collect_entity_descriptions(
-                entities, entity_name
-            )
-
-            # Determine the most common entity type
-            entity_type = self._get_most_common_entity_type(entities)
-
-            merged_entity = Entity(
-                id=compute_mdhash_id(entity_name, prefix="ent-"),
-                page_content=entity_name,
-                metadata={
-                    "entity_type": entity_type,
-                    "description": merged_descriptions,
-                    "chunk_ids": merged_chunk_ids,
-                },
-            )
-
-            logging.info(
-                f"[Entity-Merge] Successfully merged '{entity_name}': "
-                f"type={entity_type}, chunks={len(merged_chunk_ids)}, "
-                f"descriptions={len(merged_descriptions)}"
-            )
-
-            return merged_entity
-
-        except Exception as e:
-            logging.exception(f"[Entity-Merge] Failed to merge '{entity_name}': {e}")
-            warnings.warn(f"Entity merge failed for {entity_name}: {e}")
-            return None
-
-    def _collect_entity_descriptions(
-        self, entities: List[Entity], entity_name: str
-    ) -> Tuple[List[str], List[str]]:
-        """
-        Collect and align descriptions with chunk IDs from multiple entity instances.
-
-        Args:
-            entities: List of entity instances to collect from
-            entity_name: Name of the entity for logging
-
-        Returns:
-            Tuple of (merged_descriptions, merged_chunk_ids) - limited to at most 6 descriptions
-        """
-        merged_descriptions = []
-        merged_chunk_ids = []
-
-        for entity in entities:
-            descriptions = entity.metadata.description
-            chunk_ids = entity.metadata.chunk_ids
-
-            # Ensure descriptions and chunk_ids have matching lengths
-            if len(descriptions) != len(chunk_ids):
-                logging.warning(
-                    f"[Entity-Merge] Mismatched description/chunk_ids lengths "
-                    f"for entity '{entity_name}'"
-                )
-                descriptions, chunk_ids = self._align_descriptions_and_chunks(
-                    descriptions, chunk_ids
-                )
-
-            merged_descriptions.extend(descriptions)
-            merged_chunk_ids.extend(chunk_ids)
-
-        # Limit to at most 6 descriptions
-        # TODO: change to random sampling or other sampling strategies?
-        if len(merged_descriptions) > 6:
-            merged_descriptions = merged_descriptions[:6]
-
-        return merged_descriptions, merged_chunk_ids
-
-    def _align_descriptions_and_chunks(
-        self, descriptions: List[str], chunk_ids: List[str]
-    ) -> Tuple[List[str], List[str]]:
-        """
-        Align descriptions and chunk IDs to have matching lengths.
-
-        This method handles cases where descriptions and chunk_ids lists
-        have mismatched lengths by extending the shorter list.
-
-        Args:
-            descriptions: List of entity descriptions
-            chunk_ids: List of chunk IDs
-
-        Returns:
-            Tuple of aligned (descriptions, chunk_ids)
-        """
-        # Extend the shorter list to match the longer one
-        while len(descriptions) < len(chunk_ids):
-            descriptions.append(descriptions[-1] if descriptions else "")
-        while len(chunk_ids) < len(descriptions):
-            chunk_ids.append(chunk_ids[-1] if chunk_ids else "")
-
-        return descriptions, chunk_ids
-
-    def _get_most_common_entity_type(self, entities: List[Entity]) -> str:
-        """
-        Get the most common entity type from a list of entities.
-
-        Args:
-            entities: List of entities to analyze
-
-        Returns:
-            Most frequently occurring entity type
-        """
-        entity_types = [entity.metadata.entity_type for entity in entities]
-        type_counts = Counter(entity_types)
-        return type_counts.most_common(1)[0][0]
-
-    async def relation(
-        self, chunks: List[Chunk], entities: List[Entity]
-    ) -> List[Relation]:
-        """
-        Extract relations between entities from text chunks.
-
-        This method processes each chunk to identify relationships between the provided
-        entities, using the LLM to understand contextual connections and semantic
-        relationships in the text.
-
-        Args:
-            chunks: List of text chunks to process for relation extraction
-            entities: List of available entities for relation identification
-
-        Returns:
-            List of relations extracted from all chunks
-        """
-        logging.info(
-            f"[Relation] Starting extraction from {len(chunks)} chunks with {len(entities)} entities"
-        )
-
-        # TODO: Add progress bar for relation extraction to show chunk processing progress
-
-        # Create relation extraction tasks for each chunk
-        extraction_factories = [
-            lambda chunk=chunk, entities=entities: self._extract_relations_from_chunk(
-                chunk, entities
-            )
-            for chunk in chunks
-        ]
-
-        relations_lists = await _limited_gather_with_factory(
-            extraction_factories, self.relation_extraction_concurrency
-        )
-
-        # Flatten and filter valid relations
-        relations = self._flatten_relation_lists(relations_lists)
-        logging.info(f"[Relation] Completed with {len(relations)} relations")
-
-        return relations
 
     async def _extract_relations_from_chunk(
         self, chunk: Chunk, entities: List[Entity]
@@ -587,33 +193,27 @@ class VanillaEntity(BaseEntity):
         try:
             start_time = time.time()
 
-            # Create entity lookup for this chunk
-            chunk_entities = {
-                entity.page_content: entity
-                for entity in entities
-                if chunk.id in entity.metadata.chunk_ids
-            }
-
-            if not chunk_entities:
+            if not entities:
                 logging.info(
                     f"[Relation] No entities found for chunk {chunk.id}, skipping"
                 )
                 return []
 
+            # Create entity list for prompt
+            entity_names = [entity.page_content for entity in entities]
+
+            relation_prompt = self.relation_extract_prompt.format(
+                entity_list=entity_names,
+                input_text=chunk.page_content,
+            )
+
             # Step 1: Initial relation extraction
-            relation_result, history = await self._perform_initial_relation_extraction(
-                chunk, chunk_entities
+            relation_result = await self.extract_func(
+                model=self.llm_model_name,
+                prompt=relation_prompt,
             )
 
-            # Step 2: Iterative gleaning
-            relation_result = await self._perform_relation_gleaning(
-                relation_result, history
-            )
-
-            # Step 3: Parse relations from LLM output
-            relations = await self._parse_relations_from_result(
-                relation_result, chunk, chunk_entities
-            )
+            relations = await self._parse_relations_from_result(relation_result, chunk)
 
             elapsed = time.time() - start_time
             logging.info(
@@ -628,70 +228,8 @@ class VanillaEntity(BaseEntity):
             warnings.warn(f"Relation extraction failed for chunk {chunk.id}: {e}")
             return []
 
-    async def _perform_initial_relation_extraction(
-        self, chunk: Chunk, entities_dict: Dict[str, Entity]
-    ) -> Tuple[str, List]:
-        """
-        Perform initial relation extraction using LLM.
-
-        Args:
-            chunk: Text chunk to process
-            entities_dict: Available entities for relation identification
-
-        Returns:
-            Tuple of (extraction_result, conversation_history)
-        """
-        relation_prompt = self.relation_extract_prompt.format(
-            **self.relation_extract_context,
-            entities=list(entities_dict.keys()),
-            input_text=chunk.page_content,
-        )
-
-        relation_result = await self.extract_func(
-            model=self.llm_model_name,
-            prompt=relation_prompt,
-        )
-
-        history = pack_user_ass_to_openai_messages(relation_prompt, relation_result)
-        return relation_result, history
-
-    async def _perform_relation_gleaning(
-        self, relation_result: str, history: List
-    ) -> str:
-        """
-        Perform iterative gleaning for relation extraction.
-
-        Args:
-            relation_result: Initial extraction result
-            history: Conversation history for context
-
-        Returns:
-            Enhanced extraction result after gleaning
-        """
-        for glean_idx in range(self.relation_extract_max_gleaning):
-            glean_result = await self.extract_func(
-                model=self.llm_model_name,
-                prompt=self.relation_continue_prompt,
-                history_messages=history,
-            )
-
-            history += pack_user_ass_to_openai_messages(
-                self.relation_continue_prompt, glean_result
-            )
-            relation_result += glean_result
-
-            # Check if we should continue gleaning (skip termination check on last iteration)
-            if glean_idx < self.relation_extract_max_gleaning - 1:
-                should_continue = await self._should_continue_extraction(
-                    history, self.relation_extract_termination_prompt
-                )
-                if not should_continue:
-                    break
-
-        return relation_result
-
     async def _parse_relations_from_result(
-        self, relation_result: str, chunk: Chunk, entities_dict: Dict[str, Entity]
+        self, relation_result: str, chunk: Chunk
     ) -> List[Relation]:
         """
         Parse relations from LLM output string.
@@ -699,103 +237,150 @@ class VanillaEntity(BaseEntity):
         Args:
             relation_result: Raw LLM output containing relation information
             chunk: Source chunk for the relations
-            entities_dict: Available entities for relation validation
 
         Returns:
             List of parsed Relation objects
         """
-        records = split_string_by_multi_markers(
-            relation_result,
-            [
-                self.relation_extract_context["record_delimiter"],
-                self.relation_extract_context["completion_delimiter"],
-            ],
-        )
+        try:
+            decoded_obj = json_repair.repair_json(relation_result, return_objects=True)
+            triplets = decoded_obj.get("triplets", [])
+        except json_repair.JSONRepairError:
+            return []
 
         relations = []
-        for record in records:
-            relation = await self._parse_single_relation_record(
-                record, chunk, entities_dict
+        for triplet in triplets:
+            head = triplet.get("Head")
+            relation = triplet.get("Relation")
+            tail = triplet.get("Tail")
+            if not all([head, relation, tail]):
+                continue
+
+            source_id = compute_mdhash_id(head, prefix="ent-")
+            target_id = compute_mdhash_id(tail, prefix="ent-")
+
+            properties = {
+                "source": head,
+                "relation": relation,
+                "target": tail,
+                "description": f"{head} {relation} {tail}",
+                "weight": 1.0,
+                "chunk_id": chunk.id,
+            }
+
+            rel = Relation(
+                source=source_id,
+                target=target_id,
+                properties=properties,
             )
-            if relation:
-                relations.append(relation)
+            relations.append(rel)
+
+            source_entity = Entity(
+                id=source_id,
+                page_content=head,
+                metadata={
+                    "entity_type": "entity",
+                    "description": [],
+                    "chunk_ids": [chunk.id],
+                },
+            )
+            target_entity = Entity(
+                id=target_id,
+                page_content=tail,
+                metadata={
+                    "entity_type": "entity",
+                    "description": [],
+                    "chunk_ids": [chunk.id],
+                },
+            )
+
+            dense_sparse_relations = await self._dense_sparse_integration(
+                entities=[source_entity, target_entity],
+                chunk=chunk,
+            )
+            relations.extend(dense_sparse_relations)
 
         return relations
 
-    async def _parse_single_relation_record(
-        self, record: str, chunk: Chunk, entities_dict: Dict[str, Entity]
-    ) -> Optional[Relation]:
+    async def construct_kg(
+        self, chunks: List[Chunk]
+    ) -> Tuple[List[Entity], List[Relation]]:
         """
-        Parse a single relation record from LLM output.
+        Process chunks to extract entities and relations concurrently.
+
+        This is the main entry point that processes all chunks in parallel,
+        extracting both entities and relations for each chunk simultaneously.
 
         Args:
-            record: Single relation record string from LLM output
-            chunk: Source chunk for the relation
-            entities_dict: Available entities for validation
+            chunks: List of text chunks to process
 
         Returns:
-            Parsed Relation object or None if parsing fails
+            Tuple of (all_entities, all_relations) extracted from all chunks
         """
-        # Extract content within parentheses
-        match = re.search(r"\((.*)\)", record)
-        if not match:
-            return None
+        logging.info(f"[ProcessChunks] Starting processing of {len(chunks)} chunks")
 
-        record_content = match.group(1)
-        record_attributes = split_string_by_multi_markers(
-            record_content, [self.relation_extract_context["tuple_delimiter"]]
-        )
+        if not chunks:
+            return [], []
 
-        relation_data = await _handle_single_relationship_extraction(
-            record_attributes, chunk.id
-        )
-
-        if not relation_data:
-            return None
-
-        # Validate that both source and target entities exist
-        source_entity = entities_dict.get(relation_data["src_id"])
-        target_entity = entities_dict.get(relation_data["tgt_id"])
-
-        if not source_entity:
-            logging.warning(
-                f"Source entity '{relation_data['src_id']}' not found, "
-                f"skipping relation in chunk {chunk.id}"
-            )
-            return None
-
-        if not target_entity:
-            logging.warning(
-                f"Target entity '{relation_data['tgt_id']}' not found, "
-                f"skipping relation in chunk {chunk.id}"
-            )
-            return None
-
-        return Relation(
-            source=source_entity.id,
-            target=target_entity.id,
-            properties={
-                "description": relation_data["description"],
-                "weight": relation_data["weight"],
-                "chunk_id": chunk.id,
-            },
-        )
-
-    def _flatten_relation_lists(
-        self, relations_lists: List[List[Relation]]
-    ) -> List[Relation]:
-        """
-        Flatten and filter relation lists from multiple chunks.
-
-        Args:
-            relations_lists: List of relation lists from different chunks
-
-        Returns:
-            Flattened list of all valid relations
-        """
-        return [
-            relation
-            for relation_list in relations_lists
-            if relation_list  # Filter out None/empty lists
-            for relation in relation_list
+        # Create chunk processing factories for concurrent execution
+        chunk_factories = [
+            lambda chunk=chunk: self._process_single_chunk(chunk) for chunk in chunks
         ]
+
+        # Process all chunks concurrently with progress bar
+        chunk_results = await _limited_gather_with_factory(
+            chunk_factories,
+            self.chunk_processing_concurrency,
+            desc=f"Processing {len(chunks)} chunks",
+            show_progress=True,
+        )
+
+        # Aggregate results from all chunks
+        all_entities = []
+        all_relations = []
+
+        for entities, relations in chunk_results:
+            if entities:
+                all_entities.extend(entities)
+            if relations:
+                all_relations.extend(relations)
+
+        logging.info(
+            f"[ProcessChunks] Completed processing: "
+            f"{len(all_entities)} entities, {len(all_relations)} relations"
+        )
+
+        return all_entities, all_relations
+
+    async def _process_single_chunk(
+        self, chunk: Chunk
+    ) -> Tuple[List[Entity], List[Relation]]:
+        """
+        Process a single chunk to extract both entities and relations.
+
+        Args:
+            chunk: Text chunk to process
+
+        Returns:
+            Tuple of (entities, relations) extracted from this chunk
+        """
+        try:
+            start_time = time.time()
+
+            # Extract entities first
+            entities = await self._extract_entities_from_chunk(chunk)
+
+            # Extract relations using the entities from this chunk
+            relations = await self._extract_relations_from_chunk(chunk, entities)
+
+            elapsed = time.time() - start_time
+            logging.info(
+                f"[SingleChunk] Processed chunk {chunk.id}: "
+                f"{len(entities)} entities, {len(relations)} relations in {elapsed:.2f}s"
+            )
+
+            return entities, relations
+
+        except Exception as e:
+            logging.exception(f"[SingleChunk] Failed to process chunk {chunk.id}")
+            warnings.warn(f"Chunk processing failed for {chunk.id}: {e}")
+            return [], []
