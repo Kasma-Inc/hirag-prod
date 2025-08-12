@@ -1,5 +1,8 @@
 import logging
+import os
 from typing import Any, Literal, Optional, Tuple
+
+import requests
 
 from hirag_prod._utils import route_file_path
 from hirag_prod.loader.csv_loader import CSVLoader
@@ -62,9 +65,26 @@ DEFAULT_LOADER_CONFIGS = {
 
 
 def check_docling_cloud_health() -> bool:
-    """Check if the docling cloud is healthy"""
-    # TODO: check if the docling cloud service is healthy
-    return True
+    """docling cloud service health check"""
+    try:
+        base_url = os.path.join(os.getenv("DOCLING_CLOUD_BASE_URL"), "/health")
+        token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
+        model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
+        if not base_url or not token:
+            return False
+        headers = {
+            "Model-Name": model,
+            "Authorization": f"Bearer {token}",
+        }
+        resp = requests.post(base_url, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            return True
+
+        return data.get("success", True)
+    except Exception:
+        return False
 
 
 def load_document(

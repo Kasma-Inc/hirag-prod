@@ -33,7 +33,7 @@ from .parser import (
     ReferenceParser,
 )
 from .prompt import PROMPTS
-from .resume_tracker import ResumeTracker
+from .resume_tracker import JobStatus, ResumeTracker
 from .schema import Relation
 from .storage import (
     BaseGDB,
@@ -176,6 +176,7 @@ class ProcessingMetrics:
     total_relations: int = 0
     processing_time: float = 0.0
     error_count: int = 0
+    job_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -185,6 +186,7 @@ class ProcessingMetrics:
             "total_relations": self.total_relations,
             "processing_time": self.processing_time,
             "error_count": self.error_count,
+            "job_id": self.job_id,
         }
 
 
@@ -463,6 +465,7 @@ class DocumentProcessor:
         with_graph: bool = True,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
+        job_id: Optional[str] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
@@ -476,17 +479,41 @@ class DocumentProcessor:
 
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
+                # Mark job failed if tracking is enabled
+                if self.resume_tracker and job_id:
+                    try:
+                        self.resume_tracker.set_job_failed(
+                            job_id, "No chunks created from document"
+                        )
+                    except Exception:
+                        pass
                 return self.metrics.metrics
 
             self.metrics.metrics.total_chunks = len(chunks)
+            self.metrics.metrics.job_id = job_id or ""
 
             # Check if document was already completed in a previous session
             if self.resume_tracker:
                 document_id = chunks[0].metadata.document_id
+                # Update job -> processing with doc info as soon as we know
+                if job_id:
+                    try:
+                        self.resume_tracker.set_job_processing(
+                            job_id=job_id,
+                            document_id=document_id,
+                            total_chunks=len(chunks),
+                        )
+                    except Exception:
+                        pass
                 if self.resume_tracker.is_document_already_completed(document_id):
                     logger.info(
                         "🎉 Document already fully processed in previous session!"
                     )
+                    if job_id:
+                        try:
+                            self.resume_tracker.set_job_completed(job_id)
+                        except Exception:
+                            pass
                     return self.metrics.metrics
                 else:
                     document_uri = chunks[0].metadata.uri
@@ -496,16 +523,40 @@ class DocumentProcessor:
 
             # Process chunks
             await self._process_chunks(chunks)
+            # Update job progress for processed chunks
+            if self.resume_tracker and job_id:
+                try:
+                    self.resume_tracker.set_job_progress(
+                        job_id,
+                        processed_chunks=self.metrics.metrics.processed_chunks,
+                    )
+                except Exception:
+                    pass
 
             # Process graph data
             if with_graph:
                 await self._construct_kg(chunks)
+                # Update job progress for entity/relation totals
+                if self.resume_tracker and job_id:
+                    try:
+                        self.resume_tracker.set_job_progress(
+                            job_id,
+                            total_entities=self.metrics.metrics.total_entities,
+                            total_relations=self.metrics.metrics.total_relations,
+                        )
+                    except Exception:
+                        pass
 
             # Mark as complete
             if self.resume_tracker:
                 self.resume_tracker.mark_document_completed(
                     chunks[0].metadata.document_id
                 )
+                if job_id:
+                    try:
+                        self.resume_tracker.set_job_completed(job_id)
+                    except Exception:
+                        pass
 
             return self.metrics.metrics
 
@@ -1307,6 +1358,7 @@ class HiRAG:
         with_graph: bool = True,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
+        job_id: Optional[str] = None,
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
@@ -1326,6 +1378,20 @@ class HiRAG:
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
+        if job_id and self._processor and self._processor.resume_tracker is not None:
+            try:
+                self._processor.resume_tracker.set_job_status(
+                    job_id=job_id,
+                    status=JobStatus.PENDING,
+                    document_uri=(
+                        document_meta.get("uri")
+                        if isinstance(document_meta, dict)
+                        else str(document_path)
+                    ),
+                    with_graph=with_graph,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to initialize external job {job_id}: {e}")
 
         try:
             metrics = await self._processor.process_document(
@@ -1334,6 +1400,7 @@ class HiRAG:
                 with_graph=with_graph,
                 document_meta=document_meta,
                 loader_configs=loader_configs,
+                job_id=job_id,
             )
 
             # Save graph state
@@ -1344,11 +1411,22 @@ class HiRAG:
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
 
+            if job_id and not metrics.job_id:
+                metrics.job_id = job_id
             return metrics
 
         except Exception as e:
             total_time = time.perf_counter() - start_time
             logger.error(f"❌ Document processing failed after {total_time:.3f}s: {e}")
+            if (
+                self._processor
+                and self._processor.resume_tracker is not None
+                and job_id
+            ):
+                try:
+                    self._processor.resume_tracker.set_job_failed(job_id, str(e))
+                except Exception:
+                    pass
             raise
 
     async def query_chunks(

@@ -1,8 +1,9 @@
-import json
 import asyncio
-import sys
+import json
 import os
-sys.path.append('src')
+import sys
+
+sys.path.append("src")
 from hirag_prod.contextual.client import ContextualClient
 
 def save_file(output_dir, res):

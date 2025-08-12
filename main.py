@@ -22,7 +22,6 @@ async def index():
 
     await index.set_language("en")  # en | cn
 
-    # TODO: the insertion prompt would also need to support Chinese
     document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
     content_type = "text/plain"
     document_meta = {
