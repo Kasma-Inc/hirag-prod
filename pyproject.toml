@@ -47,6 +47,7 @@ dependencies = [
     "boto3==1.39.7",
     "contextual-client==0.7.0",
     "json-repair==0.48.0",
+    "psycopg2==2.9.10",
 ]
 
 [project.scripts]
