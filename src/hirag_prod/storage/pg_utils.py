@@ -13,6 +13,7 @@ from psycopg2.extras import RealDictCursor
 load_dotenv("/chatbot/.env")
 
 
+# TODO: use sqlalchemy & asyncpg instead of psycopg2
 class DatabaseClient:
     def __init__(self):
         postgres_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")

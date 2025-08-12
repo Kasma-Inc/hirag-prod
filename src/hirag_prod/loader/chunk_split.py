@@ -71,6 +71,49 @@ LABEL_TO_CHUNK_TYPE = {
 
 
 # ======================== docling chunker ========================
+def _extract_docling_chunk_meta(chunk) -> dict:
+    """Extract page number and merged bbox from a Docling chunk."""
+    min_l = float("inf")
+    max_r = float("-inf")
+    max_t = float("-inf")
+    min_b = float("inf")
+    page_no = None
+
+    for item in chunk.meta.doc_items or []:
+        for prov in item.prov or []:
+            if page_no is None:
+                page_no = prov.page_no
+            bb = prov.bbox
+            if bb.l < min_l:
+                min_l = bb.l
+            if bb.r > max_r:
+                max_r = bb.r
+            if bb.t > max_t:
+                max_t = bb.t
+            if bb.b < min_b:
+                min_b = bb.b
+
+    has_bbox = min_l != float("inf")
+    return {
+        "page_number": int(page_no) if page_no else None,
+        "x_0": str(min_l) if has_bbox else None,
+        "y_0": str(max_t) if has_bbox else None,
+        "x_1": str(max_r) if has_bbox else None,
+        "y_1": str(min_b) if has_bbox else None,
+    }
+
+
+def _build_doc_pages_map(doc: DoclingDocument) -> dict[int, tuple[float, float]]:
+    """
+    Build a map of page numbers to their bounding boxes.
+    """
+    size_map: dict[int, tuple[float, float]] = {}
+    for k, pg in doc.pages.items():
+        pn = pg.page_no if hasattr(pg, "page_no") else int(k)
+        size_map[int(pn)] = (pg.size.width, pg.size.height)
+    return size_map
+
+
 def determine_docling_chunk_type(chunk) -> ChunkType:
     """
     Determine the type of a chunk based on its doc_items.
@@ -116,19 +159,37 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
     # Generate chunks from the document
     doc_chunks = chunker.chunk(docling_doc)
 
+    doc_pages_map = _build_doc_pages_map(docling_doc)
+
     # Convert to Chunk objects
     chunks = []
     for idx, chunk in enumerate(doc_chunks):
         chunk_type = determine_docling_chunk_type(chunk)
+        docling_chunk_meta = _extract_docling_chunk_meta(chunk)
+
+        page_number = docling_chunk_meta["page_number"]
+        page_width = None
+        page_height = None
+        if page_number is not None:
+            page_size = doc_pages_map.get(page_number)
+            if page_size is not None:
+                page_width, page_height = page_size
 
         metadata = ChunkMetadata(
             chunk_idx=idx,
             document_id=doc_md.id,
             chunk_type=chunk_type.value,
-            # Inherit file metadata from doc_md
+            page_number=page_number,
+            page_image_url=None,
+            page_width=str(page_width) if page_width is not None else None,
+            page_height=str(page_height) if page_height is not None else None,
+            x_0=docling_chunk_meta["x_0"],
+            y_0=docling_chunk_meta["y_0"],
+            x_1=docling_chunk_meta["x_1"],
+            y_1=docling_chunk_meta["y_1"],
+            # inherit file metadata
             type=doc_md.metadata.type,
             filename=doc_md.metadata.filename,
-            page_number=doc_md.metadata.page_number,
             uri=doc_md.metadata.uri,
             private=doc_md.metadata.private,
             uploaded_at=doc_md.metadata.uploaded_at,
@@ -180,6 +241,14 @@ def chunk_langchain_document(
             uri=langchain_doc.metadata.uri,
             private=langchain_doc.metadata.private,
             uploaded_at=langchain_doc.metadata.uploaded_at,
+            # Fields required by ChunkMetadata but not applicable for langchain chunks
+            page_image_url=None,
+            page_width=None,
+            page_height=None,
+            x_0=None,
+            y_0=None,
+            x_1=None,
+            y_1=None,
         )
 
         chunk_obj = Chunk(

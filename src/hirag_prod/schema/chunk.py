@@ -9,7 +9,7 @@ from .file import FileMetadata
 class ChunkMetadata(FileMetadata):
     chunk_idx: Optional[int]  # the index of the chunk in the document
     chunk_type: Optional[str]  # the type of the chunk
-    page_number: Optional[str]  # the page number of the chunk
+    page_number: Optional[int]  # the page number of the chunk
     page_image_url: Optional[str]  # the image url of the page
     page_width: Optional[str]  # the width of the page
     page_height: Optional[str]  # the height of the page

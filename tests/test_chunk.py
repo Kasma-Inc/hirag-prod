@@ -7,16 +7,28 @@ from hirag_prod.loader.chunk_split import (
 )
 
 
-def test_chunk_docling_document():
-    """Test chunking a docx document using the docling loader and chunk_docling_document function"""
-    # Load a docx document first using the docling loader
-    document_path = f"{os.path.dirname(__file__)}/test_files/word_sample.docx"
-    content_type = (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+def _brief(c):
+    meta_data = c.metadata
+    content = (c.page_content or "").replace("\n", " ")
+    if len(content) > 80:
+        content = content[:80] + "..."
+    return (
+        f"id={c.id} | idx={meta_data.chunk_idx} | type={meta_data.chunk_type} | "
+        f"page={meta_data.page_number} | size=({meta_data.page_width}x{meta_data.page_height}) | "
+        f'bbox=({meta_data.x_0},{meta_data.y_0},{meta_data.x_1},{meta_data.y_1}) | text="{content}"'
     )
+
+
+def test_chunk_docling_document():
+    """Test chunking a pdf document using the docling loader and chunk_docling_document function"""
+    # Load a pdf document first using the docling loader
+    document_path = (
+        f"{os.path.dirname(__file__)}/test_files/Guide-to-U.S.-Healthcare-System.pdf"
+    )
+    content_type = "application/pdf"
     document_meta = {
-        "type": "docx",
-        "filename": "word_sample.docx",
+        "type": "pdf",
+        "filename": "Guide-to-U.S.-Healthcare-System.pdf",
         "uri": document_path,
         "private": False,
     }
@@ -45,14 +57,18 @@ def test_chunk_docling_document():
     assert hasattr(chunks[0].metadata, "document_id")
     assert hasattr(chunks[0].metadata, "chunk_type")
 
-    assert chunks[0].metadata.type == "docx"
-    assert chunks[0].metadata.filename == "word_sample.docx"
+    assert chunks[0].metadata.type == "pdf"
+    assert chunks[0].metadata.filename == "Guide-to-U.S.-Healthcare-System.pdf"
     assert chunks[0].metadata.uri == document_path
-    assert chunks[0].metadata.private == False
+    assert chunks[0].metadata.private is False
     assert chunks[0].metadata.document_id == doc_md.id
 
     assert chunks[0].metadata.chunk_idx == 0
     assert chunks[0].metadata.chunk_type is not None
+
+    print(f"[docling] total chunks: {len(chunks)}")
+    for c in chunks[:3]:
+        print("[docling]", _brief(c))
 
 
 def test_chunk_langchain_document():
@@ -94,8 +110,12 @@ def test_chunk_langchain_document():
     assert chunks[0].metadata.type == "txt"
     assert chunks[0].metadata.filename == "test.txt"
     assert chunks[0].metadata.uri == document_path
-    assert chunks[0].metadata.private == False
+    assert chunks[0].metadata.private is False
     assert chunks[0].metadata.document_id == langchain_doc.id
 
     assert chunks[0].metadata.chunk_idx == 0
     assert chunks[0].metadata.chunk_type is not None
+
+    print(f"[langchain] total chunks: {len(chunks)}")
+    for c in chunks[:2]:
+        print("[langchain]", _brief(c))
