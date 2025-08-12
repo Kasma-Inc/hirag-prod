@@ -82,12 +82,7 @@ def check_docling_cloud_health() -> bool:
         except Exception:
             return True
 
-        if isinstance(data, dict):
-            if data.get("success") == "false":
-                return False
-            else:
-                return True
-        return True
+        return data.get("success", True)
     except Exception:
         return False
 

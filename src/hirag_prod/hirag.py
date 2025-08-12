@@ -33,7 +33,7 @@ from .parser import (
     ReferenceParser,
 )
 from .prompt import PROMPTS
-from .resume_tracker import ResumeTracker
+from .resume_tracker import JobStatus, ResumeTracker
 from .schema import Relation
 from .storage import (
     BaseGDB,
@@ -1382,7 +1382,7 @@ class HiRAG:
             try:
                 self._processor.resume_tracker.set_job_status(
                     job_id=job_id,
-                    status=self._processor.resume_tracker.JobStatus.PENDING,
+                    status=JobStatus.PENDING,
                     document_uri=(
                         document_meta.get("uri")
                         if isinstance(document_meta, dict)

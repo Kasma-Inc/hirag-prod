@@ -6,13 +6,11 @@ from enum import Enum
 from typing import Dict, List, Optional, Set
 
 import redis
-from dotenv import load_dotenv
 
 from .storage.pg_utils import DatabaseClient
 
 logger = logging.getLogger(__name__)
 
-load_dotenv("/chatbot/.env")
 
 REDIS_EXPIRE_TTL = os.getenv("REDIS_EXPIRE_TTL", 3600 * 24)  # 1 day by default
 
@@ -30,6 +28,15 @@ class ExtractionType(Enum):
 
     ENTITY = "entity"
     RELATION = "relation"
+
+
+class JobStatus(Enum):
+    """Job status enumeration"""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class ResumeTracker:
@@ -116,12 +123,6 @@ class ResumeTracker:
     # Job-level tracking (for insert_to_kb)
     # ==========================================================================
 
-    class JobStatus(Enum):
-        PENDING = "pending"
-        PROCESSING = "processing"
-        COMPLETED = "completed"
-        FAILED = "failed"
-
     def _ensure_job_exists(
         self,
         job_id: str,
@@ -138,7 +139,7 @@ class ResumeTracker:
         now = datetime.now().isoformat()
         mapping = {
             "job_id": job_id,
-            "status": self.JobStatus.PENDING.value,
+            "status": JobStatus.PENDING.value,
             "document_uri": (document_uri or ""),
             "document_id": "",
             "with_graph": "true" if (with_graph is None or with_graph) else "false",
@@ -180,7 +181,7 @@ class ResumeTracker:
             normalized_status = status or ""
             # Normalize transient progress ticks to processing for PG persistence
             if normalized_status.lower() == "progress":
-                normalized_status = self.JobStatus.PROCESSING.value
+                normalized_status = JobStatus.PROCESSING.value
             db.update_job_status(job_id, normalized_status, updated_at=datetime.now())
         except Exception:
             # Never let persistence issues break the pipeline
@@ -189,7 +190,7 @@ class ResumeTracker:
     def set_job_status(
         self,
         job_id: str,
-        status: "ResumeTracker.JobStatus",
+        status: JobStatus,
         document_uri: Optional[str] = None,
         with_graph: Optional[bool] = None,
     ) -> None:
@@ -212,13 +213,13 @@ class ResumeTracker:
         key = self._job_key(job_id)
         self._ensure_job_exists(job_id)
         now = datetime.now().isoformat()
-        mapping = {"status": self.JobStatus.PROCESSING.value, "updated_at": now}
+        mapping = {"status": JobStatus.PROCESSING.value, "updated_at": now}
         if document_id is not None:
             mapping["document_id"] = document_id
         if total_chunks is not None:
             mapping["total_chunks"] = str(int(total_chunks))
         self.redis_client.hset(key, mapping=mapping)
-        self._persist_job_status(job_id, self.JobStatus.PROCESSING.value, mapping)
+        self._persist_job_status(job_id, JobStatus.PROCESSING.value, mapping)
 
     def set_job_progress(
         self,
@@ -242,7 +243,7 @@ class ResumeTracker:
         self._persist_job_status(job_id, "progress", mapping)
 
     def set_job_completed(self, job_id: str) -> None:
-        self.set_job_status(job_id, self.JobStatus.COMPLETED)
+        self.set_job_status(job_id, JobStatus.COMPLETED)
 
     def set_job_failed(self, job_id: str, error_message: str) -> None:
         key = self._job_key(job_id)
@@ -251,13 +252,13 @@ class ResumeTracker:
         self.redis_client.hset(
             key,
             mapping={
-                "status": self.JobStatus.FAILED.value,
+                "status": JobStatus.FAILED.value,
                 "error": (error_message or "")[:5000],
                 "updated_at": now,
             },
         )
         self._persist_job_status(
-            job_id, self.JobStatus.FAILED.value, {"error": (error_message or "")[:5000]}
+            job_id, JobStatus.FAILED.value, {"error": (error_message or "")[:5000]}
         )
 
     def register_chunks(
