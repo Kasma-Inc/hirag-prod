@@ -5,7 +5,12 @@ from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
 from dotenv import load_dotenv
-from hirag_prod.contextual.storage_util import create_db_engine, saveContextResult, queryContextResult
+
+from hirag_prod.contextual.storage_util import (
+    create_db_engine,
+    queryContextResult,
+    saveContextResult,
+)
 
 
 class ContextualClient:
@@ -34,7 +39,7 @@ class ContextualClient:
                 "API key must be provided either as an argument or through the CONTEXTUAL_API_KEY environment variable."
             )
         self.client = AsyncContextualAI(api_key=self.api_key)
-        
+
         # Initialize database engine if connection string is available
         db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
         self.engine = create_db_engine(db_url) if db_url else None
@@ -71,7 +76,7 @@ class ContextualClient:
                 cached_result = queryContextResult(self.engine, job_id)
                 if cached_result:
                     return cached_result
-            
+
             # If not in cache, fetch from API
             if output_types is None:
                 output_types = ["markdown-document"]
@@ -79,18 +84,18 @@ class ContextualClient:
             response = await self.client.parse.job_results(
                 job_id=job_id, output_types=output_types
             )
-            
+
             # Add job_id to response for saving
-            if hasattr(response, 'model_dump'):
+            if hasattr(response, "model_dump"):
                 result_dict = response.model_dump()
             else:
                 result_dict = response
-            
-            result_dict['job_id'] = job_id
-            
+
+            result_dict["job_id"] = job_id
+
             saved_dict = saveContextResult(self.engine, result_dict)
             return saved_dict
-            
+
         except Exception as e:
             raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
 
@@ -180,10 +185,12 @@ class ContextualClient:
             raise Exception("Could not extract job_id from parse response")
 
         # Wait for completion and return results
-        parse_result = await self.wait_for_parse_completion(job_id, poll_interval, max_wait_time)
-        
+        parse_result = await self.wait_for_parse_completion(
+            job_id, poll_interval, max_wait_time
+        )
+
         # Add job_id to parse result
-        parse_result['job_id'] = job_id
+        parse_result["job_id"] = job_id
         return parse_result
 
     # This is a helper function and also for non-waiting parsing
