@@ -1,40 +1,42 @@
-import os
 import asyncio
-import json
-import time
-from typing import Any, Dict, List, Optional, Union
+import os
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from contextual import AsyncContextualAI
+
 
 class ContextualClient:
     """
     A client for parsing documents using Contextual AI's API.
-    
+
     This client provides an easy-to-use interface for parsing documents (PDFs, Word docs, PowerPoint)
     into structured markdown and JSON formats.
-    
+
     Example:
         client = ContextualClient()
         result = await client.parse_document("document.pdf")
         print(result['markdown_document'])
     """
-    
+
     def __init__(self, api_key: str = None):
         """
         Initialize the Contextual AI client.
-        
+
         Args:
             api_key: Your Contextual AI API key. If not provided, will look for CONTEXTUAL_API_KEY environment variable.
         """
         self.api_key = api_key or os.getenv("CONTEXTUAL_API_KEY")
         if not self.api_key:
-            raise ValueError("API key must be provided either as an argument or through the CONTEXTUAL_API_KEY environment variable.")
+            raise ValueError(
+                "API key must be provided either as an argument or through the CONTEXTUAL_API_KEY environment variable."
+            )
         self.client = AsyncContextualAI(api_key=self.api_key)
 
     async def get_parse_status(self, job_id: str) -> Dict[str, Any]:
         """
         Get the status of a parse job.
-        
+
         Args:
             job_id: The job ID returned from parse_document
         """
@@ -43,60 +45,66 @@ class ContextualClient:
             return response
         except Exception as e:
             raise Exception(f"Error getting parse status for job {job_id}: {str(e)}")
-    
-    async def get_parse_results(self, job_id: str, output_types: List[str] = None) -> Dict[str, Any]:
+
+    async def get_parse_results(
+        self, job_id: str, output_types: List[str] = None
+    ) -> Dict[str, Any]:
         """
         Get the results of a completed parse job.
-        
+
         Args:
             job_id: The job ID returned from parse_document
             output_types: List of output types to retrieve (e.g., ["markdown-document", "blocks-per-page"])
-        
+
         * Now using ["markdown-document"] as default value, refer to: https://docs.contextual.ai/api-reference/parse/parse-result
         """
         try:
             if output_types is None:
                 output_types = ["markdown-document"]
-            
+
             response = await self.client.parse.job_results(
-                job_id=job_id,
-                output_types=output_types
+                job_id=job_id, output_types=output_types
             )
             return response
         except Exception as e:
             raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
-    
-    async def wait_for_parse_completion(self, job_id: str, poll_interval: int = 5, max_wait_time: int = 300) -> Dict[str, Any]:
+
+    async def wait_for_parse_completion(
+        self, job_id: str, poll_interval: int = 5, max_wait_time: int = 300
+    ) -> Dict[str, Any]:
         """
         Wait for a parse job to complete and return the result.
-        
+
         Args:
             job_id: The job ID returned from parse_document
             poll_interval: Time in seconds between status checks
             max_wait_time: Maximum time in seconds to wait for completion
-            
+
         * I didn't see official handles for this, used AI generated polling for waiting the results
         """
         import time
+
         start_time = time.time()
-        
+
         while time.time() - start_time < max_wait_time:
             status_response = await self.get_parse_status(job_id)
-            
-            if hasattr(status_response, 'status'):
+
+            if hasattr(status_response, "status"):
                 status = status_response.status
             else:
                 raise Exception(f"Unexpected status response format for job {job_id}")
-            
-            if status == 'completed':
+
+            if status == "completed":
                 # Get the actual results
                 return await self.get_parse_results(job_id)
-            elif status == 'failed':
+            elif status == "failed":
                 raise Exception(f"Parse job {job_id} failed")
-            
+
             await asyncio.sleep(poll_interval)
-        
-        raise Exception(f"Parse job {job_id} did not complete within {max_wait_time} seconds")
+
+        raise Exception(
+            f"Parse job {job_id} did not complete within {max_wait_time} seconds"
+        )
 
     async def parse_document_sync(
         self,
@@ -108,13 +116,13 @@ class ContextualClient:
         figure_caption_mode: str = "concise",
         page_range: Optional[str] = None,
         poll_interval: int = 5,
-        max_wait_time: int = 300
+        max_wait_time: int = 300,
     ) -> Dict[str, Any]:
         """
         Parse a document and wait for completion in a single call.
-        
+
         This is a convenience method that combines parse_document and wait_for_parse_completion.
-        
+
         Args:
             file_path: Path to the document file
             parse_mode: "basic" for simple documents, "standard" for complex documents
@@ -125,7 +133,7 @@ class ContextualClient:
             page_range: Optional page range to parse (e.g., "0,1,2" or "0-2,5,6")
             poll_interval: Time in seconds between status checks
             max_wait_time: Maximum time in seconds to wait for completion
-            
+
         Returns:
             The completed parse results
         """
@@ -137,17 +145,19 @@ class ContextualClient:
             enable_split_tables=enable_split_tables,
             max_split_table_cells=max_split_table_cells,
             figure_caption_mode=figure_caption_mode,
-            page_range=page_range
+            page_range=page_range,
         )
-        
+
         # Extract job ID
-        if hasattr(parse_response, 'job_id'):
+        if hasattr(parse_response, "job_id"):
             job_id = parse_response.job_id
         else:
             raise Exception("Could not extract job_id from parse response")
-        
+
         # Wait for completion and return results
-        return await self.wait_for_parse_completion(job_id, poll_interval, max_wait_time)
+        return await self.wait_for_parse_completion(
+            job_id, poll_interval, max_wait_time
+        )
 
     # This is a helper function and also for non-waiting parsing
     async def parse_document(
@@ -158,15 +168,15 @@ class ContextualClient:
         enable_split_tables: bool = False,
         max_split_table_cells: Optional[int] = None,
         figure_caption_mode: str = "concise",
-        page_range: Optional[str] = None
+        page_range: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         This function is for posting the job to the Contextual API, but would not wait for results.
-        
+
         To wait for results, call parse_document_sync or do polling and use get_parse_status.
 
         Refer to: https://docs.contextual.ai/api-reference/parse/parse-file
-        
+
         Args:
             file_path: Path to the document file
             parse_mode: "basic" for simple documents, "standard" for complex documents
@@ -175,18 +185,18 @@ class ContextualClient:
             max_split_table_cells: Threshold for splitting tables (if enable_split_tables is True)
             figure_caption_mode: "concise" or "detailed" captions for figures
             page_range: Optional page range to parse (e.g., "0,1,2" or "0-2,5,6")
-        
+
         Returns:
             A dictionary containing job_id for successful posting
             Details of error on unsuccessful cases
         """
-        
+
         try:
             # Convert string path to Path object
             file_path_obj = Path(file_path)
             if not file_path_obj.exists():
                 raise FileNotFoundError(f"File not found: {file_path}")
-            
+
             # Use the parse API endpoint
             response = await self.client.parse.create(
                 raw_file=file_path_obj,
@@ -195,9 +205,9 @@ class ContextualClient:
                 enable_split_tables=enable_split_tables,
                 max_split_table_cells=max_split_table_cells,
                 figure_caption_mode=figure_caption_mode,
-                page_range=page_range
+                page_range=page_range,
             )
-            
+
             return response
         except Exception as e:
             raise Exception(f"Error parsing document {file_path}: {str(e)}")
