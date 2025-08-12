@@ -9,6 +9,7 @@ wheels/
 *.gpickle
 kb/
 tests/output/
+tests/pi/
 
 # Virtual environments
 .venv
