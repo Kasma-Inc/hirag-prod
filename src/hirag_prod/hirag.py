@@ -12,7 +12,6 @@ import numpy as np
 import pyarrow as pa
 from dotenv import load_dotenv
 
-
 from ._llm import (
     ChatCompletion,
     EmbeddingService,
@@ -1394,7 +1393,7 @@ class HiRAG:
             try:
                 self._processor.resume_tracker.set_job_status(
                     job_id=job_id,
-                    status=JobStatus.PENDING,
+                    status=JobStatus.PROCESSING,
                     document_uri=(
                         document_meta.get("uri")
                         if isinstance(document_meta, dict)

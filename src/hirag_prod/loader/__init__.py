@@ -70,25 +70,25 @@ def check_docling_cloud_health() -> bool:
         base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
         token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
         model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
-        
+
         if not base_url or not token:
             return False
-            
+
         # Construct the health endpoint URL properly
         health_url = f"{base_url.rstrip('/')}/health"
-        
+
         headers = {
             "Content-Type": "application/json",
             "Model-Name": model,
             "Authorization": f"Bearer {token}",
         }
-        
+
         resp = requests.get(health_url, headers=headers)
-        
+
         # Check if response is empty/null (success case)
         if resp.status_code == 200 and not resp.text.strip():
             return True
-            
+
         # Try to parse JSON response
         try:
             data = resp.json()
