@@ -67,22 +67,40 @@ DEFAULT_LOADER_CONFIGS = {
 def check_docling_cloud_health() -> bool:
     """docling cloud service health check"""
     try:
-        base_url = os.path.join(os.getenv("DOCLING_CLOUD_BASE_URL"), "/health")
+        base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
         token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
         model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
+        
         if not base_url or not token:
             return False
+            
+        # Construct the health endpoint URL properly
+        health_url = f"{base_url.rstrip('/')}/health"
+        
         headers = {
+            "Content-Type": "application/json",
             "Model-Name": model,
             "Authorization": f"Bearer {token}",
         }
-        resp = requests.post(base_url, headers=headers)
+        
+        resp = requests.get(health_url, headers=headers)
+        
+        # Check if response is empty/null (success case)
+        if resp.status_code == 200 and not resp.text.strip():
+            return True
+            
+        # Try to parse JSON response
         try:
             data = resp.json()
+            # Return True if the JSON response indicates success (which is not possible now)
+            if data.get("success") == "true":
+                return True
+            # Otherwise False
+            return False
         except Exception:
-            return True
+            # If we can't parse JSON but got a response, treat as failure
+            return False
 
-        return data.get("success", True)
     except Exception:
         return False
 
