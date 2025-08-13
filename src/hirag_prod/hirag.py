@@ -12,7 +12,6 @@ import numpy as np
 import pyarrow as pa
 from dotenv import load_dotenv
 
-from hirag_prod._utils import route_file_path
 
 from ._llm import (
     ChatCompletion,
@@ -482,9 +481,6 @@ class DocumentProcessor:
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
-        document_path = route_file_path(loader_type, document_path)
-        if loader_type != "docling_cloud":
-            validate_input(document_path, content_type)
 
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document

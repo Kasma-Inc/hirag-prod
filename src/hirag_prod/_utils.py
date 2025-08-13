@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
+from pathlib import Path
 from typing import Any, Callable, Coroutine, Iterable, List, Literal, Optional, TypeVar
 from urllib.parse import urlparse
 
@@ -234,6 +235,15 @@ def clean_str(input: Any) -> str:
     # remove potential double quotes
     result = result.strip('"')
     return result
+
+
+def validate_document_path(document_path: str) -> None:
+    """Validate input parameters"""
+    if not document_path or not isinstance(document_path, str):
+        raise ValueError("document_path must be a non-empty string")
+
+    if not Path(document_path).exists():
+        raise FileNotFoundError(f"Document not found: {document_path}")
 
 
 # Utils types -----------------------------------------------------------------------
