@@ -5,6 +5,7 @@ import sys
 
 sys.path.append("src")
 from hirag_prod.contextual.client import ContextualClient
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 def save_file(output_dir, res):
@@ -60,8 +61,15 @@ def save_file(output_dir, res):
 async def get_doc(doc_id, output_dir):
     """Test the contextual client by parsing a document."""
     client = ContextualClient()
-
-    res = await client.get_parse_results(doc_id)
+    
+    # Create database engine and session if connection string is available
+    db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
+    if db_url:
+        engine = client.create_db_engine(db_url)
+        async with AsyncSession(engine) as session:
+            res = await client.get_parse_results(doc_id, session=session)
+    else:
+        res = await client.get_parse_results(doc_id)
 
     save_file(output_dir, res)
 
@@ -72,7 +80,14 @@ async def parse_doc(file_path: str, output_dir: str):
 
     print(f"Document: {file_path}")
 
-    res = await client.parse_document_sync(file_path)
+    # Create database engine and session if connection string is available
+    db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
+    if db_url:
+        engine = client.create_db_engine(db_url)
+        async with AsyncSession(engine) as session:
+            res = await client.parse_document_sync(file_path, session=session)
+    else:
+        res = await client.parse_document_sync(file_path)
 
     print("✅ Completed successfully!")
 

@@ -1,8 +1,13 @@
 # This is the basic utils for saving results in neondb
 from typing import Any, Dict, List, Optional, Union
 
-from sqlalchemy import JSON, Engine, create_engine, text
 from sqlmodel import Field, SQLModel
+from sqlalchemy import inspect, JSON
+from sqlalchemy.exc import ProgrammingError
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlmodel import JSON, Field, SQLModel, select
+from sqlmodel.ext.asyncio.session import AsyncSession
+from asyncpg import DuplicateTableError
 
 
 class ContextualResultTable(SQLModel, table=True):
@@ -25,23 +30,48 @@ class ContextualResultTable(SQLModel, table=True):
         }
 
 
-def create_db_engine(connection_string: str) -> Engine:
+def create_db_engine(connection_string: str) -> AsyncEngine:
     """Create a new SQLAlchemy engine."""
-    return create_engine(connection_string)
+    if connection_string.startswith("postgres://"):
+        connection_string = connection_string.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif connection_string.startswith("postgresql://"):
+        connection_string = connection_string.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif connection_string.startswith("postgresql+asyncpg://"):
+        pass
+    else:
+        raise ValueError(
+            "Invalid PostgreSQL URL format. Must start with 'postgresql://' or 'postgresql+asyncpg://'."
+        )
+
+    db = create_async_engine(
+        connection_string,
+        pool_pre_ping=True,  # tests connections before use
+    )
+    
+    return db
 
 
-def _ensure_table(engine: Engine, table) -> None:
+async def _ensure_table(session: AsyncSession, table) -> None:
     """Ensure the ContextualResultTable exists in the database."""
-    with engine.connect() as conn:
-        if not engine.dialect.has_table(conn, table.__tablename__):
-            SQLModel.metadata.create_all(engine, tables=[table.__table__])
+    def _sync_create(sync_session: AsyncSession):
+        # Use the inspector from sqlalchemy to check if table exists
+        engine = sync_session.get_bind()
+        if not inspect(engine).has_table(table.__tablename__):
+            try:
+                SQLModel.metadata.create_all(engine, tables=[table.__table__])
+            except ProgrammingError as e:
+                if isinstance(e.__cause__.__cause__, DuplicateTableError):
+                    pass
+                else:
+                    raise
+
+    await session.run_sync(_sync_create)
 
 
-def saveContextResult(engine: Engine, result: Dict[str, Any]) -> Dict[str, Any]:
+async def saveContextResult(session: AsyncSession, result: Dict[str, Any]) -> Dict[str, Any]:
     """Save a context result to the database."""
-    from sqlmodel import Session
 
-    _ensure_table(engine, ContextualResultTable)
+    _ensure_table(session, ContextualResultTable)
 
     # Extract fields from Contextual AI API response structure
     document_metadata = result.get("document_metadata", {})
@@ -56,27 +86,23 @@ def saveContextResult(engine: Engine, result: Dict[str, Any]) -> Dict[str, Any]:
         table_of_content=hierarchy.get("table_of_contents", ""),
     )
 
-    with Session(engine) as session:
-        # Use merge to handle upsert (insert or update)
-        session.merge(result_record)
-        session.commit()
+    session.add(result_record)
+    await session.commit()
 
     return result_record.to_dict()
 
 
-def queryContextResult(engine: Engine, job_id: str) -> Optional[Dict[str, Any]]:
+async def queryContextResult(session: AsyncSession, job_id: str) -> Optional[Dict[str, Any]]:
     """Query context result from database."""
-    from sqlmodel import Session, select
 
-    _ensure_table(engine, ContextualResultTable)
+    _ensure_table(session, ContextualResultTable)
 
-    with Session(engine) as session:
-        statement = select(ContextualResultTable).where(
-            ContextualResultTable.job_id == job_id
-        )
-        result = session.exec(statement).first()
+    statement = select(ContextualResultTable).where(
+        ContextualResultTable.job_id == job_id
+    )
+    result = await session.exec(statement).first()
 
-        if result:
-            return result.to_dict()
+    if result:
+        return result.to_dict()
 
-        return None
+    return None

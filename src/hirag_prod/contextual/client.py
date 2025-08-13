@@ -6,11 +6,9 @@ from typing import Any, Dict, List, Optional
 from contextual import AsyncContextualAI
 from dotenv import load_dotenv
 
-from hirag_prod.contextual.storage_util import (
-    create_db_engine,
-    queryContextResult,
-    saveContextResult,
-)
+from hirag_prod.storage.pg_utils import DatabaseClient
+from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 class ContextualClient:
@@ -39,10 +37,13 @@ class ContextualClient:
                 "API key must be provided either as an argument or through the CONTEXTUAL_API_KEY environment variable."
             )
         self.client = AsyncContextualAI(api_key=self.api_key)
-
-        # Initialize database engine if connection string is available
-        db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
-        self.engine = create_db_engine(db_url) if db_url else None
+        self.db_client = DatabaseClient()
+        
+    def create_db_engine(self, connection_string: str) -> AsyncEngine:
+        """
+        Create a new SQLAlchemy engine via db_client.
+        """
+        return self.db_client.create_db_engine(connection_string)
 
     async def get_parse_status(self, job_id: str) -> Dict[str, Any]:
         """
@@ -58,7 +59,7 @@ class ContextualClient:
             raise Exception(f"Error getting parse status for job {job_id}: {str(e)}")
 
     async def get_parse_results(
-        self, job_id: str, output_types: List[str] = None
+        self, job_id: str, output_types: List[str] = None, session: AsyncSession = None
     ) -> Dict[str, Any]:
         """
         Get the results of a completed parse job.
@@ -67,13 +68,14 @@ class ContextualClient:
         Args:
             job_id: The job ID returned from parse_document
             output_types: List of output types to retrieve (e.g., ["markdown-document", "blocks-per-page"])
+            session: Optional AsyncSession for database operations
 
         * Now using ["markdown-document"] as default value, refer to: https://docs.contextual.ai/api-reference/parse/parse-result
         """
         try:
-            # First check if results are cached in database (if engine is available)
-            if self.engine:
-                cached_result = queryContextResult(self.engine, job_id)
+            # First check if results are cached in database (if session is provided)
+            if session:
+                cached_result = await self.db_client.queryContextResult(session, job_id)
                 if cached_result:
                     return cached_result
 
@@ -93,14 +95,18 @@ class ContextualClient:
 
             result_dict["job_id"] = job_id
 
-            saved_dict = saveContextResult(self.engine, result_dict)
-            return saved_dict
+            # Save to database if session is provided
+            if session:
+                saved_dict = await self.db_client.saveContextResult(session, result_dict)
+                return saved_dict
+            else:
+                return result_dict
 
         except Exception as e:
             raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
 
     async def wait_for_parse_completion(
-        self, job_id: str, poll_interval: int = 5, max_wait_time: int = 300
+        self, job_id: str, poll_interval: int = 5, max_wait_time: int = 300, session: AsyncSession = None
     ) -> Dict[str, Any]:
         """
         Wait for a parse job to complete and return the result.
@@ -109,6 +115,7 @@ class ContextualClient:
             job_id: The job ID returned from parse_document
             poll_interval: Time in seconds between status checks
             max_wait_time: Maximum time in seconds to wait for completion
+            session: Optional AsyncSession for database operations
 
         * I didn't see official handles for this, used AI generated polling for waiting the results
         """
@@ -126,7 +133,7 @@ class ContextualClient:
 
             if status == "completed":
                 # Get the actual results
-                return await self.get_parse_results(job_id)
+                return await self.get_parse_results(job_id, session=session)
             elif status == "failed":
                 raise Exception(f"Parse job {job_id} failed")
 
@@ -147,6 +154,7 @@ class ContextualClient:
         page_range: Optional[str] = None,
         poll_interval: int = 5,
         max_wait_time: int = 300,
+        session: AsyncSession = None,
     ) -> Dict[str, Any]:
         """
         Parse a document and wait for completion in a single call.
@@ -163,6 +171,7 @@ class ContextualClient:
             page_range: Optional page range to parse (e.g., "0,1,2" or "0-2,5,6")
             poll_interval: Time in seconds between status checks
             max_wait_time: Maximum time in seconds to wait for completion
+            session: Optional AsyncSession for database operations
 
         Returns:
             The completed parse results
@@ -186,7 +195,7 @@ class ContextualClient:
 
         # Wait for completion and return results
         parse_result = await self.wait_for_parse_completion(
-            job_id, poll_interval, max_wait_time
+            job_id, poll_interval, max_wait_time, session=session
         )
 
         # Add job_id to parse result
