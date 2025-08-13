@@ -68,24 +68,78 @@ async def test_update_job_status():
     temp_job_id = f"test-{int(datetime.now().timestamp())}"
     workspace_id = "ws-test"
 
+    print(f"\n=== DEBUG INFO ===")
+    print(f"Test job ID: {temp_job_id}")
+    print(f"Workspace ID: {workspace_id}")
+    print(f"Database schema: {db.schema_name or 'public'}")
+    print(f"Table name: {db.table_name}")
+
     try:
         # Insert a test record
+        initial_updated_at = datetime.now(timezone.utc) - timedelta(days=1)
+        print(
+            f"\nInserting record with initial_updated_at: {initial_updated_at} (type: {type(initial_updated_at)})"
+        )
+
         async with AsyncSession(engine) as session:
             affected = await db.insert_job(
                 session,
                 temp_job_id,
                 workspace_id,
                 status="pending",
-                updated_at=datetime.now(timezone.utc) - timedelta(days=1),
+                updated_at=initial_updated_at,
             )
+            print(f"Insert operation affected {affected} row(s)")
             assert affected == 1
 
+        # Verify the inserted record can be queried and data matches
+        print(f"\nVerifying inserted record...")
+        async with AsyncSession(engine) as session:
+            from sqlalchemy import text
+
+            query = text(
+                f"""
+                SELECT "jobId", "workspaceId", "status", "updatedAt" 
+                FROM "{db.schema_name or 'public'}"."{db.table_name}"
+                WHERE "jobId" = '{temp_job_id}'
+            """
+            )
+            result = await session.exec(query)
+            row = result.first()
+            print(f"Query result: {row}")
+            assert (
+                row is not None
+            ), f"Inserted record with jobId {temp_job_id} not found"
+            assert (
+                row.jobId == temp_job_id
+            ), f"Expected jobId {temp_job_id}, got {row.jobId}"
+            assert (
+                row.workspaceId == workspace_id
+            ), f"Expected workspaceId {workspace_id}, got {row.workspaceId}"
+            assert (
+                row.status == "pending"
+            ), f"Expected status 'pending', got {row.status}"
+            # Check timestamp is close (within 1 second due to potential precision differences)
+            assert (
+                abs((row.updatedAt - initial_updated_at).total_seconds()) < 1
+            ), f"Expected updatedAt close to {initial_updated_at}, got {row.updatedAt}"
+            print(
+                "Got updatedAt datetime:",
+                row.updatedAt,
+                "\n with type:",
+                type(row.updatedAt),
+            )
+            print("✓ Inserted record verification passed")
+
         # Update the job status
+        print(f"\nUpdating job status to 'processing'...")
         async with AsyncSession(engine) as session:
             affected = await db.update_job_status(session, temp_job_id, "processing")
+            print(f"Update operation affected {affected} row(s)")
             assert affected == 1
 
         # Verify the update
+        print(f"Verifying status update...")
         async with AsyncSession(engine) as session:
             from sqlalchemy import text
 
@@ -97,18 +151,23 @@ async def test_update_job_status():
             )
             result = await session.exec(query)
             row = result.first()
+            print(f"Updated record status: {row.status}, updatedAt: {row.updatedAt}")
             assert row.status == "processing"
             first_updated = row.updatedAt
+            print("✓ Status update verification passed")
 
         # Update with explicit timestamp
         explicit_ts = datetime.now(timezone.utc) - timedelta(seconds=5)
+        print(f"\nUpdating with explicit timestamp: {explicit_ts}")
         async with AsyncSession(engine) as session:
             affected = await db.update_job_status(
                 session, temp_job_id, "completed", updated_at=explicit_ts
             )
+            print(f"Explicit timestamp update affected {affected} row(s)")
             assert affected == 1
 
         # Verify the explicit timestamp update
+        print(f"Verifying explicit timestamp update...")
         async with AsyncSession(engine) as session:
             query = text(
                 f"""
@@ -118,18 +177,29 @@ async def test_update_job_status():
             )
             result = await session.exec(query)
             row = result.first()
+            print(f"Final record status: {row.status}, updatedAt: {row.updatedAt}")
+            print(
+                f"Time difference from explicit_ts: {abs((row.updatedAt - explicit_ts).total_seconds())} seconds"
+            )
+            print(f"First updated timestamp: {first_updated}")
+            print(f"Current updated timestamp: {row.updatedAt}")
+            print(f"Timestamps are different: {row.updatedAt != first_updated}")
             assert row.status == "completed"
             # Note: comparing timestamps might have precision differences, so we check it's close
             assert abs((row.updatedAt - explicit_ts).total_seconds()) < 1
             assert row.updatedAt != first_updated
+            print("✓ Explicit timestamp update verification passed")
 
     finally:
         # Clean up
-        try:
-            async with AsyncSession(engine) as session:
-                await db.delete_job(session, temp_job_id)
-        except Exception:
-            pass
+        print(f"\nCleaning up test record...")
+        # try:
+        #     async with AsyncSession(engine) as session:
+        #         deleted = await db.delete_job(session, temp_job_id)
+        #         print(f"Cleanup: deleted {deleted if deleted else 0} record(s)")
+        # except Exception as e:
+        #     print(f"Cleanup failed: {e}")
+        # print("=== END DEBUG INFO ===\n")
 
 
 @pytest.mark.asyncio

@@ -112,15 +112,13 @@ class DatabaseClient:
         target_schema = schema or self.schema_name or "public"
 
         # Format the datetime parameter if provided
-        updated_at_clause = (
-            "NOW()" if updated_at is None else f"'{updated_at.isoformat()}'"
-        )
+        updated_at_value = updated_at if updated_at is not None else datetime.now()
 
         query = text(
             f"""
             UPDATE "{target_schema}"."{target_table}"
                SET "status" = '{status}',
-                   "updatedAt" = COALESCE({updated_at_clause}, NOW())
+                   "updatedAt" = '{updated_at_value.isoformat()}'
              WHERE "jobId" = '{job_id}'
         """
         )
@@ -148,14 +146,12 @@ class DatabaseClient:
         target_schema = schema or self.schema_name or "public"
 
         # Format the datetime parameter if provided
-        updated_at_value = (
-            "NOW()" if updated_at is None else f"'{updated_at.isoformat()}'"
-        )
+        updated_at_value = updated_at if updated_at is not None else datetime.now()
 
         query = text(
             f"""
             INSERT INTO "{target_schema}"."{target_table}"("jobId", "workspaceId", "status", "updatedAt")
-            VALUES ('{job_id}', '{workspace_id}', '{status}', COALESCE({updated_at_value}, NOW()))
+            VALUES ('{job_id}', '{workspace_id}', '{status}', '{updated_at_value.isoformat()}')
         """
         )
 
