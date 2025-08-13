@@ -5,16 +5,16 @@ import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from asyncpg import DuplicateTableError
 from dotenv import load_dotenv
 from sqlalchemy import inspect, text
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import JSON, Field, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
-from asyncpg import DuplicateTableError
-
 
 load_dotenv("/chatbot/.env")
+
 
 class DatabaseClient:
     def __init__(self):
@@ -31,11 +31,15 @@ class DatabaseClient:
         """Create a new SQLAlchemy engine."""
         if connection_string is None:
             connection_string = self.connection_string
-        
+
         if connection_string.startswith("postgres://"):
-            connection_string = connection_string.replace("postgres://", "postgresql+asyncpg://", 1)
+            connection_string = connection_string.replace(
+                "postgres://", "postgresql+asyncpg://", 1
+            )
         elif connection_string.startswith("postgresql://"):
-            connection_string = connection_string.replace("postgresql://", "postgresql+asyncpg://", 1)
+            connection_string = connection_string.replace(
+                "postgresql://", "postgresql+asyncpg://", 1
+            )
         elif connection_string.startswith("postgresql+asyncpg://"):
             pass
         else:
@@ -47,11 +51,14 @@ class DatabaseClient:
             connection_string,
             pool_pre_ping=True,  # tests connections before use
         )
-    
+
         return db
 
     async def get_table_schema(
-        self, session: AsyncSession, table_name: Optional[str] = None, schema: Optional[str] = None
+        self,
+        session: AsyncSession,
+        table_name: Optional[str] = None,
+        schema: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Return column-level schema for a table.
 
@@ -61,7 +68,8 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or "public"
 
-        query = text("""
+        query = text(
+            """
             SELECT
                 c.ordinal_position AS position,
                 c.column_name       AS name,
@@ -82,9 +90,12 @@ class DatabaseClient:
             FROM information_schema.columns c
             WHERE c.table_schema = :target_schema AND c.table_name = :target_table
             ORDER BY c.ordinal_position
-        """)
+        """
+        )
 
-        result = await session.execute(query, {"target_schema": target_schema, "target_table": target_table})
+        result = await session.execute(
+            query, {"target_schema": target_schema, "target_table": target_table}
+        )
         result = result.scalars().all()
         return [dict(row) for row in result]
 
@@ -102,18 +113,18 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or self.schema_name or "public"
 
-        query = text(f"""
+        query = text(
+            f"""
             UPDATE "{target_schema}"."{target_table}"
                SET "status" = :status,
                    "updatedAt" = COALESCE(:updated_at, NOW())
              WHERE "jobId" = :job_id
-        """)
+        """
+        )
 
-        result = await session.execute(query, {
-            "status": status,
-            "updated_at": updated_at,
-            "job_id": job_id
-        })
+        result = await session.execute(
+            query, {"status": status, "updated_at": updated_at, "job_id": job_id}
+        )
         await session.commit()
         return result.rowcount or 0
 
@@ -135,17 +146,22 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or self.schema_name or "public"
 
-        query = text(f"""
+        query = text(
+            f"""
             INSERT INTO "{target_schema}"."{target_table}"("jobId", "workspaceId", "status", "updatedAt")
             VALUES (:job_id, :workspace_id, :status, COALESCE(:updated_at, NOW()))
-        """)
+        """
+        )
 
-        result = await session.execute(query, {
-            "job_id": job_id,
-            "workspace_id": workspace_id,
-            "status": status,
-            "updated_at": updated_at
-        })
+        result = await session.execute(
+            query,
+            {
+                "job_id": job_id,
+                "workspace_id": workspace_id,
+                "status": status,
+                "updated_at": updated_at,
+            },
+        )
         await session.commit()
         return result.rowcount or 0
 
@@ -161,10 +177,12 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or self.schema_name or "public"
 
-        query = text(f"""
+        query = text(
+            f"""
             DELETE FROM "{target_schema}"."{target_table}"
             WHERE "jobId" = :job_id
-        """)
+        """
+        )
 
         result = await session.execute(query, {"job_id": job_id})
         await session.commit()
@@ -188,7 +206,9 @@ class DatabaseClient:
         target_schema = schema or self.schema_name or "public"
 
         if isinstance(limit, int) and limit > 0:
-            query = text(f'SELECT * FROM "{target_schema}"."{target_table}" LIMIT :limit')
+            query = text(
+                f'SELECT * FROM "{target_schema}"."{target_table}" LIMIT :limit'
+            )
             result = await session.execute(query, {"limit": limit})
             result = result.scalars().all()
         else:
@@ -200,6 +220,7 @@ class DatabaseClient:
 
     async def _ensure_table(self, session: AsyncSession, table) -> None:
         """Ensure the ContextualResultTable exists in the database."""
+
         def _sync_create(sync_session: AsyncSession):
             # Use the inspector from sqlalchemy to check if table exists
             engine = sync_session.get_bind()
@@ -233,7 +254,9 @@ class DatabaseClient:
                 "table_of_content": self.table_of_content,
             }
 
-    async def saveContextResult(self, session: AsyncSession, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def saveContextResult(
+        self, session: AsyncSession, result: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Save a context result to the database."""
 
         await self._ensure_table(session, self.ContextualResultTable)
@@ -256,8 +279,9 @@ class DatabaseClient:
 
         return result_record.to_dict()
 
-
-    async def queryContextResult(self, session: AsyncSession, job_id: str) -> Optional[Dict[str, Any]]:
+    async def queryContextResult(
+        self, session: AsyncSession, job_id: str
+    ) -> Optional[Dict[str, Any]]:
         """Query context result from database."""
 
         await self._ensure_table(session, self.ContextualResultTable)
@@ -272,6 +296,7 @@ class DatabaseClient:
             return result.to_dict()
 
         return None
+
 
 async def main():
     parser = argparse.ArgumentParser(description="PostgreSQL table utilities")
@@ -332,11 +357,13 @@ async def main():
     try:
         async with AsyncSession(client.engine) as session:
             resolved_schema = args.schema or os.getenv("POSTGRES_SCHEMA") or "public"
-            
+
             # Action: add-job
             if args.add_job:
                 if not args.workspace:
-                    print("--workspace is required when using --add-job", file=sys.stderr)
+                    print(
+                        "--workspace is required when using --add-job", file=sys.stderr
+                    )
                     sys.exit(2)
                 parsed_dt: Optional[datetime] = None
                 if args.updated_at:
@@ -362,13 +389,17 @@ async def main():
 
             # Action: delete-job
             if args.delete_job:
-                affected = await client.delete_job(session, args.delete_job, schema=resolved_schema)
+                affected = await client.delete_job(
+                    session, args.delete_job, schema=resolved_schema
+                )
                 print(f"Deleted rows: {affected}")
                 sys.exit(0)
 
             # Action: show-rows
             if args.show_rows:
-                rows = await client.get_all_records(session, schema=resolved_schema, limit=args.limit)
+                rows = await client.get_all_records(
+                    session, schema=resolved_schema, limit=args.limit
+                )
                 if not rows:
                     print("No rows found.")
                     sys.exit(0)
@@ -379,7 +410,9 @@ async def main():
                     max_content = max((len(_fmt(r.get(h))) for r in rows), default=0)
                     col_widths.append(max(len(h), max_content))
 
-                header_line = " | ".join(h.ljust(w) for h, w in zip(headers, col_widths))
+                header_line = " | ".join(
+                    h.ljust(w) for h, w in zip(headers, col_widths)
+                )
                 sep_line = "-+-".join("-" * w for w in col_widths)
                 print(header_line)
                 print(sep_line)
@@ -391,7 +424,10 @@ async def main():
             else:
                 rows = await client.get_table_schema(session, schema=resolved_schema)
                 if not rows:
-                    print("No columns found. Check table name and schema.", file=sys.stderr)
+                    print(
+                        "No columns found. Check table name and schema.",
+                        file=sys.stderr,
+                    )
                     sys.exit(1)
 
                 headers = [
@@ -405,11 +441,14 @@ async def main():
 
                 col_widths = []
                 for header, key in headers:
-                    max_content = max((len(_fmt(row.get(key))) for row in rows), default=0)
+                    max_content = max(
+                        (len(_fmt(row.get(key))) for row in rows), default=0
+                    )
                     col_widths.append(max(len(header), max_content))
 
                 header_line = " | ".join(
-                    header.ljust(width) for (header, _), width in zip(headers, col_widths)
+                    header.ljust(width)
+                    for (header, _), width in zip(headers, col_widths)
                 )
                 sep_line = "-+-".join("-" * width for width in col_widths)
                 print(header_line)

@@ -4,8 +4,9 @@ import os
 import sys
 
 sys.path.append("src")
-from hirag_prod.contextual.client import ContextualClient
 from sqlmodel.ext.asyncio.session import AsyncSession
+
+from hirag_prod.contextual.client import ContextualClient
 
 
 def save_file(output_dir, res):
@@ -61,7 +62,7 @@ def save_file(output_dir, res):
 async def get_doc(doc_id, output_dir):
     """Test the contextual client by parsing a document."""
     client = ContextualClient()
-    
+
     # Create database engine and session if connection string is available
     db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
     if db_url:

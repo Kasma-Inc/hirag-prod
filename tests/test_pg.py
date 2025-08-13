@@ -25,6 +25,7 @@ async def test_database_connection():
         async with AsyncSession(engine) as session:
             # Simple test query to verify connection
             from sqlalchemy import text
+
             result = await session.exec(text("SELECT 1 as result"))
             row = result.first()
             assert row.result == 1
@@ -45,17 +46,22 @@ async def test_update_job_status():
     try:
         async with AsyncSession(engine) as session:
             from sqlalchemy import text
-            check_query = text(f"""
+
+            check_query = text(
+                f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = '{db.schema_name or 'public'}' 
                     AND table_name = '{db.table_name}'
                 );
-            """)
+            """
+            )
             result = await session.exec(check_query)
             table_exists = result.first()[0]
             if not table_exists:
-                pytest.skip(f"Table {db.schema_name or 'public'}.{db.table_name} does not exist")
+                pytest.skip(
+                    f"Table {db.schema_name or 'public'}.{db.table_name} does not exist"
+                )
     except Exception:
         pytest.skip("Unable to check table existence")
 
@@ -70,7 +76,7 @@ async def test_update_job_status():
                 temp_job_id,
                 workspace_id,
                 status="pending",
-                updated_at=datetime.now(timezone.utc) - timedelta(days=1)
+                updated_at=datetime.now(timezone.utc) - timedelta(days=1),
             )
             assert affected == 1
 
@@ -82,10 +88,13 @@ async def test_update_job_status():
         # Verify the update
         async with AsyncSession(engine) as session:
             from sqlalchemy import text
-            query = text(f"""
+
+            query = text(
+                f"""
                 SELECT "status", "updatedAt" FROM "{db.schema_name or 'public'}"."{db.table_name}"
                 WHERE "jobId" = '{temp_job_id}'
-            """)
+            """
+            )
             result = await session.exec(query)
             row = result.first()
             assert row.status == "processing"
@@ -101,10 +110,12 @@ async def test_update_job_status():
 
         # Verify the explicit timestamp update
         async with AsyncSession(engine) as session:
-            query = text(f"""
+            query = text(
+                f"""
                 SELECT "status", "updatedAt" FROM "{db.schema_name or 'public'}"."{db.table_name}"
                 WHERE "jobId" = '{temp_job_id}'
-            """)
+            """
+            )
             result = await session.exec(query)
             row = result.first()
             assert row.status == "completed"
@@ -134,16 +145,21 @@ async def test_fetch_records():
     try:
         async with AsyncSession(engine) as session:
             from sqlalchemy import text
-            check_query = text(f"""
+
+            check_query = text(
+                f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
                     WHERE table_schema = '{db.schema_name or 'public'}' 
                     AND table_name = '{db.table_name}'
                 );
-            """)
+            """
+            )
             result = await session.exec(check_query)
             table_exists = result.first()[0]
             if not table_exists:
-                pytest.skip(f"Table {db.schema_name or 'public'}.{db.table_name} does not exist")
+                pytest.skip(
+                    f"Table {db.schema_name or 'public'}.{db.table_name} does not exist"
+                )
     except Exception:
         pytest.skip("Unable to check table existence")

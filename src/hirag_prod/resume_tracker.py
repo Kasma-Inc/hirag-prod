@@ -6,9 +6,9 @@ from enum import Enum
 from typing import Dict, List, Optional, Set
 
 import redis
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .storage.pg_utils import DatabaseClient
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -186,7 +186,9 @@ class ResumeTracker:
             # Normalize transient progress ticks to processing for PG persistence
             if normalized_status.lower() == "progress":
                 normalized_status = JobStatus.PROCESSING.value
-            db_client.update_job_status(session, job_id, normalized_status, updated_at=datetime.now())
+            db_client.update_job_status(
+                session, job_id, normalized_status, updated_at=datetime.now()
+            )
         except Exception:
             # Never let persistence issues break the pipeline
             pass

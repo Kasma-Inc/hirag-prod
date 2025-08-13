@@ -5,10 +5,10 @@ from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
 from dotenv import load_dotenv
+from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 from hirag_prod.storage.pg_utils import DatabaseClient
-from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 class ContextualClient:
@@ -38,7 +38,7 @@ class ContextualClient:
             )
         self.client = AsyncContextualAI(api_key=self.api_key)
         self.db_client = DatabaseClient()
-        
+
     def create_db_engine(self, connection_string: str) -> AsyncEngine:
         """
         Create a new SQLAlchemy engine via db_client.
@@ -97,7 +97,9 @@ class ContextualClient:
 
             # Save to database if session is provided
             if session:
-                saved_dict = await self.db_client.saveContextResult(session, result_dict)
+                saved_dict = await self.db_client.saveContextResult(
+                    session, result_dict
+                )
                 return saved_dict
             else:
                 return result_dict
@@ -106,7 +108,11 @@ class ContextualClient:
             raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
 
     async def wait_for_parse_completion(
-        self, job_id: str, poll_interval: int = 5, max_wait_time: int = 300, session: AsyncSession = None
+        self,
+        job_id: str,
+        poll_interval: int = 5,
+        max_wait_time: int = 300,
+        session: AsyncSession = None,
     ) -> Dict[str, Any]:
         """
         Wait for a parse job to complete and return the result.
