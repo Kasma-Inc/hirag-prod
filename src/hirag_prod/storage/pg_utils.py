@@ -69,7 +69,7 @@ class DatabaseClient:
         target_schema = schema or "public"
 
         query = text(
-            """
+            f"""
             SELECT
                 c.ordinal_position AS position,
                 c.column_name       AS name,
@@ -88,16 +88,14 @@ class DatabaseClient:
                       AND kcu.column_name   = c.column_name
                 ) AS is_primary_key
             FROM information_schema.columns c
-            WHERE c.table_schema = :target_schema AND c.table_name = :target_table
+            WHERE c.table_schema = '{target_schema}' AND c.table_name = '{target_table}'
             ORDER BY c.ordinal_position
         """
         )
 
-        result = await session.execute(
-            query, {"target_schema": target_schema, "target_table": target_table}
-        )
-        result = result.scalars().all()
-        return [dict(row) for row in result]
+        result = await session.exec(query)
+        rows = result.all()
+        return [dict(row._mapping) for row in rows]
 
     async def update_job_status(
         self,
@@ -113,18 +111,21 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or self.schema_name or "public"
 
+        # Format the datetime parameter if provided
+        updated_at_clause = (
+            "NOW()" if updated_at is None else f"'{updated_at.isoformat()}'"
+        )
+
         query = text(
             f"""
             UPDATE "{target_schema}"."{target_table}"
-               SET "status" = :status,
-                   "updatedAt" = COALESCE(:updated_at, NOW())
-             WHERE "jobId" = :job_id
+               SET "status" = '{status}',
+                   "updatedAt" = COALESCE({updated_at_clause}, NOW())
+             WHERE "jobId" = '{job_id}'
         """
         )
 
-        result = await session.execute(
-            query, {"status": status, "updated_at": updated_at, "job_id": job_id}
-        )
+        result = await session.exec(query)
         await session.commit()
         return result.rowcount or 0
 
@@ -146,22 +147,19 @@ class DatabaseClient:
         target_table = table_name or self.table_name
         target_schema = schema or self.schema_name or "public"
 
+        # Format the datetime parameter if provided
+        updated_at_value = (
+            "NOW()" if updated_at is None else f"'{updated_at.isoformat()}'"
+        )
+
         query = text(
             f"""
             INSERT INTO "{target_schema}"."{target_table}"("jobId", "workspaceId", "status", "updatedAt")
-            VALUES (:job_id, :workspace_id, :status, COALESCE(:updated_at, NOW()))
+            VALUES ('{job_id}', '{workspace_id}', '{status}', COALESCE({updated_at_value}, NOW()))
         """
         )
 
-        result = await session.execute(
-            query,
-            {
-                "job_id": job_id,
-                "workspace_id": workspace_id,
-                "status": status,
-                "updated_at": updated_at,
-            },
-        )
+        result = await session.exec(query)
         await session.commit()
         return result.rowcount or 0
 
@@ -180,11 +178,11 @@ class DatabaseClient:
         query = text(
             f"""
             DELETE FROM "{target_schema}"."{target_table}"
-            WHERE "jobId" = :job_id
+            WHERE "jobId" = '{job_id}'
         """
         )
 
-        result = await session.execute(query, {"job_id": job_id})
+        result = await session.exec(query)
         await session.commit()
         return result.rowcount or 0
 
@@ -207,16 +205,16 @@ class DatabaseClient:
 
         if isinstance(limit, int) and limit > 0:
             query = text(
-                f'SELECT * FROM "{target_schema}"."{target_table}" LIMIT :limit'
+                f'SELECT * FROM "{target_schema}"."{target_table}" LIMIT {limit}'
             )
-            result = await session.execute(query, {"limit": limit})
-            result = result.scalars().all()
+            result = await session.exec(query)
+            rows = result.all()
         else:
             query = text(f'SELECT * FROM "{target_schema}"."{target_table}"')
-            result = await session.execute(query)
-            result = result.scalars().all()
+            result = await session.exec(query)
+            rows = result.all()
 
-        return [dict(row._mapping) for row in result]
+        return [dict(row._mapping) for row in rows]
 
     async def _ensure_table(self, session: AsyncSession, table) -> None:
         """Ensure the ContextualResultTable exists in the database."""
@@ -289,8 +287,8 @@ class DatabaseClient:
         statement = select(self.ContextualResultTable).where(
             self.ContextualResultTable.job_id == job_id
         )
-        result = await session.execute(statement)
-        result = result.scalars().first()
+        result = await session.exec(statement)
+        result = result.first()
 
         if result:
             return result.to_dict()
@@ -346,6 +344,7 @@ async def main():
     args = parser.parse_args()
 
     client = DatabaseClient()
+    engine = client.create_db_engine()
 
     def _fmt(value: Any) -> str:
         if value is None:
@@ -355,7 +354,7 @@ async def main():
         return str(value)
 
     try:
-        async with AsyncSession(client.engine) as session:
+        async with AsyncSession(engine) as session:
             resolved_schema = args.schema or os.getenv("POSTGRES_SCHEMA") or "public"
 
             # Action: add-job
@@ -421,6 +420,8 @@ async def main():
                         _fmt(r.get(h)).ljust(w) for h, w in zip(headers, col_widths)
                     )
                     print(line)
+
+            # Show table schema
             else:
                 rows = await client.get_table_schema(session, schema=resolved_schema)
                 if not rows:
