@@ -330,6 +330,7 @@ class StorageManager:
                             pa.field("source", pa.string()),
                             pa.field("target", pa.string()),
                             pa.field("description", pa.string()),
+                            pa.field("file_name", pa.string()),
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
@@ -391,6 +392,7 @@ class StorageManager:
                     "source": relation.source,
                     "target": relation.target,
                     "description": relation.properties.get("description", ""),
+                    "file_name": relation.properties.get("file_name", ""),
                 }
                 for relation in filtered_relations
             ]
@@ -481,7 +483,8 @@ class DocumentProcessor:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
         document_path = route_file_path(loader_type, document_path)
-        validate_input(document_path, content_type)
+        if loader_type != "docling_cloud":
+            validate_input(document_path, content_type)
 
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
@@ -751,7 +754,7 @@ class QueryService:
             table=self.storage.relations_table,
             topk=topk,
             topn=topn,
-            columns_to_select=["source", "target", "description"],
+            columns_to_select=["source", "target", "description", "file_name"],
             rerank=False,
         )
 

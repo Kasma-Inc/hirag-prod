@@ -95,6 +95,7 @@ class VanillaKG(BaseKG):
                         "description": f"Chunk {chunk.id} contains Entity {entity.page_content}",
                         "weight": 1.0,
                         "chunk_id": chunk.id,
+                        "file_name": chunk.metadata.filename,
                     },
                 )
             )
@@ -265,6 +266,7 @@ class VanillaKG(BaseKG):
                 "description": f"{head} {relation} {tail}",
                 "weight": 1.0,
                 "chunk_id": chunk.id,
+                "file_name": chunk.metadata.filename,
             }
 
             rel = Relation(
