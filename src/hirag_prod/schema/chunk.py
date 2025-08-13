@@ -11,13 +11,13 @@ class ChunkMetadata(FileMetadata):
     chunk_type: Optional[str]  # the type of the chunk
     page_number: Optional[int]  # the page number of the chunk
     page_image_url: Optional[str]  # the image url of the page
-    page_width: Optional[str]  # the width of the page
-    page_height: Optional[str]  # the height of the page
+    page_width: Optional[float]  # the width of the page
+    page_height: Optional[float]  # the height of the page
     document_id: Optional[str]  # The id of the document that the chunk is from
-    x_0: Optional[str]  # x coordinate of the top left corner of the bounding box
-    y_0: Optional[str]  # y coordinate of the top left corner of the bounding box
-    x_1: Optional[str]  # x coordinate of the bottom right corner of the bounding box
-    y_1: Optional[str]  # y coordinate of the bottom right corner of the bounding box
+    x_0: Optional[float]  # x coordinate of the top left corner of the bounding box
+    y_0: Optional[float]  # y coordinate of the top left corner of the bounding box
+    x_1: Optional[float]  # x coordinate of the bottom right corner of the bounding box
+    y_1: Optional[float]  # y coordinate of the bottom right corner of the bounding box
 
 
 class Chunk(Document, BaseModel):

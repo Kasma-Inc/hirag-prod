@@ -559,6 +559,46 @@ def download_oss_file(
         return False
 
 
+def list_oss_files(prefix: str = None) -> bool:
+    """
+    List files in an Aliyun OSS bucket.
+    """
+    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_ID is not set")
+    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
+    if os.getenv("OSS_ENDPOINT", None) is None:
+        raise ValueError("OSS_ENDPOINT is not set")
+    endpoint = os.getenv("OSS_ENDPOINT")
+    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
+    bucket_name = os.getenv("OSS_BUCKET_NAME")
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        endpoint_url=endpoint,
+        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
+    )
+    try:
+        if prefix is None:
+            response = s3_client.list_objects_v2(Bucket=bucket_name)
+        else:
+            response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+
+        if "Contents" in response:
+            print(f"========== OSS File List ({prefix}) ==========")
+            for idx, item in enumerate(response["Contents"]):
+                print(f"{idx+1}. {item['Key']}")
+            print(f"========== End of OSS File List ({prefix}) ==========")
+            return True
+        else:
+            print(f"No files found in {prefix}")
+    except ClientError as e:
+        logger.error(e)
+        return False
+
+
 # ========================================================================
 # File path router
 # ========================================================================
@@ -602,3 +642,6 @@ def route_file_path(
 if __name__ == "__main__":
     print("========== LIST S3 FILES ==========")
     list_s3_files()
+    print("===================================")
+    print("========== LIST OSS FILES ==========")
+    list_oss_files()

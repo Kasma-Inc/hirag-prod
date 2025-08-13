@@ -96,10 +96,10 @@ def _extract_docling_chunk_meta(chunk) -> dict:
     has_bbox = min_l != float("inf")
     return {
         "page_number": int(page_no) if page_no else None,
-        "x_0": str(min_l) if has_bbox else None,
-        "y_0": str(max_t) if has_bbox else None,
-        "x_1": str(max_r) if has_bbox else None,
-        "y_1": str(min_b) if has_bbox else None,
+        "x_0": float(min_l) if has_bbox else None,
+        "y_0": float(max_t) if has_bbox else None,
+        "x_1": float(max_r) if has_bbox else None,
+        "y_1": float(min_b) if has_bbox else None,
     }
 
 
@@ -181,8 +181,8 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             chunk_type=chunk_type.value,
             page_number=page_number,
             page_image_url=None,
-            page_width=str(page_width) if page_width is not None else None,
-            page_height=str(page_height) if page_height is not None else None,
+            page_width=float(page_width) if page_width is not None else None,
+            page_height=float(page_height) if page_height is not None else None,
             x_0=docling_chunk_meta["x_0"],
             y_0=docling_chunk_meta["y_0"],
             x_1=docling_chunk_meta["x_1"],

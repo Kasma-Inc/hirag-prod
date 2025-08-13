@@ -4,7 +4,6 @@ from typing import Any, Literal, Optional, Tuple
 
 import requests
 
-from hirag_prod._utils import route_file_path
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
@@ -125,11 +124,6 @@ def load_document(
         raise ValueError(f"Unsupported document type: {content_type}")
     loader_conf = loader_configs[content_type]
     loader = loader_conf["loader"]()
-
-    try:
-        document_path = route_file_path(loader_type, document_path)
-    except Exception as e:
-        logger.warning(f"Unexpected error in route_file_path, using original path: {e}")
 
     if loader_type == "docling_cloud":
         docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)

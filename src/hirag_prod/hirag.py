@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
 from dotenv import load_dotenv
+
+from hirag_prod._utils import route_file_path
 
 from ._llm import (
     ChatCompletion,
@@ -297,6 +299,14 @@ class StorageManager:
                             pa.field("chunk_idx", pa.int32()),
                             pa.field("document_id", pa.string()),
                             pa.field("chunk_type", pa.string()),
+                            # Optional metadata fields from ChunkMetadata
+                            pa.field("page_image_url", pa.string()),
+                            pa.field("page_width", pa.float32()),
+                            pa.field("page_height", pa.float32()),
+                            pa.field("x_0", pa.float32()),
+                            pa.field("y_0", pa.float32()),
+                            pa.field("x_1", pa.float32()),
+                            pa.field("y_1", pa.float32()),
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
@@ -466,9 +476,11 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
+        loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
+        document_path = route_file_path(loader_type, document_path)
         validate_input(document_path, content_type)
 
         async with self.metrics.track_operation(f"process_document"):
@@ -1359,6 +1371,7 @@ class HiRAG:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
+        loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
@@ -1401,6 +1414,7 @@ class HiRAG:
                 document_meta=document_meta,
                 loader_configs=loader_configs,
                 job_id=job_id,
+                loader_type=loader_type,
             )
 
             # Save graph state
