@@ -155,7 +155,7 @@ class ResumeTracker:
         self.redis_client.hset(key, mapping=mapping)
         self.redis_client.expire(key, EXPIRE_TTL)
 
-    def _persist_job_status(
+    async def _persist_job_status(
         self, job_id: str, status: str, extra: Optional[Dict[str, str]] = None
     ) -> None:
         """Hook to persist job status into PostgreSQL. No-op by default.
@@ -163,12 +163,12 @@ class ResumeTracker:
         Override or implement `save_job_status_to_postgres` to enable persistence.
         """
         try:
-            self.save_job_status_to_postgres(job_id, status, extra or {})
+            await self.save_job_status_to_postgres(job_id, status, extra or {})
         except Exception:
             # Swallow persistence errors to avoid impacting pipeline
             pass
 
-    def save_job_status_to_postgres(
+    async def save_job_status_to_postgres(
         self, job_id: str, status: str, extra: Dict[str, str]
     ) -> None:
         """Persist job status to PostgreSQL using DatabaseClient.
@@ -186,14 +186,14 @@ class ResumeTracker:
             # Normalize transient progress ticks to processing for PG persistence
             if normalized_status.lower() == "progress":
                 normalized_status = JobStatus.PROCESSING.value
-            db_client.update_job_status(
+            await db_client.update_job_status(
                 session, job_id, normalized_status, updated_at=datetime.now()
             )
         except Exception:
             # Never let persistence issues break the pipeline
             pass
 
-    def set_job_status(
+    async def set_job_status(
         self,
         job_id: str,
         status: JobStatus,
@@ -207,9 +207,9 @@ class ResumeTracker:
         now = datetime.now().isoformat()
         mapping = {"status": status.value, "updated_at": now}
         self.redis_client.hset(key, mapping=mapping)
-        self._persist_job_status(job_id, status.value, mapping)
+        await self._persist_job_status(job_id, status.value, mapping)
 
-    def set_job_processing(
+    async def set_job_processing(
         self,
         job_id: str,
         document_id: Optional[str] = None,
@@ -225,9 +225,9 @@ class ResumeTracker:
         if total_chunks is not None:
             mapping["total_chunks"] = str(int(total_chunks))
         self.redis_client.hset(key, mapping=mapping)
-        self._persist_job_status(job_id, JobStatus.PROCESSING.value, mapping)
+        await self._persist_job_status(job_id, JobStatus.PROCESSING.value, mapping)
 
-    def set_job_progress(
+    async def set_job_progress(
         self,
         job_id: str,
         processed_chunks: Optional[int] = None,
@@ -246,12 +246,12 @@ class ResumeTracker:
             mapping["total_relations"] = str(int(total_relations))
         self.redis_client.hset(key, mapping=mapping)
         # Progress updates are frequent; persist if desired
-        self._persist_job_status(job_id, "progress", mapping)
+        await self._persist_job_status(job_id, "progress", mapping)
 
-    def set_job_completed(self, job_id: str) -> None:
-        self.set_job_status(job_id, JobStatus.COMPLETED)
+    async def set_job_completed(self, job_id: str) -> None:
+        await self.set_job_status(job_id, JobStatus.COMPLETED)
 
-    def set_job_failed(self, job_id: str, error_message: str) -> None:
+    async def set_job_failed(self, job_id: str, error_message: str) -> None:
         key = self._job_key(job_id)
         self._ensure_job_exists(job_id)
         now = datetime.now().isoformat()
@@ -263,7 +263,7 @@ class ResumeTracker:
                 "updated_at": now,
             },
         )
-        self._persist_job_status(
+        await self._persist_job_status(
             job_id, JobStatus.FAILED.value, {"error": (error_message or "")[:5000]}
         )
 

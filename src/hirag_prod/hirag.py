@@ -492,7 +492,7 @@ class DocumentProcessor:
                 # Mark job failed if tracking is enabled
                 if self.resume_tracker and job_id:
                     try:
-                        self.resume_tracker.set_job_failed(
+                        await self.resume_tracker.set_job_failed(
                             job_id, "No chunks created from document"
                         )
                     except Exception:
@@ -508,7 +508,7 @@ class DocumentProcessor:
                 # Update job -> processing with doc info as soon as we know
                 if job_id:
                     try:
-                        self.resume_tracker.set_job_processing(
+                        await self.resume_tracker.set_job_processing(
                             job_id=job_id,
                             document_id=document_id,
                             total_chunks=len(chunks),
@@ -521,7 +521,7 @@ class DocumentProcessor:
                     )
                     if job_id:
                         try:
-                            self.resume_tracker.set_job_completed(job_id)
+                            await self.resume_tracker.set_job_completed(job_id)
                         except Exception:
                             pass
                     return self.metrics.metrics
@@ -536,7 +536,7 @@ class DocumentProcessor:
             # Update job progress for processed chunks
             if self.resume_tracker and job_id:
                 try:
-                    self.resume_tracker.set_job_progress(
+                    await self.resume_tracker.set_job_progress(
                         job_id,
                         processed_chunks=self.metrics.metrics.processed_chunks,
                     )
@@ -549,7 +549,7 @@ class DocumentProcessor:
                 # Update job progress for entity/relation totals
                 if self.resume_tracker and job_id:
                     try:
-                        self.resume_tracker.set_job_progress(
+                        await self.resume_tracker.set_job_progress(
                             job_id,
                             total_entities=self.metrics.metrics.total_entities,
                             total_relations=self.metrics.metrics.total_relations,
@@ -564,7 +564,7 @@ class DocumentProcessor:
                 )
                 if job_id:
                     try:
-                        self.resume_tracker.set_job_completed(job_id)
+                        await self.resume_tracker.set_job_completed(job_id)
                     except Exception:
                         pass
 
@@ -1391,7 +1391,7 @@ class HiRAG:
         start_time = time.perf_counter()
         if job_id and self._processor and self._processor.resume_tracker is not None:
             try:
-                self._processor.resume_tracker.set_job_status(
+                await self._processor.resume_tracker.set_job_status(
                     job_id=job_id,
                     status=JobStatus.PROCESSING,
                     document_uri=(
@@ -1436,7 +1436,7 @@ class HiRAG:
                 and job_id
             ):
                 try:
-                    self._processor.resume_tracker.set_job_failed(job_id, str(e))
+                    await self._processor.resume_tracker.set_job_failed(job_id, str(e))
                 except Exception:
                     pass
             raise
