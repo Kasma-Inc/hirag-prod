@@ -4,6 +4,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
+from dotenv import load_dotenv
+
+from hirag_prod.contextual.storage_util import (
+    create_db_engine,
+    queryContextResult,
+    saveContextResult,
+)
 
 
 class ContextualClient:
@@ -33,6 +40,10 @@ class ContextualClient:
             )
         self.client = AsyncContextualAI(api_key=self.api_key)
 
+        # Initialize database engine if connection string is available
+        db_url = os.getenv("POSTGRES_URL_NO_SSL_DEV")
+        self.engine = create_db_engine(db_url) if db_url else None
+
     async def get_parse_status(self, job_id: str) -> Dict[str, Any]:
         """
         Get the status of a parse job.
@@ -51,6 +62,7 @@ class ContextualClient:
     ) -> Dict[str, Any]:
         """
         Get the results of a completed parse job.
+        First checks database cache, then fetches from API if not found and saves to DB.
 
         Args:
             job_id: The job ID returned from parse_document
@@ -59,13 +71,31 @@ class ContextualClient:
         * Now using ["markdown-document"] as default value, refer to: https://docs.contextual.ai/api-reference/parse/parse-result
         """
         try:
+            # First check if results are cached in database (if engine is available)
+            if self.engine:
+                cached_result = queryContextResult(self.engine, job_id)
+                if cached_result:
+                    return cached_result
+
+            # If not in cache, fetch from API
             if output_types is None:
                 output_types = ["markdown-document"]
 
             response = await self.client.parse.job_results(
                 job_id=job_id, output_types=output_types
             )
-            return response
+
+            # Add job_id to response for saving
+            if hasattr(response, "model_dump"):
+                result_dict = response.model_dump()
+            else:
+                result_dict = response
+
+            result_dict["job_id"] = job_id
+
+            saved_dict = saveContextResult(self.engine, result_dict)
+            return saved_dict
+
         except Exception as e:
             raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
 
@@ -155,9 +185,13 @@ class ContextualClient:
             raise Exception("Could not extract job_id from parse response")
 
         # Wait for completion and return results
-        return await self.wait_for_parse_completion(
+        parse_result = await self.wait_for_parse_completion(
             job_id, poll_interval, max_wait_time
         )
+
+        # Add job_id to parse result
+        parse_result["job_id"] = job_id
+        return parse_result
 
     # This is a helper function and also for non-waiting parsing
     async def parse_document(
