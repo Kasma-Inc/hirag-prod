@@ -6,6 +6,9 @@ from docling_core.types.doc import DoclingDocument
 
 from hirag_prod.loader import load_document
 from hirag_prod.schema import File
+from hirag_prod.loader import check_dots_ocr_health
+
+import json
 
 # Document types supported by Docling loader (excluding txt)
 DOCLING_DOCUMENTS = {
@@ -202,3 +205,70 @@ class TestDoclingCloudLoader:
         assert doc_md.metadata.filename == filename
         assert doc_md.metadata.type == "pdf"
         assert doc_md.metadata.uri == s3_path
+
+# ================================ Test Dots OCR Loader ================================
+class TestDotsOCRLoader:
+
+    def test_health_check(self):
+        """Test Dots OCR health check"""
+        assert check_dots_ocr_health()
+        
+    def _create_document_meta(
+        self, doc_type: str, filename: str, uri: str
+    ) -> Dict[str, Any]:
+        """Create document metadata dictionary"""
+        return {
+            "type": doc_type,
+            "filename": filename,
+            "uri": uri,
+            "private": False,
+        }
+
+    def _assert_dots_ocr_document_loaded(self, doc: Any, doc_md: Any, doc_nohf_md: Any) -> None:
+        """Assert that Dots OCR document was loaded successfully"""
+        assert isinstance(doc, list)
+        assert isinstance(doc_md, File)
+        assert doc_md.page_content is not None
+        assert doc_md.metadata is not None
+        assert doc_md.id.startswith("doc-")
+        assert doc_nohf_md.page_content is not None
+        assert doc_nohf_md.metadata is not None
+        
+        
+    def test_load_pdf_dots_ocr_s3(self):
+        """Test loading PDF with Dots OCR loader from S3"""
+        s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
+        filename = "small.pdf"
+
+        document_meta = self._create_document_meta(
+            doc_type="pdf", filename=filename, uri=s3_path
+        )
+
+        json_doc, md_doc, md_nohf_doc = load_document(
+            document_path=s3_path,
+            content_type="application/pdf",
+            document_meta=document_meta,
+            loader_configs=None,
+            loader_type="dots_ocr",
+        )
+
+        self._assert_dots_ocr_document_loaded(json_doc, md_doc, md_nohf_doc)
+
+        # save the json and md in the corresponding formats
+        import json
+        json_path = "./tmp/dots_ocr_test.json"
+        with open(json_path, "w") as json_file:
+            json.dump(json_doc, json_file, ensure_ascii=False, indent=4)
+
+        md_path = "./tmp/dots_ocr_test.md"
+        with open(md_path, "w") as md_file:
+            md_file.write(md_doc.page_content)
+        
+        md_nohf_path = "./tmp/dots_ocr_test_nohf.md"
+        with open(md_nohf_path, "w") as md_nohf_file:
+            md_nohf_file.write(md_nohf_doc.page_content)
+            
+        # assert exists
+        assert os.path.exists(json_path)
+        assert os.path.exists(md_path)
+        assert os.path.exists(md_nohf_path)

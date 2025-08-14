@@ -4,6 +4,7 @@ from docling.document_converter import DocumentConverter, PdfFormatOption
 
 from hirag_prod.loader.base_loader import BaseLoader
 from hirag_prod.loader.docling_cloud import DoclingCloudClient
+from hirag_prod.loader.dots_ocr import DotsOCRClient
 
 
 class PDFLoader(BaseLoader):
@@ -20,3 +21,4 @@ class PDFLoader(BaseLoader):
             }
         )
         self.loader_docling_cloud = DoclingCloudClient()
+        self.loader_dots_ocr = DotsOCRClient()

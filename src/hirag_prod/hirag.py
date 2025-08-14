@@ -35,7 +35,7 @@ from .parser import (
 )
 from .prompt import PROMPTS
 from .resume_tracker import JobStatus, ResumeTracker
-from .schema import Relation
+from .schema import LoaderType, Relation
 from .storage import (
     BaseGDB,
     BaseVDB,
@@ -485,7 +485,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
+        loader_type: LoaderType = "docling_cloud",
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
@@ -1503,7 +1503,7 @@ class HiRAG:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
+        loader_type: LoaderType = "docling_cloud",
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base

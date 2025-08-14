@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import requests
 
@@ -14,7 +14,7 @@ from hirag_prod.loader.pdf_loader import PDFLoader
 from hirag_prod.loader.ppt_loader import PowerPointLoader
 from hirag_prod.loader.txt_loader import TxtLoader
 from hirag_prod.loader.word_loader import WordLoader
-from hirag_prod.schema import File
+from hirag_prod.schema import File, LoaderType
 
 # Configure Logging
 logging.basicConfig(
@@ -63,18 +63,9 @@ DEFAULT_LOADER_CONFIGS = {
     },
 }
 
-
-def check_docling_cloud_health() -> bool:
-    """docling cloud service health check"""
+def check_cloud_health(base_url: str, token: str, model: str) -> bool:
+    """Check the health of the cloud service"""
     try:
-        base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
-        token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
-        model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
-
-        if not base_url or not token:
-            return False
-
-        # Construct the health endpoint URL properly
         health_url = f"{base_url.rstrip('/')}/health"
 
         headers = {
@@ -104,13 +95,28 @@ def check_docling_cloud_health() -> bool:
     except Exception:
         return False
 
+def check_docling_cloud_health() -> bool:
+    """docling cloud service health check"""
+    base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
+    token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
+    model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
+
+    return check_cloud_health(base_url, token, model)
+
+def check_dots_ocr_health() -> bool:
+    """Dots OCR service health check"""
+    base_url = os.getenv("DOTS_OCR_BASE_URL")
+    token = os.getenv("DOTS_OCR_AUTH_TOKEN")
+    model = os.getenv("DOTS_OCR_MODEL_NAME", "DotsOCR")
+
+    return check_cloud_health(base_url, token, model)
 
 def load_document(
     document_path: str,
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
+    loader_type: LoaderType = "docling_cloud",
 ) -> Tuple[Any, File]:
     """Load a document from the given path and content type
 
@@ -131,10 +137,16 @@ def load_document(
     if content_type == "text/plain":
         loader_type = "langchain"
     else:
-        if check_docling_cloud_health():
-            loader_type = "docling_cloud"
-        else:
+        cloud_check = False
+        if loader_type == "docling_cloud":
+            cloud_check = check_docling_cloud_health()
+        elif loader_type == "dots_ocr":
+            cloud_check = check_dots_ocr_health()
+        
+        if not cloud_check:
             loader_type = "docling"
+            # Show warning in log
+            logger.warning(f"Cloud health check failed for {loader_type}, falling back to docling.")
 
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
@@ -152,6 +164,9 @@ def load_document(
     if loader_type == "docling_cloud":
         docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)
         return docling_doc, doc_md
+    elif loader_type == "dots_ocr":
+        json_doc, doc_md, doc_md_nohf = loader.load_dots_ocr(document_path, document_meta)
+        return json_doc, doc_md, doc_md_nohf
     elif loader_type == "docling":
         validate_document_path(document_path)
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)
