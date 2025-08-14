@@ -44,6 +44,9 @@ class BaseLoader(ABC):
                 filename=document_meta.get("filename", ""),
                 uri=document_meta.get("uri", ""),
                 private=document_meta.get("private"),
+                uploaded_at=document_meta.get("uploaded_at"),
+                knowledge_base_id=document_meta.get("knowledge_base_id", ""),
+                workspace_id=document_meta.get("workspace_id", ""),
             ),
         )
         return docling_doc, doc_md
@@ -119,6 +122,9 @@ class BaseLoader(ABC):
                 filename=document_meta.get("filename", ""),
                 uri=document_meta.get("uri", ""),
                 private=document_meta.get("private"),
+                uploaded_at=document_meta.get("uploaded_at"),
+                knowledge_base_id=document_meta.get("knowledge_base_id", ""),
+                workspace_id=document_meta.get("workspace_id", ""),
             ),
         )
         return docling_doc, doc_md
@@ -146,6 +152,9 @@ class BaseLoader(ABC):
                 filename=document_meta.get("filename", ""),
                 uri=document_meta.get("uri", ""),
                 private=document_meta.get("private"),
+                uploaded_at=document_meta.get("uploaded_at"),
+                knowledge_base_id=document_meta.get("knowledge_base_id", ""),
+                workspace_id=document_meta.get("workspace_id", ""),
             ),
         )
         return doc_langchain

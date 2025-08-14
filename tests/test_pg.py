@@ -2,7 +2,6 @@
 PostgreSQL utils test
 """
 
-import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 

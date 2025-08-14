@@ -32,6 +32,10 @@ class FileMetadata(BaseModel):
     # Whether the file is private
     private: Optional[bool] = None
     uploaded_at: Optional[datetime] = None
+    knowledge_base_id: Optional[str] = (
+        None  # The id of the knowledge base that the file is from
+    )
+    workspace_id: Optional[str] = None
 
 
 class File(Document, BaseModel):

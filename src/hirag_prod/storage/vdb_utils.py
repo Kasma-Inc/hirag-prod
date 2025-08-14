@@ -324,6 +324,43 @@ class VDBManager:
                 progress.advance(task)
 
 
+async def get_chunk_info(
+    chunk_id: str,
+    vdb_path: str = "kb/hirag.db",
+    knowledge_base_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Get a single chunk record from LanceDB by its id.
+
+    Note: the chunk identifier is stored in the `document_key` column of the
+    `chunks` table.
+
+    Args:
+        chunk_id: The chunk's unique identifier
+        vdb_path: Path to the LanceDB database directory
+        knowledge_base_id: The id of the knowledge base that the chunk is from
+
+    Returns:
+        A dict of the chunk row if found, otherwise None.
+    """
+    try:
+        async with VDBManager(vdb_path) as vdb:
+            table = await vdb._get_table("chunks")
+
+            # Use JSON encoding to safely quote/escape the id in the filter expression
+            safe_id = json.dumps(chunk_id, ensure_ascii=False)
+
+            results = await (
+                table.query().where(f"document_key == {safe_id}").limit(1).to_list()
+            )
+            if results:
+                return results[0]
+            return None
+    except Exception as e:
+        logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
+        return None
+
+
 async def main():
     """CLI entry point"""
     parser = argparse.ArgumentParser(
