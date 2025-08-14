@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
-from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
