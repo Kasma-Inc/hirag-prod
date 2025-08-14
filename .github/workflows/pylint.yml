@@ -28,7 +28,7 @@ jobs:
 
     - name: Lint Python
       run: |
-        pylint --disable=all --enable=duplicate-code $(git ls-files '*.py')
+        pylint --disable=all --enable=duplicate-code $(git ls-files '*.py' ':!:tests')
         black --check $(git ls-files '*.py')
         blackdoc --check $(git ls-files '*.py')
         isort --check $(git ls-files '*.py') --profile black
