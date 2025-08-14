@@ -4,6 +4,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -287,6 +288,8 @@ class StorageManager:
                     "chunks",
                     schema=pa.schema(
                         [
+                            pa.field("knowledge_base_id", pa.string()),
+                            pa.field("workspace_id", pa.string()),
                             pa.field("text", pa.string()),
                             pa.field("document_key", pa.string()),
                             pa.field("type", pa.string()),
@@ -308,7 +311,7 @@ class StorageManager:
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
-                            pa.field("uploaded_at", pa.timestamp("ms")),
+                            pa.field("uploaded_at", pa.timestamp("us")),
                         ]
                     ),
                 )
@@ -332,6 +335,8 @@ class StorageManager:
                             pa.field(
                                 "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
                             ),
+                            pa.field("knowledge_base_id", pa.string()),
+                            pa.field("workspace_id", pa.string()),
                         ]
                     ),
                 )
@@ -391,6 +396,10 @@ class StorageManager:
                     "target": relation.target,
                     "description": relation.properties.get("description", ""),
                     "file_name": relation.properties.get("file_name", ""),
+                    "knowledge_base_id": relation.properties.get(
+                        "knowledge_base_id", ""
+                    ),
+                    "workspace_id": relation.properties.get("workspace_id", ""),
                 }
                 for relation in filtered_relations
             ]
@@ -484,7 +493,10 @@ class DocumentProcessor:
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
             chunks = await self._load_and_chunk_document(
-                document_path, content_type, document_meta, loader_configs
+                document_path,
+                content_type,
+                document_meta,
+                loader_configs,
             )
 
             if not chunks:
@@ -1369,6 +1381,8 @@ class HiRAG:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
+        knowledge_base_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
         loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
     ) -> ProcessingMetrics:
         """
@@ -1389,6 +1403,9 @@ class HiRAG:
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
+        document_meta["knowledge_base_id"] = knowledge_base_id
+        document_meta["workspace_id"] = workspace_id
+        document_meta["uploaded_at"] = datetime.now().isoformat()
         if job_id and self._processor and self._processor.resume_tracker is not None:
             try:
                 await self._processor.resume_tracker.set_job_status(

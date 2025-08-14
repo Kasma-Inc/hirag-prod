@@ -7,6 +7,10 @@ from .file import FileMetadata
 
 
 class ChunkMetadata(FileMetadata):
+    knowledge_base_id: Optional[
+        str
+    ]  # The id of the knowledge base that the chunk is from
+    workspace_id: Optional[str]  # The id of the workspace that the chunk is from
     chunk_idx: Optional[int]  # the index of the chunk in the document
     chunk_type: Optional[str]  # the type of the chunk
     page_number: Optional[int]  # the page number of the chunk
