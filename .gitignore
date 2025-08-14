@@ -13,4 +13,7 @@ tests/output/
 # Virtual environments
 .venv
 .env
+
+# Temporary files & logs
 logs/
+tmp/
