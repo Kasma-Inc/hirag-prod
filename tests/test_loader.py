@@ -187,8 +187,10 @@ class TestDoclingCloudLoader:
 
     def test_load_pdf_docling_cloud_s3(self):
         """Test loading PDF with Docling Cloud loader from S3"""
-        s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
-        filename = "small.pdf"
+        # s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
+        # filename = "small.pdf"
+        s3_path = "s3://monkeyocr/test/input/test_pdf/VERYLONGBADLYFORMATTEDPDF.pdf"
+        filename = "VERYLONGBADLYFORMATTEDPDF.pdf"
 
         document_meta = self._create_document_meta(
             doc_type="pdf", filename=filename, uri=s3_path
@@ -206,6 +208,19 @@ class TestDoclingCloudLoader:
         assert doc_md.metadata.filename == filename
         assert doc_md.metadata.type == "pdf"
         assert doc_md.metadata.uri == s3_path
+        
+        if not os.path.exists("./tmp"):
+            os.makedirs("./tmp")
+            
+        # Save docling file & md
+        with open(f"./tmp/{filename}", "wb") as f:
+            f.write(docling_doc)
+
+        with open(f"./tmp/{filename}.md", "w") as f:
+            f.write(doc_md.page_content)
+            
+        assert os.path.exists(f"./tmp/{filename}")
+        assert os.path.exists(f"./tmp/{filename}.md")
 
 # ================================ Test Dots OCR Loader ================================
 class TestDotsOCRLoader:
@@ -250,7 +265,7 @@ class TestDotsOCRLoader:
             
             s3_path = f"test/input/test_pdf/{file_name}"
             print(f"Uploading {local_path} to {s3_path}")
-            # upload_file_to_s3(local_path, s3_path)
+            upload_file_to_s3(local_path, s3_path)
             s3_path = f"s3://monkeyocr/test/input/test_pdf/{file_name}"
             return s3_path, file_name
 
@@ -279,15 +294,19 @@ class TestDotsOCRLoader:
 
         # save the json and md in the corresponding formats
         import json
-        json_path = "./tmp/dots_ocr_test.json"
+        
+        if not os.path.exists("./tmp"):
+            os.makedirs("./tmp")
+
+        json_path = f"./tmp/{filename}.json"
         with open(json_path, "w") as json_file:
             json.dump(json_doc, json_file, ensure_ascii=False, indent=4)
 
-        md_path = "./tmp/dots_ocr_test.md"
+        md_path = f"./tmp/{filename}.md"
         with open(md_path, "w") as md_file:
             md_file.write(md_doc.page_content)
-        
-        md_nohf_path = "./tmp/dots_ocr_test_nohf.md"
+
+        md_nohf_path = f"./tmp/{filename}_nohf.md"
         with open(md_nohf_path, "w") as md_nohf_file:
             md_nohf_file.write(md_nohf_doc.page_content)
             
