@@ -1265,7 +1265,11 @@ class HiRAG:
             raise HiRAGException("Chat completion failed") from e
 
     async def extract_references(
-        self, summary: str, chunks: List[Dict[str, Any]]
+        self,
+        summary: str,
+        chunks: List[Dict[str, Any]],
+        workspace_id: str,
+        knowledge_base_id: str,
     ) -> List[str]:
         """Extract references from summary"""
 
@@ -1289,7 +1293,11 @@ class HiRAG:
         sentence_embeddings = await self.embedding_service.create_embeddings(
             texts=ref_sentences
         )
-        chunk_embeddings = await self._query_service.query_chunk_embeddings(chunk_keys)
+        chunk_embeddings = await self._query_service.query_chunk_embeddings(
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            chunk_keys=chunk_keys,
+        )
 
         for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
             # If the sentence is empty, continue
@@ -1693,6 +1701,8 @@ class HiRAG:
     async def dpr_recall_chunks(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         pool_size: int = 500,
     ) -> Dict[str, Any]:
@@ -1718,7 +1728,11 @@ class HiRAG:
             return {"chunk_ids": [], "scores": [], "chunks": []}
 
         # Step 2: fetch candidate embeddings and query embedding
-        chunk_vec_map = await self._query_service.query_chunk_embeddings(candidate_ids)
+        chunk_vec_map = await self._query_service.query_chunk_embeddings(
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            candidate_ids=candidate_ids,
+        )
         # Filter out None vectors while preserving id order
         filtered_ids = [
             cid for cid in candidate_ids if chunk_vec_map.get(cid) is not None
