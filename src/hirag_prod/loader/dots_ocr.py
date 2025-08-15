@@ -12,7 +12,7 @@ import requests
 from typing import Any, Literal, Dict
 import json
 
-from hirag_prod._utils import download_oss_file, download_s3_file
+from hirag_prod._utils import download_oss_file, download_s3_file, exists_s3_file
 
 # TODO: Fix dots_ocr/ dir DNE problem, now using docling's as temp solution
 OUTPUT_DIR_PREFIX = "docling_cloud/output"
@@ -124,6 +124,11 @@ class DotsOCRClient:
             # Testing Only
             self.logger.info(f"Request headers: {headers}")
             self.logger.info(f"Request files: {files}")
+            
+            # verify that input s3 path exists
+            if not exists_s3_file(file_path):
+                self.logger.error(f"Input S3 path does not exist: {input_file_path}")
+                return None
 
             response = requests.post(
                 self.api_url, headers=headers, files=files, timeout=self.timeout
