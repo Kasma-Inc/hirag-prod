@@ -1207,6 +1207,57 @@ class HiRAG:
             logger.error(f"Chat completion failed: {e}")
             raise HiRAGException("Chat completion failed") from e
 
+    async def extract_references(
+        self, summary: str, chunks: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Extract references from summary"""
+
+        if not self.chat_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        # for each sentence, do a query and find the best matching document key to find the referenced chunk
+        reference_chunk_list = []
+
+        placeholder = PROMPTS["REFERENCE_PLACEHOLDER"]
+        ref_parser = ReferenceParser()
+        ref_sentences = await ref_parser.parse_references(summary, placeholder)
+
+        chunk_keys = [c["document_key"] for c in chunks]
+
+        # Generate embeddings for each reference sentence
+        if not ref_sentences:
+            logger.warning("No reference sentences found in summary")
+            return []
+
+        sentence_embeddings = await self.embedding_service.create_embeddings(
+            texts=ref_sentences
+        )
+        chunk_embeddings = await self._query_service.query_chunk_embeddings(chunk_keys)
+
+        for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
+            # If the sentence is empty, continue
+            if not sentence.strip():
+                reference_chunk_list.append("")
+                continue
+
+            similar_chunks = await self.calculate_similarity(
+                sentence_embedding, chunk_embeddings
+            )
+
+            # Sort by similarity
+            reference_list = similar_chunks
+            reference_list.sort(key=lambda x: x["similarity"], reverse=True)
+
+            # If no similar chunks found, append empty string
+            if not reference_list:
+                reference_chunk_list.append("")
+                continue
+
+            most_similar_chunk = reference_list[0]
+            reference_chunk_list.append(most_similar_chunk["document_key"])
+
+        return reference_chunk_list
+
     async def generate_summary(
         self,
         chunks: List[Dict[str, Any]],
