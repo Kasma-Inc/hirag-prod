@@ -1283,7 +1283,7 @@ class HiRAG:
         ref_parser = ReferenceParser()
         ref_sentences = await ref_parser.parse_references(summary, placeholder)
 
-        chunk_keys = [c["document_key"] for c in chunks]
+        chunk_ids = [c["document_key"] for c in chunks]
 
         # Generate embeddings for each reference sentence
         if not ref_sentences:
@@ -1296,7 +1296,7 @@ class HiRAG:
         chunk_embeddings = await self._query_service.query_chunk_embeddings(
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
-            chunk_keys=chunk_keys,
+            chunk_ids=chunk_ids,
         )
 
         for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
@@ -1377,7 +1377,7 @@ class HiRAG:
             # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
 
-            chunk_keys = [c["document_key"] for c in chunks]
+            chunk_ids = [c["document_key"] for c in chunks]
 
             # Generate embeddings for each reference sentence
             if not ref_sentences:
@@ -1390,7 +1390,7 @@ class HiRAG:
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                chunk_ids=chunk_keys,
+                chunk_ids=chunk_ids,
             )
 
             for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
