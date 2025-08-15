@@ -7,6 +7,8 @@ class EntityMetadata(BaseModel):
     entity_type: str
     description: List[str]
     chunk_ids: List[str]
+    workspace_id: str
+    knowledge_base_id: str
 
 
 class Entity(BaseModel):

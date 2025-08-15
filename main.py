@@ -34,9 +34,16 @@ async def index():
         document_path=document_path,
         content_type=content_type,
         document_meta=document_meta,
+        workspace_id="test_workspace",
+        knowledge_base_id="test_kb",
     )
 
-    ret = await index.query("When did Lothair Ii's mother die?", summary=True)
+    ret = await index.query(
+        "When did Lothair Ii's mother die?",
+        summary=True,
+        workspace_id="test_workspace",
+        knowledge_base_id="test_kb",
+    )
 
     print("———————————————————— Chunks ————————————————————\n")
     print(ret["chunks"])

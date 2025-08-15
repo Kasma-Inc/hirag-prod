@@ -96,6 +96,8 @@ class VanillaKG(BaseKG):
                         "weight": 1.0,
                         "chunk_id": chunk.id,
                         "file_name": chunk.metadata.filename,
+                        "workspace_id": chunk.metadata.workspace_id,
+                        "knowledge_base_id": chunk.metadata.knowledge_base_id,
                     },
                 )
             )
@@ -129,7 +131,12 @@ class VanillaKG(BaseKG):
                 prompt=entity_prompt,
             )
 
-            entities = await self._parse_entities_from_result(entity_result, chunk.id)
+            entities = await self._parse_entities_from_result(
+                entity_result,
+                chunk.id,
+                chunk.metadata.workspace_id,
+                chunk.metadata.knowledge_base_id,
+            )
 
             elapsed = time.time() - start_time
             logging.info(
@@ -145,7 +152,11 @@ class VanillaKG(BaseKG):
             return []
 
     async def _parse_entities_from_result(
-        self, entity_result: str, chunk_id: str
+        self,
+        entity_result: str,
+        chunk_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
     ) -> List[Entity]:
         """
         Parse entities from LLM output string.
@@ -173,6 +184,8 @@ class VanillaKG(BaseKG):
                         "entity_type": "entity",
                         "description": [],
                         "chunk_ids": [chunk_id],
+                        "workspace_id": workspace_id,
+                        "knowledge_base_id": knowledge_base_id,
                     },
                 )
             )
@@ -267,6 +280,8 @@ class VanillaKG(BaseKG):
                 "weight": 1.0,
                 "chunk_id": chunk.id,
                 "file_name": chunk.metadata.filename,
+                "workspace_id": chunk.metadata.workspace_id,
+                "knowledge_base_id": chunk.metadata.knowledge_base_id,
             }
 
             rel = Relation(
@@ -283,6 +298,8 @@ class VanillaKG(BaseKG):
                     "entity_type": "entity",
                     "description": [],
                     "chunk_ids": [chunk.id],
+                    "workspace_id": chunk.metadata.workspace_id,
+                    "knowledge_base_id": chunk.metadata.knowledge_base_id,
                 },
             )
             target_entity = Entity(
@@ -292,6 +309,8 @@ class VanillaKG(BaseKG):
                     "entity_type": "entity",
                     "description": [],
                     "chunk_ids": [chunk.id],
+                    "workspace_id": chunk.metadata.workspace_id,
+                    "knowledge_base_id": chunk.metadata.knowledge_base_id,
                 },
             )
 

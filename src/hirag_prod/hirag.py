@@ -662,11 +662,7 @@ class DocumentProcessor:
         try:
             entities, relations = await self.kg_constructor.construct_kg(chunks)
 
-            # Store entities only to graph database (not to vector database)
             if entities:
-                await self.storage.gdb.upsert_nodes(
-                    entities, concurrency=self.config.entity_upsert_concurrency
-                )
                 self.metrics.metrics.total_entities += len(entities)
 
             # Store relations to both graph database and vector database
@@ -707,6 +703,8 @@ class QueryService:
     async def query_chunks(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
         rerank: bool = True,
@@ -726,11 +724,15 @@ class QueryService:
                 "document_key",
             ],
             rerank=rerank,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
 
     async def recall_chunks(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
         rerank: bool = True,
@@ -748,12 +750,24 @@ class QueryService:
                 - "chunks": raw chunk search results
                 - "chunk_ids": list of document_key values
         """
-        chunks = await self.query_chunks(query, topk=topk, topn=topn, rerank=rerank)
+        chunks = await self.query_chunks(
+            query,
+            topk=topk,
+            topn=topn,
+            rerank=rerank,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         chunk_ids = [c.get("document_key") for c in chunks if c.get("document_key")]
         return {"chunks": chunks, "chunk_ids": chunk_ids}
 
     async def query_triplets(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+        self,
+        query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
     ) -> List[Dict[str, Any]]:
         """Query relations from vector database using semantic search"""
         return await self.storage.vdb.query(
@@ -763,11 +777,15 @@ class QueryService:
             topn=topn,
             columns_to_select=["source", "target", "description", "file_name"],
             rerank=False,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
 
     async def recall_triplets(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
     ) -> Dict[str, Any]:
@@ -783,7 +801,13 @@ class QueryService:
                 - "relations": raw triplet search results
                 - "entity_ids": unique list of entity ids appearing as source/target
         """
-        relations = await self.query_triplets(query, topk=topk, topn=topn)
+        relations = await self.query_triplets(
+            query,
+            topk=topk,
+            topn=topn,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         entity_id_set = set()
         for rel in relations:
             src = rel.get("source")
@@ -805,7 +829,9 @@ class QueryService:
             seed_chunk_ids=seed_chunk_ids, seed_entity_ids=seed_entity_ids, topk=topk
         )
 
-    async def query_chunk_embeddings(self, chunk_ids: List[str]) -> Dict[str, Any]:
+    async def query_chunk_embeddings(
+        self, workspace_id: str, knowledge_base_id: str, chunk_ids: List[str]
+    ) -> Dict[str, Any]:
         """Query chunk embeddings"""
         if not chunk_ids:
             return {}
@@ -814,6 +840,8 @@ class QueryService:
         try:
             # Query chunk embeddings by keys
             chunk_data = await self.storage.vdb.query_by_keys(
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
                 key_value=chunk_ids,
                 key_column="document_key",
                 table=self.storage.chunks_table,
@@ -838,6 +866,8 @@ class QueryService:
     async def get_chunks_by_ids(
         self,
         chunk_ids: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
         columns_to_select: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Fetch chunk rows by document_key list, preserving input order where possible."""
@@ -857,6 +887,8 @@ class QueryService:
             key_column="document_key",
             table=self.storage.chunks_table,
             columns_to_select=columns_to_select,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
         # Build map for stable ordering
         by_id = {row.get("document_key"): row for row in rows}
@@ -865,6 +897,8 @@ class QueryService:
     async def dual_recall_with_pagerank(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
         link_top_k: int = DEFAULT_LINK_TOP_K,
@@ -879,12 +913,24 @@ class QueryService:
         - If no facts, fall back to DPR order (query rerank order)
         """
         # Path 1: chunk recall (rerank happens in VDB query)
-        chunk_recall = await self.recall_chunks(query, topk=topk, topn=topn)
+        chunk_recall = await self.recall_chunks(
+            query,
+            topk=topk,
+            topn=topn,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         query_chunks = chunk_recall["chunks"]
         query_chunk_ids = chunk_recall["chunk_ids"]
 
         # Path 2: triplet recall -> entity seeds
-        triplet_recall = await self.recall_triplets(query, topk=topk, topn=topn)
+        triplet_recall = await self.recall_triplets(
+            query=query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            topk=topk,
+            topn=topn,
+        )
         query_triplets = triplet_recall["relations"]
         query_entity_ids = triplet_recall["entity_ids"]
 
@@ -974,10 +1020,14 @@ class QueryService:
             reset_weights=reset_weights,
             topk=topk,
             alpha=damping,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
         pr_ids = [cid for cid, _ in pr_ranked]
 
-        pr_rows = await self.get_chunks_by_ids(pr_ids)
+        pr_rows = await self.get_chunks_by_ids(
+            pr_ids, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
+        )
         pr_score_map = {cid: score for cid, score in pr_ranked}
         for row in pr_rows:
             row["pagerank_score"] = pr_score_map.get(row.get("document_key"), 0.0)
@@ -987,12 +1037,19 @@ class QueryService:
             "query_top": query_chunks,
         }
 
-    async def query(self, query: str) -> Dict[str, Any]:
+    async def query(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+        query: str,
+    ) -> Dict[str, Any]:
         """Query Strategy (default: dual_recall_with_pagerank)"""
         result = await self.dual_recall_with_pagerank(
             query=query,
             topk=DEFAULT_QUERY_TOPK,
             topn=DEFAULT_QUERY_TOPN,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
         result["chunks"] = (
             result.get("pagerank")
@@ -1260,6 +1317,8 @@ class HiRAG:
 
     async def generate_summary(
         self,
+        workspace_id: str,
+        knowledge_base_id: str,
         chunks: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks"""
@@ -1321,7 +1380,9 @@ class HiRAG:
                 texts=ref_sentences
             )
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
-                chunk_keys
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                chunk_ids=chunk_keys,
             )
 
             for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
@@ -1427,13 +1488,13 @@ class HiRAG:
     async def insert_to_kb(
         self,
         document_path: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         content_type: str,
         with_graph: bool = True,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        knowledge_base_id: Optional[str] = None,
-        workspace_id: Optional[str] = None,
         loader_type: Literal["docling", "docling_cloud", "langchain"] = "docling_cloud",
     ) -> ProcessingMetrics:
         """
@@ -1510,27 +1571,52 @@ class HiRAG:
             raise
 
     async def query_chunks(
-        self, query: str, topk: int = DEFAULT_QUERY_TOPK, topn: int = DEFAULT_QUERY_TOPN
+        self,
+        query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: int = DEFAULT_QUERY_TOPK,
+        topn: int = DEFAULT_QUERY_TOPN,
     ) -> List[Dict[str, Any]]:
         """Query document chunks"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
-        return await self._query_service.query_chunks(query, topk, topn)
+        return await self._query_service.query_chunks(
+            query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            topk=topk,
+            topn=topn,
+        )
 
-    async def query(self, query: str, summary: bool = False) -> Dict[str, Any]:
+    async def query(
+        self,
+        query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        summary: bool = False,
+    ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
 
         if summary:
-            query_results = await self._query_service.query(query)
+            query_results = await self._query_service.query(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
             text_summary = await self.generate_summary(
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
             return query_results
-        return await self._query_service.query(query)
+        return await self._query_service.query(
+            query=query, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
+        )
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""

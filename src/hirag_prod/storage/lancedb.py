@@ -197,9 +197,23 @@ class LanceDB(BaseVDB):
             query = query.where(f"private = {require_access == 'private'}")
         return query
 
+    def add_filter_by_scope(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+        query,
+    ):
+        if workspace_id:
+            query = query.where(f"workspace_id == '{workspace_id}'")
+        if knowledge_base_id:
+            query = query.where(f"knowledge_base_id == '{knowledge_base_id}'")
+        return query
+
     async def query(
         self,
         query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         table: lancedb.AsyncTable,
         topk: Optional[int] = TOPK,
         uri_list: Optional[List[str]] = None,
@@ -254,6 +268,7 @@ class LanceDB(BaseVDB):
 
         query = self.add_filter_by_uri(uri_list, query)
         query = self.add_filter_by_require_access(require_access, query)
+        query = self.add_filter_by_scope(workspace_id, knowledge_base_id, query)
 
         if distance_threshold is not None:
             query = query.distance_range(upper_bound=distance_threshold)
@@ -273,6 +288,8 @@ class LanceDB(BaseVDB):
     async def query_by_keys(
         self,
         key_value: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
         table: lancedb.AsyncTable,
         key_column: str = "document_key",
         columns_to_select: Optional[List[str]] = None,
@@ -306,6 +323,7 @@ class LanceDB(BaseVDB):
             .where(f"{key_column} IN ({', '.join(map(repr, key_value))})")
             .select(columns_to_select)
         )
+        query = self.add_filter_by_scope(workspace_id, knowledge_base_id, query)
 
         # Apply limit if specified
         if limit is not None:

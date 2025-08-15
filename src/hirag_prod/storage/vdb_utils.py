@@ -353,7 +353,7 @@ async def get_chunk_info(
             results = await (
                 table.query().where(f"document_key == {safe_id}").limit(1).to_list()
             )
-            if results:
+            if len(results) > 0:
                 return results[0]
             return None
     except Exception as e:

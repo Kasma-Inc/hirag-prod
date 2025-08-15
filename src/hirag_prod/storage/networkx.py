@@ -150,12 +150,42 @@ class NetworkXGDB(BaseGDB):
 
     async def upsert_relation(self, relation: Relation):
         try:
-            # TODO: Handle the case where the source or target is not in the graph
-            # await self.upsert_node(relation.source)
-            # await self.upsert_node(relation.target)
-            self.graph.add_edge(relation.source, relation.target, **relation.properties)
+            props = relation.properties or {}
+            workspace_id = props.get("workspace_id")
+            knowledge_base_id = props.get("knowledge_base_id")
+            chunk_id = props.get("chunk_id")
+
+            def is_chunk(node_id: str) -> bool:
+                return str(node_id).startswith("chunk-")
+
+            def ensure_node(node_id: str, name_hint: Optional[str] = None):
+                if node_id not in self.graph.nodes:
+                    self.graph.add_node(node_id)
+                if workspace_id is not None:
+                    self.graph.nodes[node_id]["workspace_id"] = workspace_id
+                if knowledge_base_id is not None:
+                    self.graph.nodes[node_id]["knowledge_base_id"] = knowledge_base_id
+
+                if not is_chunk(node_id):
+                    if name_hint:
+                        self.graph.nodes[node_id]["entity_name"] = name_hint
+                    self.graph.nodes[node_id].setdefault("entity_type", "entity")
+                    self.graph.nodes[node_id].setdefault("chunk_ids", [])
+                    if (
+                        chunk_id
+                        and chunk_id not in self.graph.nodes[node_id]["chunk_ids"]
+                    ):
+                        self.graph.nodes[node_id]["chunk_ids"].append(chunk_id)
+
+            source_name = None if is_chunk(relation.source) else props.get("source")
+            target_name = None if is_chunk(relation.target) else props.get("target")
+
+            ensure_node(relation.source, name_hint=source_name)
+            ensure_node(relation.target, name_hint=target_name)
+
+            self.graph.add_edge(relation.source, relation.target, **props)
+
         except Exception as e:
-            # TODO: handle the exception
             raise e
 
     async def query_node(self, node_id: str) -> Entity:
@@ -229,6 +259,8 @@ class NetworkXGDB(BaseGDB):
 
     async def pagerank_top_chunks_with_reset(
         self,
+        workspace_id: str,
+        knowledge_base_id: str,
         reset_weights: dict[str, float],
         topk: int,
         alpha: float = 0.85,
@@ -248,6 +280,16 @@ class NetworkXGDB(BaseGDB):
 
         # Use undirected view to ensure bidirectional influence
         G = self.graph.to_undirected()
+        if G.number_of_nodes() == 0:
+            return []
+
+        nodes_to_keep = [
+            n
+            for n, data in G.nodes(data=True)
+            if (data.get("workspace_id") == workspace_id)
+            and (data.get("knowledge_base_id") == knowledge_base_id)
+        ]
+        G = G.subgraph(nodes_to_keep).copy()
         if G.number_of_nodes() == 0:
             return []
 
