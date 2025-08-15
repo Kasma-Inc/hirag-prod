@@ -452,6 +452,21 @@ def upload_file_to_s3(input_file_path: str, s3_file_path: str) -> bool:
         return False
     return True
 
+def exists_s3_file(s3_file_path: str) -> bool:
+    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
+        raise ValueError("AWS_ACCESS_KEY_ID is not set")
+    if os.getenv("AWS_BUCKET_NAME", None) is None:
+        raise ValueError("AWS_BUCKET_NAME is not set")
+    s3_client = boto3.client("s3")
+    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
+    try:
+        s3_client.head_object(Bucket=aws_bucket_name, Key=s3_file_path)
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            return False
+        logger.error(e)
+        return False
 
 # List files in s3
 def list_s3_files(prefix: str = None) -> bool:

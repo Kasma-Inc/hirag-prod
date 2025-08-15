@@ -207,6 +207,16 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     return chunks
 
+def chunk_dots_document(
+    json_doc: File,
+    md_doc: File,
+) -> List[Chunk]:
+    """
+    Split a dots document into chunks and return a list of Chunk objects.
+    Each chunk will inherit metadata from the original document.
+    """
+    # TODO: complete the implementation of the chunking function
+    return []
 
 # ======================== langchain chunker ========================
 def chunk_langchain_document(

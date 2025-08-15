@@ -27,6 +27,7 @@ from .entity import BaseKG, VanillaKG
 from .loader import load_document
 from .loader.chunk_split import (
     chunk_docling_document,
+    chunk_dots_document,
     chunk_langchain_document,
 )
 from .parser import (
@@ -497,6 +498,7 @@ class DocumentProcessor:
                 content_type,
                 document_meta,
                 loader_configs,
+                loader_type,
             )
 
             if not chunks:
@@ -588,6 +590,7 @@ class DocumentProcessor:
         content_type: str,
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
+        loader_type: Optional[str],
     ) -> List[BaseChunk]:
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
@@ -604,15 +607,26 @@ class DocumentProcessor:
                     )
                     chunks = chunk_langchain_document(langchain_doc)
                 else:
-                    docling_doc, doc_md = await asyncio.to_thread(
-                        load_document,
-                        document_path,
-                        content_type,
-                        document_meta,
-                        loader_configs,
-                        loader_type="docling",
-                    )
-                    chunks = chunk_docling_document(docling_doc, doc_md)
+                    if loader_type == "docling_cloud" or loader_type == "docling":
+                        docling_doc, doc_md = await asyncio.to_thread(
+                            load_document,
+                            document_path,
+                            content_type,
+                            document_meta,
+                            loader_configs,
+                            loader_type="docling_cloud",
+                        )
+                        chunks = chunk_docling_document(docling_doc, doc_md)
+                    elif loader_type == "dots_ocr":
+                        json_doc, md_doc, md_nohf_doc = await asyncio.to_thread(
+                            load_document,
+                            document_path,
+                            content_type,
+                            document_meta,
+                            loader_configs,
+                            loader_type="dots_ocr",
+                        )
+                        chunks = chunk_dots_document(json_doc, md_doc)
 
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"

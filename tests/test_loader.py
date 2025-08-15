@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Optional
 
 import pytest
 from docling_core.types.doc import DoclingDocument
@@ -7,6 +7,7 @@ from docling_core.types.doc import DoclingDocument
 from hirag_prod.loader import load_document
 from hirag_prod.schema import File
 from hirag_prod.loader import check_dots_ocr_health
+from hirag_prod._utils import upload_file_to_s3
 
 import json
 
@@ -233,12 +234,34 @@ class TestDotsOCRLoader:
         assert doc_md.id.startswith("doc-")
         assert doc_nohf_md.page_content is not None
         assert doc_nohf_md.metadata is not None
+    
+    def load_document_info(self, options: str, dir: Optional[str], file_name: Optional[str]) -> Tuple[str, str]:
+        if options == "s3":
+            return "s3://monkeyocr/test/input/test_pdf/small.pdf", "small.pdf"
         
-        
+        if options == "local":
+            if not dir or not file_name:
+                return "", ""
+
+            local_path = os.path.join(dir, file_name)
+            # test if local exists
+            if not os.path.exists(local_path):
+                return "", ""
+            
+            s3_path = f"test/input/test_pdf/{file_name}"
+            print(f"Uploading {local_path} to {s3_path}")
+            # upload_file_to_s3(local_path, s3_path)
+            s3_path = f"s3://monkeyocr/test/input/test_pdf/{file_name}"
+            return s3_path, file_name
+
     def test_load_pdf_dots_ocr_s3(self):
         """Test loading PDF with Dots OCR loader from S3"""
-        s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
-        filename = "small.pdf"
+        s3_path, filename = self.load_document_info("local", "/chatbot/tests/test_files/", "VERYLONGBADLYFORMATTEDPDF.pdf")
+        if not s3_path:
+            print("Failed to load document from S3")
+            return
+
+        print(f"Loading document from: {s3_path}")
 
         document_meta = self._create_document_meta(
             doc_type="pdf", filename=filename, uri=s3_path
