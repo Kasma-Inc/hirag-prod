@@ -70,32 +70,24 @@ class BaseLoader(ABC):
 
         json_doc = processed_doc.get("json", None)
         md_doc_raw = processed_doc.get("md", None)
-        md_nohf_doc_raw = processed_doc.get("md_nohf", None)
+        # md_nohf_doc_raw = processed_doc.get("md_nohf", None)
         
         # Convert md to File
         md_doc = File(
             id=compute_mdhash_id(md_doc_raw, prefix="doc-"),
             page_content=md_doc_raw,
             metadata=FileMetadata(
-                type="md",
-                filename="document.md",
-                uri=document_path,
+                type=document_meta.get("type", "pdf"),  # Default to pdf
+                filename=document_meta.get("filename", ""),
+                uri=document_meta.get("uri", ""),
                 private=document_meta.get("private"),
-            ),
-        )
-        md_nohf_doc = File(
-            id=compute_mdhash_id(md_nohf_doc_raw, prefix="doc-"),
-            page_content=md_nohf_doc_raw,
-            metadata=FileMetadata(
-                type="md",
-                filename="document_nohf.md",
-                uri=document_path,
-                private=document_meta.get("private"),
+                uploaded_at=document_meta.get("uploaded_at"),
+                knowledge_base_id=document_meta.get("knowledge_base_id", ""),
+                workspace_id=document_meta.get("workspace_id", ""),
             ),
         )
 
-        return json_doc, md_doc, md_nohf_doc
-
+        return json_doc, md_doc
     def load_docling(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
     ) -> Tuple[DoclingDocument, File]:

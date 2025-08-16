@@ -165,8 +165,8 @@ def load_document(
         docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)
         return docling_doc, doc_md
     elif loader_type == "dots_ocr":
-        json_doc, doc_md, doc_md_nohf = loader.load_dots_ocr(document_path, document_meta)
-        return json_doc, doc_md, doc_md_nohf
+        json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
+        return json_doc, doc_md
     elif loader_type == "docling":
         validate_document_path(document_path)
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)

@@ -189,8 +189,10 @@ class TestDoclingCloudLoader:
         """Test loading PDF with Docling Cloud loader from S3"""
         # s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
         # filename = "small.pdf"
-        s3_path = "s3://monkeyocr/test/input/test_pdf/VERYLONGBADLYFORMATTEDPDF.pdf"
-        filename = "VERYLONGBADLYFORMATTEDPDF.pdf"
+        s3_path = "s3://monkeyocr/test/input/test_pdf/"
+        filename = "PGhandbook2025.pdf"
+        
+        s3_path = f"{s3_path}{filename}"
 
         document_meta = self._create_document_meta(
             doc_type="pdf", filename=filename, uri=s3_path
@@ -213,13 +215,13 @@ class TestDoclingCloudLoader:
             os.makedirs("./tmp")
             
         # Save docling file & md
-        with open(f"./tmp/{filename}", "wb") as f:
-            f.write(docling_doc)
+        with open(f"./tmp/{filename}.json", "w") as f:
+            json.dump(docling_doc.model_dump(), f, ensure_ascii=False, indent=4)
 
         with open(f"./tmp/{filename}.md", "w") as f:
             f.write(doc_md.page_content)
             
-        assert os.path.exists(f"./tmp/{filename}")
+        assert os.path.exists(f"./tmp/{filename}.json")
         assert os.path.exists(f"./tmp/{filename}.md")
 
 # ================================ Test Dots OCR Loader ================================
@@ -240,15 +242,13 @@ class TestDotsOCRLoader:
             "private": False,
         }
 
-    def _assert_dots_ocr_document_loaded(self, doc: Any, doc_md: Any, doc_nohf_md: Any) -> None:
+    def _assert_dots_ocr_document_loaded(self, doc: Any, doc_md: Any) -> None:
         """Assert that Dots OCR document was loaded successfully"""
         assert isinstance(doc, list)
         assert isinstance(doc_md, File)
         assert doc_md.page_content is not None
         assert doc_md.metadata is not None
         assert doc_md.id.startswith("doc-")
-        assert doc_nohf_md.page_content is not None
-        assert doc_nohf_md.metadata is not None
     
     def load_document_info(self, options: str, dir: Optional[str], file_name: Optional[str]) -> Tuple[str, str]:
         if options == "s3":
@@ -271,7 +271,7 @@ class TestDotsOCRLoader:
 
     def test_load_pdf_dots_ocr_s3(self):
         """Test loading PDF with Dots OCR loader from S3"""
-        s3_path, filename = self.load_document_info("local", "/chatbot/tests/test_files/", "VERYLONGBADLYFORMATTEDPDF.pdf")
+        s3_path, filename = self.load_document_info("local", "/chatbot/tests/test_files/", "PGhandbook2025.pdf")
         if not s3_path:
             print("Failed to load document from S3")
             return
@@ -282,7 +282,7 @@ class TestDotsOCRLoader:
             doc_type="pdf", filename=filename, uri=s3_path
         )
 
-        json_doc, md_doc, md_nohf_doc = load_document(
+        json_doc, md_doc = load_document(
             document_path=s3_path,
             content_type="application/pdf",
             document_meta=document_meta,
@@ -290,7 +290,7 @@ class TestDotsOCRLoader:
             loader_type="dots_ocr",
         )
 
-        self._assert_dots_ocr_document_loaded(json_doc, md_doc, md_nohf_doc)
+        self._assert_dots_ocr_document_loaded(json_doc, md_doc)
 
         # save the json and md in the corresponding formats
         import json
@@ -306,11 +306,6 @@ class TestDotsOCRLoader:
         with open(md_path, "w") as md_file:
             md_file.write(md_doc.page_content)
 
-        md_nohf_path = f"./tmp/{filename}_nohf.md"
-        with open(md_nohf_path, "w") as md_nohf_file:
-            md_nohf_file.write(md_nohf_doc.page_content)
-            
         # assert exists
         assert os.path.exists(json_path)
         assert os.path.exists(md_path)
-        assert os.path.exists(md_nohf_path)
