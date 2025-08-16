@@ -270,7 +270,9 @@ class DatabaseClient:
 
         session.add(result_record)
         await session.commit()
-
+        
+        # Refresh the object to ensure all attributes are loaded before calling to_dict()
+        await session.refresh(result_record)
         return result_record.to_dict()
 
     async def queryContextResult(
