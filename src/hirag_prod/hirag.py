@@ -80,7 +80,7 @@ DEFAULT_SIMILARITY_THRESHOLD = 0.5  # Default threshold for similarity, only sho
 DEFAULT_SIMILARITY_MAX_DIFFERENCE = 0.15  # If found a most similar reference already, only accept other references with similarity having this difference or less
 DEFAULT_MAX_REFERENCES = 3  # Maximum number of references to return
 
-SUPPORTED_LANGUAGES = ["en", "cn"]  # Supported languages for generation
+SUPPORTED_LANGUAGES = ["en", "cn-s"]  # Supported languages for generation
 
 # Vector and Schema Configuration
 try:

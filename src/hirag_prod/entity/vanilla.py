@@ -24,7 +24,7 @@ class VanillaKG(BaseKG):
     # === Core Components ===
     llm_model_name: str = field(default="gpt-4o")
     extract_func: Callable
-    language: str = field(default="en")  # en | cn
+    language: str = field(default="en")  # en | cn-s
 
     # === Entity Extraction Configuration ===
     entity_extract_prompt: str = field(init=False)
@@ -49,11 +49,11 @@ class VanillaKG(BaseKG):
         Update the language setting and refresh all language-specific configurations.
 
         Args:
-            language: Language code ('en' or 'cn')
+            language: Language code ('en' or 'cn-s')
         """
-        if language not in ["en", "cn"]:
+        if language not in ["en", "cn-s"]:
             raise ValueError(
-                f"Unsupported language: {language}. Supported languages: ['en', 'cn']"
+                f"Unsupported language: {language}. Supported languages: ['en', 'cn-s']"
             )
 
         self.language = language
