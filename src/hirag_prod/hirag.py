@@ -618,7 +618,7 @@ class DocumentProcessor:
                         )
                         chunks = chunk_docling_document(docling_doc, doc_md)
                     elif loader_type == "dots_ocr":
-                        json_doc, md_doc, md_nohf_doc = await asyncio.to_thread(
+                        json_doc, md_doc = await asyncio.to_thread(
                             load_document,
                             document_path,
                             content_type,

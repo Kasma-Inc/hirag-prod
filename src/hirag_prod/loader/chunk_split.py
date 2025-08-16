@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
@@ -207,8 +207,25 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     return chunks
 
+# ======================== Dots OCR chunker ========================
+
+"""
+    Generate format: [{page_no: int, full_layout_info: [{bbox:[int, int, int, int], category: str, text: str}, ...boxes]}, ...pages ]
+    Possible types: ['Caption', 'Footnote', 'Formula', 'List-item', 'Page-footer', 'Page-header', 'Picture', 'Section-header', 'Table', 'Text', 'Title']
+    Levels:
+        - Parent level: Title, Section-header
+            * Parent level has a level due to the number of # s in the markdown text, the more # s, the deeper the level
+        - Text level: Text, Formula, List-item, Picture, Table
+        - Omit level: Page_header, Page_footer, Footnote
+    Rules:
+        - Text level would be set as child of the nearest Parent level object above
+        - Parent level could be a child of other Parent levels, determined by the markdown structure
+        - Omit level would not be a parent or child of any other levels
+"""
+
+
 def chunk_dots_document(
-    json_doc: File,
+    json_doc: List[Dict[str, Any]],
     md_doc: File,
 ) -> List[Chunk]:
     """
