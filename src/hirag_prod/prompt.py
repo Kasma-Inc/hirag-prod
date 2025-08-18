@@ -249,22 +249,9 @@ id,chunk
 1,The Unity March is a significant event that is taking place at Verdant Oasis Plaza.
 2,The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza.
 
-Entities
-
-id,entity,description
-5,VERDANT OASIS PLAZA,Verdant Oasis Plaza is the location of the Unity March
-6,HARMONY ASSEMBLY,Harmony Assembly is an organization that is holding a march at Verdant Oasis Plaza
-
-Relationships
-id,source,target,description
-37,VERDANT OASIS PLAZA,UNITY MARCH,Verdant Oasis Plaza is the location of the Unity March
-38,VERDANT OASIS PLAZA,HARMONY ASSEMBLY,Harmony Assembly is holding a march at Verdant Oasis Plaza
-
 ## Example Output
 The Unity March is a significant event that is taking place at Verdant Oasis Plaza {reference_placeholder}. 
 The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza {reference_placeholder}. 
-The relationship between the Harmony Assembly and the Unity March indicates that the Harmony Assembly is responsible for the organization of this event {reference_placeholder}.
-The relationship between the Verdant Oasis Plaza and the Unity March indicates that the Unity March is being held at this location {reference_placeholder}.
 
 ## Real Data
 
@@ -503,11 +490,13 @@ PROMPTS[
 你是一个 AI 助手，帮助总结给定的数据流的相关信息。
 
 ## 目标
+
 根据给定的原始文本块列表，撰写一份综合摘要。
 如果所提供的描述存在矛盾，请解决这些矛盾并提供一个连贯一致的摘要。
 确保以第三人称撰写，并包含实体名称以提供完整上下文。
 
 ## 基础规则
+
 由数据支持的要点应按以下方式表明受到数据支持：
 "这是一句由数据支持的语句 {reference_placeholder}。"
 
@@ -517,18 +506,23 @@ PROMPTS[
 绝不在同一句中使用两个引用或一个接一个的引用。
 将报告总长度限制为 {max_report_length} 字。
 
-## 示例输入
------------
-Data:
+## 示例
 
-Chunks
+**输入文本:**
 id,chunk
 1, 联合游行是一个重要事件，正在 Verdant Oasis Plaza 举行。
 2, 和谐集会正在 Verdant Oasis Plaza 组织联合游行。
 
+**示例输出:**
+联合游行是一个重要的活动，正在 Verdant Oasis Plaza 举行 {reference_placeholder}。
+和谐集会正在组织在 Verdant Oasis Plaza 举行的联合游行 {reference_placeholder}。 
+
 ## 实际数据
+
 使用以下数据进行回答。
-Data:
+
+**数据:**
+---
 {data}
 
 ## 基础规则
@@ -541,6 +535,241 @@ Data:
 绝不在同一句中使用两个引用或一个接一个的引用。
 将报告总长度限制为 {max_report_length} 字。
 
-输出："""
+**输出:**
+"""
 
-# TODO: add cn-t prompt (繁体中文提示词)
+# ===============================
+# Prompt(CN-Traditional): 繁體中文提示詞
+# ===============================
+PROMPTS[
+    "entity_extraction_cn-t"
+] = """
+## 角色與目標
+
+你是實體抽取領域的專家。
+你的任務是準確識別並提取給定文本中所有重要實體。實體包括但不限於：人物、組織、地點、日期、金額及其他顯著專有名詞或可量化資訊。
+
+## 指令
+
+- 仔細分析提供的文本。
+- 提取所有明確命名的實體，確保全面覆蓋。
+- 嚴格遵守格式規則。
+
+## 抽取規範
+
+- 包含所有命名實體：人物、組織、地點、日期/時間、金額、獨特專有名詞等。
+- **不要**包含一般術語、普通名詞或代詞。
+- 保留原文拼寫、大小寫和標點符號。
+- 輸出中不要有重複條目。
+- 如果沒有實體,輸出空列表(JSON格式)。
+
+## 輸出格式
+
+- 僅輸出單一有效的JSON對象。
+- JSON必須有一個鍵`"entities"`，其值是提取的實體字符串列表。
+- **不要**返回任何解釋、標題、代碼塊或JSON外的額外文本。
+- 示例輸出：
+  {{
+    "entities": [
+      "實體1",
+      "實體2",
+      ...
+    ]
+  }}
+
+## 示例
+
+**輸入文本：**  
+---
+Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開播。它播放印地語、英語及地方歌曲。2008 年 5 月，Radio City 進軍新媒體領域，推出了音樂入口網站 PlanetRadiocity.com，提供音樂資訊、影片、歌曲及其他音樂相關功能。
+---
+
+**示例輸出：**  
+---
+{{
+  "entities": [
+    "Radio City",
+    "印度",
+    "2001 年 7 月 3 日",
+    "印地語",
+    "英語",
+    "新媒體",
+    "2008 年 5 月",
+    "PlanetRadiocity.com"
+  ]
+}}
+---
+
+## 實際數據
+
+以下是需要提取實體的文本。
+
+**輸入文本:**
+---
+{input_text}
+---
+
+**輸出:**
+"""
+
+PROMPTS[
+    "triplet_extraction_cn-t"
+] = """
+## 角色與目標
+
+你是提取三元組的專家，需以**有效JSON格式**輸出結果。
+
+## 抽取規範
+
+- 避免重複三元組。
+- 明確將代詞解析為其具體名稱以保持清晰。
+- 每個三元組應**至少包含一個，最好兩個**給定實體列表中的實體。
+- **關係動詞**應簡潔、規範，描述關係的核心。
+
+## 輸出格式
+
+- 僅輸出單一有效的JSON對象。
+- JSON必須有一個鍵`"triplets"`，其值是三元組列表。
+- **不要**返回任何解釋、標題、代碼塊或JSON外的額外文本。
+- 示例輸出：
+{{
+  "triplets": [
+    {{
+      "Head": "實體",
+      "Relation": "關係動詞",
+      "Tail": "實體",
+    }},
+    ...
+  ]
+}}
+
+## 示例
+
+**輸入文本:**  
+---
+Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開播。它播放印地語、英語及地方歌曲。2008 年 5 月, Radio City 進軍新媒體領域，推出了音樂入口網站 PlanetRadiocity.com,提供音樂資訊、影片、歌曲及其他音樂相關功能。
+---
+
+**實體列表:**  
+---
+"entities": ["Radio City", "印度", "2001 年 7 月 3 日", "印地語", "英語", "新媒體", "2008 年 5 月", "PlanetRadiocity.com"]
+---
+
+**輸出:**  
+{{
+  "triplets": [
+    {{
+      "Head": "Radio City",
+      "Relation": "位於",
+      "Tail": "印度",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "是",
+      "Tail": "私營 FM 廣播電臺",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "開播於",
+      "Tail": "2001 年 7 月 3 日",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "播放歌曲",
+      "Tail": "印地語",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "播放歌曲",
+      "Tail": "英語",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "播放",
+      "Tail": "地方歌曲",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "進軍",
+      "Tail": "新媒體",
+    }},
+    {{
+      "Head": "Radio City",
+      "Relation": "推出",
+      "Tail": "PlanetRadiocity.com",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "推出於",
+      "Tail": "2008 年 5 月",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "是",
+      "Tail": "音樂入口網站",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "提供",
+      "Tail": "音樂資訊",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "提供",
+      "Tail": "影片",
+    }},
+    {{
+      "Head": "PlanetRadiocity.com",
+      "Relation": "提供",
+      "Tail": "歌曲",
+    }},
+  ]
+}}
+
+## 實際數據
+
+以下是需要提取三元組的文本和實體列表。
+
+**輸入文本:**
+---
+{input_text}
+---
+
+**實體列表:**
+--- 
+{entity_list}
+---
+
+**輸出:**
+"""
+
+PROMPTS[
+    "summary_all_cn-t"
+] = """
+你是一個AI助手, 負責總結給定的數據流。
+
+## 目標
+根據給定的原始文本塊列表，撰寫綜合摘要。
+如果描述有矛盾，請解決矛盾並提供單一、連貫的摘要。
+確保以第三人稱撰寫，並包含實體名稱以提供完整上下文。
+
+## 基礎規則
+由數據支持的陳述應如下標示：
+"這是一個由數據支持的陳述 {reference_placeholder}。"
+
+無論資訊來自哪個數據源或被多少來源引用，都應以相同方式標示，在句末標點前標示{reference_placeholder}。
+不要包含數據記錄的鍵或ID。
+不要包含沒有支持證據的資訊。
+不要在同一句中使用兩個引用或連續引用。
+將報告總長度限制為 {max_report_length} 字。
+
+## 實際數據
+
+使用以下數據進行回答。
+
+**數據**:
+---
+{data}
+
+**輸出**:
+"""
