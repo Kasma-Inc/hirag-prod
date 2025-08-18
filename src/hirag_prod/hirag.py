@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
+from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
 
 from ._llm import (
@@ -626,8 +627,17 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type="dots_ocr",
                         )
-                        chunks = chunk_dots_document(json_doc, md_doc)
-
+                        # Validate instance, as it may fall back to docling if cloud service unavailable
+                        if isinstance(json_doc, list):
+                            # Chunk the Dots OCR document
+                            chunks = chunk_dots_document(json_doc, md_doc)
+                        elif isinstance(json_doc, DoclingDocument):
+                            # Chunk the Docling document
+                            chunks = chunk_docling_document(json_doc, md_doc)
+                        else:
+                            raise DocumentProcessingError(
+                                "Invalid document format returned by loader"
+                            )
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )

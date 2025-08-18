@@ -18,11 +18,11 @@ import boto3
 import numpy as np
 import tiktoken
 from botocore.config import Config
-
-from hirag_prod.schema import LoaderType
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
+
+from hirag_prod.schema import LoaderType
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
@@ -452,6 +452,7 @@ def upload_file_to_s3(input_file_path: str, s3_file_path: str) -> bool:
         return False
     return True
 
+
 def exists_s3_file(s3_file_path: str) -> bool:
     if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
         raise ValueError("AWS_ACCESS_KEY_ID is not set")
@@ -467,6 +468,7 @@ def exists_s3_file(s3_file_path: str) -> bool:
             return False
         logger.error(e)
         return False
+
 
 # List files in s3
 def list_s3_files(prefix: str = None) -> bool:
@@ -629,9 +631,7 @@ def list_oss_files(prefix: str = None) -> bool:
 # ========================================================================
 # File path router
 # ========================================================================
-def route_file_path(
-    loader_type: LoaderType, url_path: str
-) -> str:
+def route_file_path(loader_type: LoaderType, url_path: str) -> str:
     """
     Parse a url path to a located file path
     """

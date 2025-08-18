@@ -63,6 +63,7 @@ DEFAULT_LOADER_CONFIGS = {
     },
 }
 
+
 def check_cloud_health(base_url: str, token: str, model: str) -> bool:
     """Check the health of the cloud service"""
     try:
@@ -95,6 +96,7 @@ def check_cloud_health(base_url: str, token: str, model: str) -> bool:
     except Exception:
         return False
 
+
 def check_docling_cloud_health() -> bool:
     """docling cloud service health check"""
     base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
@@ -103,6 +105,7 @@ def check_docling_cloud_health() -> bool:
 
     return check_cloud_health(base_url, token, model)
 
+
 def check_dots_ocr_health() -> bool:
     """Dots OCR service health check"""
     base_url = os.getenv("DOTS_OCR_BASE_URL")
@@ -110,6 +113,7 @@ def check_dots_ocr_health() -> bool:
     model = os.getenv("DOTS_OCR_MODEL_NAME", "DotsOCR")
 
     return check_cloud_health(base_url, token, model)
+
 
 def load_document(
     document_path: str,
@@ -142,11 +146,13 @@ def load_document(
             cloud_check = check_docling_cloud_health()
         elif loader_type == "dots_ocr":
             cloud_check = check_dots_ocr_health()
-        
+
         if not cloud_check:
             loader_type = "docling"
             # Show warning in log
-            logger.warning(f"Cloud health check failed for {loader_type}, falling back to docling.")
+            logger.warning(
+                f"Cloud health check failed for {loader_type}, falling back to docling."
+            )
 
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS

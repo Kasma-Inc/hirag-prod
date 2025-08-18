@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
@@ -207,6 +207,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     return chunks
 
+
 # ======================== Dots OCR chunker ========================
 
 """
@@ -214,13 +215,14 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
     Possible types: ['Caption', 'Footnote', 'Formula', 'List-item', 'Page-footer', 'Page-header', 'Picture', 'Section-header', 'Table', 'Text', 'Title']
 """
 
+
 def _dots_category_to_chunk_type(category: str) -> ChunkType:
     """
     Convert a dots OCR category to a ChunkType.
-    
+
     Args:
         category: The category from dots OCR
-        
+
     Returns:
         ChunkType: The corresponding chunk type
     """
@@ -240,19 +242,21 @@ def _dots_category_to_chunk_type(category: str) -> ChunkType:
     return category_mapping.get(category, ChunkType.UNKNOWN)
 
 
-def _extract_dots_bbox(bbox: List[int]) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
+def _extract_dots_bbox(
+    bbox: List[int],
+) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
     """
     Extract bounding box coordinates from dots bbox format.
-    
+
     Args:
         bbox: List of 4 integers [x0, y0, x1, y1]
-        
+
     Returns:
         Tuple of (x_0, y_0, x_1, y_1) as floats or None if bbox is invalid
     """
     if not bbox or len(bbox) != 4:
         return None, None, None, None
-    
+
     try:
         return float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
     except (ValueError, TypeError):
@@ -269,25 +273,26 @@ def chunk_dots_document(
     """
     chunks = []
     chunk_idx = 0
-    
+
     for page in json_doc:
+        breakpoint()
         page_no = page.get("page_no", 0)
         layout_info = page.get("full_layout_info", [])
-        
+
         for box in layout_info:
             text = box.get("text", "").strip()
             if not text:  # Skip empty text
                 continue
-                
+
             bbox = box.get("bbox", [])
             category = box.get("category", "unknown")
-            
+
             # Convert dots category to chunk type
             chunk_type = _dots_category_to_chunk_type(category)
-            
+
             # Extract bounding box coordinates
             x_0, y_0, x_1, y_1 = _extract_dots_bbox(bbox)
-            
+
             metadata = ChunkMetadata(
                 chunk_idx=chunk_idx,
                 document_id=md_doc.id,
@@ -309,17 +314,18 @@ def chunk_dots_document(
                 knowledge_base_id=md_doc.metadata.knowledge_base_id,
                 workspace_id=md_doc.metadata.workspace_id,
             )
-            
+
             chunk_obj = Chunk(
                 id=compute_mdhash_id(text, prefix="chunk-"),
                 page_content=text,
                 metadata=metadata,
             )
-            
+
             chunks.append(chunk_obj)
             chunk_idx += 1
-    
+
     return chunks
+
 
 # ======================== langchain chunker ========================
 def chunk_langchain_document(

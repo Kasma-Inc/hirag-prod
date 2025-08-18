@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 from abc import ABC
-from typing import Optional, Tuple, Type, Any
+from typing import Any, Optional, Tuple, Type
 
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
@@ -50,7 +50,7 @@ class BaseLoader(ABC):
             ),
         )
         return docling_doc, doc_md
-    
+
     def load_dots_ocr(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
     ) -> Tuple[list, File, File]:
@@ -71,7 +71,7 @@ class BaseLoader(ABC):
         json_doc = processed_doc.get("json", None)
         md_doc_raw = processed_doc.get("md", None)
         # md_nohf_doc_raw = processed_doc.get("md_nohf", None)
-        
+
         # Convert md to File
         md_doc = File(
             id=compute_mdhash_id(md_doc_raw, prefix="doc-"),
@@ -88,6 +88,7 @@ class BaseLoader(ABC):
         )
 
         return json_doc, md_doc
+
     def load_docling(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
     ) -> Tuple[DoclingDocument, File]:
