@@ -54,10 +54,6 @@ load_dotenv("/chatbot/.env")
 DEFAULT_VECTOR_DB_PATH = "kb/hirag.db"
 DEFAULT_GRAPH_DB_PATH = "kb/hirag.gpickle"
 
-# Redis Configuration for resume tracker
-DEFAULT_REDIS_URL = os.environ.get("REDIS_URL", "redis://redis:6379/2")
-DEFAULT_REDIS_KEY_PREFIX = os.environ.get("REDIS_KEY_PREFIX", "hirag")
-
 # Model Configuration
 DEFAULT_LLM_MODEL_NAME = "gpt-4o"
 DEFAULT_MAX_TOKENS = 16000  # Default max tokens for LLM
@@ -81,12 +77,6 @@ DEFAULT_SIMILARITY_MAX_DIFFERENCE = 0.15  # If found a most similar reference al
 DEFAULT_MAX_REFERENCES = 3  # Maximum number of references to return
 
 SUPPORTED_LANGUAGES = ["en", "cn-s", "cn-t"]  # Supported languages for generation
-
-# Vector and Schema Configuration
-try:
-    EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION"))
-except ValueError as e:
-    raise ValueError(f"EMBEDDING_DIMENSION must be an integer: {e}")
 
 # Query and Operation Constants
 MAX_CHUNK_IDS_PER_QUERY = 10
@@ -139,9 +129,9 @@ class HiRAGConfig:
     vector_db_path: str = DEFAULT_VECTOR_DB_PATH
     graph_db_path: str = DEFAULT_GRAPH_DB_PATH
 
-    # Resume tracker configuration (Redis-based)
-    redis_url: str = DEFAULT_REDIS_URL
-    redis_key_prefix: str = DEFAULT_REDIS_KEY_PREFIX
+    # Redis Configuration for resume tracker
+    redis_url: str = os.environ.get("REDIS_URL", "redis://redis:6379/2")
+    redis_key_prefix: str = os.environ.get("REDIS_KEY_PREFIX", "hirag")
 
     # Model configuration
     llm_model_name: str = DEFAULT_LLM_MODEL_NAME
@@ -160,6 +150,9 @@ class HiRAGConfig:
     # Retry configuration
     max_retries: int = DEFAULT_MAX_RETRIES
     retry_delay: float = DEFAULT_RETRY_DELAY
+
+    # Vector and Schema Configuration
+    embedding_dimension: int = int(os.getenv("EMBEDDING_DIMENSION"))
 
 
 # ============================================================================
@@ -267,11 +260,12 @@ def validate_input(document_path: str, content_type: str) -> None:
 class StorageManager:
     """Unified manager for vector database and graph database operations"""
 
-    def __init__(self, vdb: BaseVDB, gdb: BaseGDB):
+    def __init__(self, vdb: BaseVDB, gdb: BaseGDB, embedding_dimension: int):
         self.vdb = vdb
         self.gdb = gdb
         self.chunks_table = None
         self.relations_table = None
+        self.embedding_dimension = embedding_dimension
 
     async def initialize(self) -> None:
         """Initialize storage tables"""
@@ -309,7 +303,8 @@ class StorageManager:
                             pa.field("x_1", pa.float32()),
                             pa.field("y_1", pa.float32()),
                             pa.field(
-                                "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
+                                "vector",
+                                pa.list_(pa.float32(), self.embedding_dimension),
                             ),
                             pa.field("uploaded_at", pa.timestamp("us")),
                         ]
@@ -333,7 +328,8 @@ class StorageManager:
                             pa.field("description", pa.string()),
                             pa.field("file_name", pa.string()),
                             pa.field(
-                                "vector", pa.list_(pa.float32(), EMBEDDING_DIMENSION)
+                                "vector",
+                                pa.list_(pa.float32(), self.embedding_dimension),
                             ),
                             pa.field("knowledge_base_id", pa.string()),
                             pa.field("workspace_id", pa.string()),
@@ -1154,7 +1150,7 @@ class HiRAG:
         )
 
         # Initialize new storage manager
-        self._storage = StorageManager(vdb, gdb)
+        self._storage = StorageManager(vdb, gdb, self.config.embedding_dimension)
         await self._storage.initialize()
 
         # Update dependent components
@@ -1191,7 +1187,7 @@ class HiRAG:
         else:
             gdb = kwargs["gdb"]
 
-        self._storage = StorageManager(vdb, gdb)
+        self._storage = StorageManager(vdb, gdb, self.config.embedding_dimension)
         await self._storage.initialize()
 
         # Initialize other components
