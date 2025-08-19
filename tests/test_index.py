@@ -6,7 +6,7 @@ from hirag_prod import HiRAG
 
 
 @pytest.mark.asyncio
-# @pytest.mark.skip(reason="Skip the test for it is time-consuming")
+@pytest.mark.skip(reason="Skip the test for it is time-consuming")
 async def test_index():
     index = await HiRAG.create()
     document_path = (
@@ -23,5 +23,4 @@ async def test_index():
         document_path=document_path,
         content_type=content_type,
         document_meta=document_meta,
-        loader_type="dots_ocr",
     )

@@ -1,8 +1,12 @@
 import json
-from typing import Any, Dict, List
+import os
+from typing import Any, Dict, List, Optional, Tuple
+from uuid import uuid4
 
 import pytest
 
+from hirag_prod import HiRAG
+from hirag_prod._utils import upload_file_to_s3
 from hirag_prod.loader.dots_ocr import DotsOCRClient
 
 
@@ -175,3 +179,77 @@ class TestDotsTreeGeneration:
             md_tree = client.build_tree_in_md_format(tree)
             print(f"\nTree in Markdown format:")
             print(md_tree)
+
+
+class TestDotsChunking:
+
+    def load_document_info(
+        self, options: str, dir: Optional[str], file_name: Optional[str]
+    ) -> Tuple[str, str]:
+        if options == "s3":
+            return "s3://monkeyocr/test/input/test_pdf/small.pdf", "small.pdf"
+
+        if options == "local":
+            if not dir or not file_name:
+                return "", ""
+
+            local_path = os.path.join(dir, file_name)
+            # test if local exists
+            if not os.path.exists(local_path):
+                return "", ""
+
+            s3_path = f"test/input/test_pdf/{file_name}"
+            print(f"Uploading {local_path} to {s3_path}")
+            upload_file_to_s3(local_path, s3_path)
+            s3_path = f"s3://monkeyocr/test/input/test_pdf/{file_name}"
+            return s3_path, file_name
+
+    @pytest.mark.asyncio
+    async def test_chunking(self):
+        # Test the chunking functionality with file on s3 using insert to kb
+        # Use temporary test database to avoid schema conflicts
+        import shutil
+        import tempfile
+
+        # Create temporary directories for test databases
+        temp_dir = tempfile.mkdtemp()
+        try:
+            test_vector_db = f"{temp_dir}/test_hirag.db"
+            test_graph_db = f"{temp_dir}/test_hirag.gpickle"
+
+            index = await HiRAG.create(
+                vector_db_path=test_vector_db, graph_db_path=test_graph_db
+            )
+            s3_path, filename = self.load_document_info("s3", None, None)
+            if not s3_path:
+                print("Failed to load document from S3")
+                return
+
+            content_type = "application/pdf"
+            document_meta = {
+                "type": "pdf",
+                "filename": filename,
+                "uri": s3_path,
+                "private": False,
+            }
+
+            await index.insert_to_kb(
+                document_path=s3_path,
+                workspace_id="Fake-Workspace",
+                knowledge_base_id="Fake-KB",
+                content_type=content_type,
+                document_meta=document_meta,
+                loader_type="dots_ocr",
+            )
+
+            # Verify that data was inserted by checking if chunks exist
+            # Check chunks table directly since there's no get_chunks method
+            chunks_count = await index._storage.chunks_table.count_rows()
+            assert (
+                chunks_count > 0
+            ), f"Expected chunks to be inserted, but found {chunks_count} chunks"
+            print(f"Successfully inserted {chunks_count} chunks to KB")
+
+        finally:
+            # Clean up temporary directory
+            shutil.rmtree(temp_dir, ignore_errors=True)

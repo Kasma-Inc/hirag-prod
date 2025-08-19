@@ -275,7 +275,6 @@ def chunk_dots_document(
     chunk_idx = 0
 
     for page in json_doc:
-        breakpoint()
         page_no = page.get("page_no", 0)
         layout_info = page.get("full_layout_info", [])
 

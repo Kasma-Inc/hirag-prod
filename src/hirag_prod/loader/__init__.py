@@ -148,11 +148,11 @@ def load_document(
             cloud_check = check_dots_ocr_health()
 
         if not cloud_check:
-            loader_type = "docling"
             # Show warning in log
             logger.warning(
                 f"Cloud health check failed for {loader_type}, falling back to docling."
             )
+            loader_type = "docling"
 
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
