@@ -13,6 +13,9 @@ from hirag_prod.loader.dots_ocr import DotsOCRClient
 class TestDotsTreeGeneration:
     """Test class for Dots OCR tree generation functionality"""
 
+    @pytest.mark.skip(
+        reason="Skip the test for there may not be a actual JSON ready for use"
+    )
     def test_generate_tree_with_json_file(self):
         """Test the generate_tree function with a real JSON file"""
         # Path to the test JSON file
