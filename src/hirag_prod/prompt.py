@@ -54,9 +54,7 @@ Your objective is to accurately identify and extract all significant entities me
 ## Example
 
 **Input Text:**  
----
 Radio City is India's first private FM radio station and was started on 3 July 2001. It plays Hindi, English and regional songs. Radio City recently forayed into New Media in May 2008 with the launch of a music portal - PlanetRadiocity.com that offers music related news, videos, songs, and other music-related features.
----
 
 **Output:**
 {{
@@ -117,14 +115,10 @@ You are an expert in extracting triplets from text and output triplets in VALID 
 ## Example
 
 **Input Text:**
----
 Radio City is India's first private FM radio station and was started on 3 July 2001. It plays Hindi, English and regional songs. Radio City recently forayed into New Media in May 2008 with the launch of a music portal - PlanetRadiocity.com that offers music related news, videos, songs, and other music-related features.
----
 
 **Entity List:**
----
 "entities": ["Radio City", "India", "3 July 2001", "Hindi", "English", "New Media", "May 2008", "PlanetRadiocity.com"]
----
 
 **Output:**
 {{
@@ -202,14 +196,10 @@ Radio City is India's first private FM radio station and was started on 3 July 2
 Here is the given text and entity list to extract triplets from.
 
 **Input Text:**
----
 {input_text}
----
 
 **Entity List:**
---- 
 {entity_list}
----
 
 **Output:**
 """
@@ -240,8 +230,9 @@ Never use two references in the same sentence or one directly after another.
 
 Limit the total report length to {max_report_length} words.
 
-## Example Input
------------
+## Example
+
+**Input Text:**
 Data:
 
 Chunks
@@ -249,7 +240,7 @@ id,chunk
 1,The Unity March is a significant event that is taking place at Verdant Oasis Plaza.
 2,The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza.
 
-## Example Output
+**Output:**
 The Unity March is a significant event that is taking place at Verdant Oasis Plaza {reference_placeholder}. 
 The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza {reference_placeholder}. 
 
@@ -257,26 +248,11 @@ The Harmony Assembly is organizing the Unity March at Verdant Oasis Plaza {refer
 
 Use the following data for your answer.
 
+**Input Text:**
 Data:
 {data}
 
-# Grounding Rules
-
-Points supported by data should indicate that they are supported by the data as follows:
-
-"This is an example sentence supported by data references {reference_placeholder}."
-
-No matter which data source the information comes from or how many sources referred to, it should be shown in the same way, indicating {reference_placeholder} at the end of the sentence, before the period.
-
-Do not include the key or the id of the data record in the summary.
-
-Do not include information where the supporting evidence for it is not provided.
-
-Never use two references in the same sentence or one directly after another.
-
-Limit the total report length to {max_report_length} words.
-
-Output:
+**Output:**
 """
 
 # ===============================
@@ -321,12 +297,9 @@ PROMPTS[
 ## 示例
 
 **输入文本:**  
----
 Radio City 是印度首家私营 FM 广播电台, 于 2001 年 7 月 3 日开播。它播放印地语、英语及地方歌曲。2008 年 5 月, Radio City 进军新媒体领域, 推出了音乐门户网站 PlanetRadiocity.com, 提供音乐资讯、视频、歌曲及其他音乐相关功能。
----
 
 **示例输出：**
----
 {{
   "entities": [
     "Radio City",
@@ -339,16 +312,13 @@ Radio City 是印度首家私营 FM 广播电台, 于 2001 年 7 月 3 日开播
     "PlanetRadiocity.com"
   ]
 }}
----
 
 ## 实际数据
 
 以下是给定的文本，请从中抽取实体。
 
 **输入文本:**
----
 {input_text}
----
 
 **输出：**
 """
@@ -387,14 +357,10 @@ PROMPTS[
 ## 示例
 
 **输入文本:**
----
 Radio City 是印度首家私营 FM 广播电台，于 2001 年 7 月 3 日开播。它播放印地语、英语及地方歌曲。2008 年 5 月, Radio City 进军新媒体领域，推出了音乐门户网站 PlanetRadiocity.com,提供音乐资讯、视频、歌曲及其他音乐相关功能。
----
 
 **实体列表:**
----
 "entities": ["Radio City", "印度", "2001 年 7 月 3 日", "印地语", "英语", "新媒体", "2008 年 5 月", "PlanetRadiocity.com"]
----
 
 **输出:**
 {{
@@ -472,14 +438,10 @@ Radio City 是印度首家私营 FM 广播电台，于 2001 年 7 月 3 日开�
 以下是给定的文本和实体列表，请从中抽取三元组。
 
 **输入文本:**
----
 {input_text}
----
 
 **实体列表:**
---- 
 {entity_list}
----
 
 **输出:**
 """
@@ -509,11 +471,13 @@ PROMPTS[
 ## 示例
 
 **输入文本:**
+数据:
+Chunks:
 id,chunk
 1, 联合游行是一个重要事件，正在 Verdant Oasis Plaza 举行。
 2, 和谐集会正在 Verdant Oasis Plaza 组织联合游行。
 
-**示例输出:**
+**输出:**
 联合游行是一个重要的活动，正在 Verdant Oasis Plaza 举行 {reference_placeholder}。
 和谐集会正在组织在 Verdant Oasis Plaza 举行的联合游行 {reference_placeholder}。 
 
@@ -521,19 +485,9 @@ id,chunk
 
 使用以下数据进行回答。
 
-**数据:**
----
+**输入文本:**
+数据:
 {data}
-
-## 基础规则
-由数据支持的要点应按以下方式表明受到数据支持：
-"这是一句由数据支持的语句 {reference_placeholder}。"
-
-无论信息来自哪个数据源或被多少来源引用，都应以相同方式引用，在句末句点前指示 {reference_placeholder}。
-摘要中不要包含数据记录的键或 ID。
-不要包含未提供支持证据的信息。
-绝不在同一句中使用两个引用或一个接一个的引用。
-将报告总长度限制为 {max_report_length} 字。
 
 **输出:**
 """
@@ -579,13 +533,10 @@ PROMPTS[
 
 ## 示例
 
-**輸入文本：**  
----
+**輸入文本：**
 Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開播。它播放印地語、英語及地方歌曲。2008 年 5 月，Radio City 進軍新媒體領域，推出了音樂入口網站 PlanetRadiocity.com，提供音樂資訊、影片、歌曲及其他音樂相關功能。
----
 
-**示例輸出：**  
----
+**輸出：**  
 {{
   "entities": [
     "Radio City",
@@ -598,16 +549,13 @@ Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開�
     "PlanetRadiocity.com"
   ]
 }}
----
 
 ## 實際數據
 
 以下是需要提取實體的文本。
 
 **輸入文本:**
----
 {input_text}
----
 
 **輸出:**
 """
@@ -646,14 +594,10 @@ PROMPTS[
 ## 示例
 
 **輸入文本:**  
----
 Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開播。它播放印地語、英語及地方歌曲。2008 年 5 月, Radio City 進軍新媒體領域，推出了音樂入口網站 PlanetRadiocity.com,提供音樂資訊、影片、歌曲及其他音樂相關功能。
----
 
 **實體列表:**  
----
 "entities": ["Radio City", "印度", "2001 年 7 月 3 日", "印地語", "英語", "新媒體", "2008 年 5 月", "PlanetRadiocity.com"]
----
 
 **輸出:**  
 {{
@@ -731,14 +675,10 @@ Radio City 是印度首家私營 FM 廣播電臺，於 2001 年 7 月 3 日開�
 以下是需要提取三元組的文本和實體列表。
 
 **輸入文本:**
----
 {input_text}
----
 
 **實體列表:**
---- 
 {entity_list}
----
 
 **輸出:**
 """
@@ -763,12 +703,24 @@ PROMPTS[
 不要在同一句中使用兩個引用或連續引用。
 將報告總長度限制為 {max_report_length} 字。
 
+## 示例
+**輸入文本:**  
+數據:  
+Chunks:  
+id,chunk  
+1, 聯合遊行是一個重要事件，正在 Verdant Oasis Plaza 舉行。  
+2, 和諧集會正在 Verdant Oasis Plaza 組織聯合遊行。  
+
+**輸出:**  
+聯合遊行是一個重要的活動，正在 Verdant Oasis Plaza 舉行 {reference_placeholder}。  
+和諧集會正在組織在 Verdant Oasis Plaza 舉行的聯合遊行 {reference_placeholder}。
+
 ## 實際數據
 
 使用以下數據進行回答。
 
-**數據**:
----
+**輸入文本:**  
+數據:  
 {data}
 
 **輸出**:
