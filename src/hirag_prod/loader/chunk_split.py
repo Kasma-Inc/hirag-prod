@@ -6,6 +6,7 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
+from hirag_prod.chunk import DotsHierarchicalChunker
 from hirag_prod.schema.chunk import Chunk, ChunkMetadata
 from hirag_prod.schema.file import File
 
@@ -78,6 +79,7 @@ def _extract_docling_chunk_meta(chunk) -> dict:
     max_t = float("-inf")
     min_b = float("inf")
     page_no = None
+    headers = chunk.meta.headings
 
     for item in chunk.meta.doc_items or []:
         for prov in item.prov or []:
@@ -100,6 +102,7 @@ def _extract_docling_chunk_meta(chunk) -> dict:
         "y_0": float(max_t) if has_bbox else None,
         "x_1": float(max_r) if has_bbox else None,
         "y_1": float(min_b) if has_bbox else None,
+        "headers": headers if headers else None,
     }
 
 
@@ -187,6 +190,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             y_0=docling_chunk_meta["y_0"],
             x_1=docling_chunk_meta["x_1"],
             y_1=docling_chunk_meta["y_1"],
+            headers=docling_chunk_meta["headers"],
             # inherit file metadata
             type=doc_md.metadata.type,
             filename=doc_md.metadata.filename,
@@ -271,57 +275,58 @@ def chunk_dots_document(
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
     """
+    chunker = DotsHierarchicalChunker()
+
+    # Get chunks from the hierarchical chunker
+    dots_chunks = chunker.chunk(json_doc)
+
+    # Convert DotsChunk objects to Chunk objects
     chunks = []
-    chunk_idx = 0
 
-    for page in json_doc:
-        page_no = page.get("page_no", 0)
-        layout_info = page.get("full_layout_info", [])
+    for _, dots_chunk in enumerate(dots_chunks):
+        # Convert dots category to chunk type
+        chunk_type = _dots_category_to_chunk_type(dots_chunk.category)
 
-        for box in layout_info:
-            text = box.get("text", "").strip()
-            if not text:  # Skip empty text
-                continue
+        # Extract bounding box coordinates
+        x_0, y_0, x_1, y_1 = _extract_dots_bbox(dots_chunk.bbox)
 
-            bbox = box.get("bbox", [])
-            category = box.get("category", "unknown")
+        metadata = ChunkMetadata(
+            chunk_idx=dots_chunk.chunk_idx,
+            document_id=md_doc.id,
+            chunk_type=chunk_type.value,
+            page_number=dots_chunk.page_no,
+            page_image_url=None,
+            page_width=None,  # Dots doesn't provide page dimensions
+            page_height=None,
+            x_0=x_0,
+            y_0=y_0,
+            x_1=x_1,
+            y_1=y_1,
+            headers=dots_chunk.headings,
+            # inherit file metadata
+            type=md_doc.metadata.type,
+            filename=md_doc.metadata.filename,
+            uri=md_doc.metadata.uri,
+            private=md_doc.metadata.private,
+            uploaded_at=md_doc.metadata.uploaded_at,
+            knowledge_base_id=md_doc.metadata.knowledge_base_id,
+            workspace_id=md_doc.metadata.workspace_id,
+        )
 
-            # Convert dots category to chunk type
-            chunk_type = _dots_category_to_chunk_type(category)
+        # Create the chunk content, including caption if available
+        content = dots_chunk.text
+        if dots_chunk.caption:
+            content += f"\n\nCaption: {dots_chunk.caption}"
 
-            # Extract bounding box coordinates
-            x_0, y_0, x_1, y_1 = _extract_dots_bbox(bbox)
+        chunk_obj = Chunk(
+            id=compute_mdhash_id(content, prefix="chunk-"),
+            page_content=content,
+            metadata=metadata,
+        )
 
-            metadata = ChunkMetadata(
-                chunk_idx=chunk_idx,
-                document_id=md_doc.id,
-                chunk_type=chunk_type.value,
-                page_number=page_no,
-                page_image_url=None,
-                page_width=None,  # Dots doesn't provide page dimensions
-                page_height=None,
-                x_0=x_0,
-                y_0=y_0,
-                x_1=x_1,
-                y_1=y_1,
-                # inherit file metadata
-                type=md_doc.metadata.type,
-                filename=md_doc.metadata.filename,
-                uri=md_doc.metadata.uri,
-                private=md_doc.metadata.private,
-                uploaded_at=md_doc.metadata.uploaded_at,
-                knowledge_base_id=md_doc.metadata.knowledge_base_id,
-                workspace_id=md_doc.metadata.workspace_id,
-            )
+        chunks.append(chunk_obj)
 
-            chunk_obj = Chunk(
-                id=compute_mdhash_id(text, prefix="chunk-"),
-                page_content=text,
-                metadata=metadata,
-            )
-
-            chunks.append(chunk_obj)
-            chunk_idx += 1
+    chunks.sort(key=lambda c: c.metadata.chunk_idx)
 
     return chunks
 

@@ -1,0 +1,226 @@
+# This is a hierachical chunker for the JSON by Dots OCR
+
+from typing import Any, Dict, List, Iterator, Optional
+from dataclasses import dataclass
+from enum import Enum
+
+
+class DotsChunkType(Enum):
+    """Chunk types for Dots OCR documents."""
+    TITLE = "Title"
+    SECTION_HEADER = "Section-header"
+    TEXT = "Text"
+    TABLE = "Table"
+    LIST_ITEM = "List-item"
+    CAPTION = "Caption"
+    FOOTNOTE = "Footnote"
+    FORMULA = "Formula"
+    PICTURE = "Picture"
+    PAGE_HEADER = "Page-header"
+    PAGE_FOOTER = "Page-footer"
+
+
+@dataclass
+class DotsChunk:
+    """A chunk from Dots OCR processing."""
+    chunk_idx: int
+    text: str
+    category: str
+    page_no: int
+    bbox: List[int]
+    headings: List[str]  # Hierarchical context
+    caption: Optional[str] = None
+    
+
+
+class DotsHierarchicalChunker:
+    """Hierarchical chunker for Dots OCR JSON documents."""
+    MAX_LEVEL = 6  # Maximum heading level to consider
+    
+    def __init__(self):
+        self.hierarchy_types = [DotsChunkType.TITLE, DotsChunkType.SECTION_HEADER]
+
+    def _get_level(self, text: str) -> int:
+        """Get the heading level from the text."""
+        level = 0
+        stripped_text = text.lstrip()
+        while stripped_text.startswith("#"):
+            level += 1
+            stripped_text = stripped_text[1:].lstrip()
+        
+        # If no # found, treat as level 1 (basic section header)
+        if level == 0:
+            return 1
+        # Cap at maximum level
+        if level > self.MAX_LEVEL:
+            return self.MAX_LEVEL
+        return level
+
+    def chunk(self, json_doc: List[Dict[str, Any]]) -> Iterator[DotsChunk]:
+        """
+        Chunk a Dots OCR document while maintaining hierarchical context.
+        
+        Args:
+            json_doc: List of pages with layout information
+            
+        Yields:
+            DotsChunk: Chunks with hierarchical context
+        """
+        heading_by_level: Dict[int, tuple[str, int]] = {}
+        parsed_boxes: set = set()
+        sorted_boxes: List[Dict[str, Any]] = []
+        header_boxes: Dict[int, Dict[str, Any]] = {}
+
+        # Collect all boxes sorted by order
+        for page in json_doc:
+            page_no = page.get("page_no", 0)
+            layout_info = page.get("full_layout_info", [])
+            
+            # Sort by vertical position to maintain reading order
+            sorted_page_boxes = sorted(layout_info, key=lambda x: x.get("bbox", [0, 0, 0, 0])[1])
+            
+            for box in sorted_page_boxes:
+                # Add the box to the sorted boxes
+                box["page_no"] = page_no
+                sorted_boxes.append(box)
+
+        # Chunk by hierachy & handle captions for tables & images
+        for idx in range(len(sorted_boxes)):
+            box = sorted_boxes[idx]
+
+            text = box.get("text", "").strip()
+            if not text:
+                continue
+                
+            category = box.get("category", "Text")
+            bbox = box.get("bbox", [])
+            page_no = box.get("page_no", 0)
+            
+            if idx in parsed_boxes:
+                continue
+            
+            def _get_caption() -> Optional[str]:
+                """Extract caption from surrounding boxes."""
+                previous_box = sorted_boxes[idx - 1] if idx > 0 else None
+                next_box = sorted_boxes[idx + 1] if idx < len(sorted_boxes) - 1 else None
+
+                # TODO: Use LLM as judgement for caption extraction
+
+                # Now using simple heuristics
+                # Logic: 1. If previous is caption and not used, more likely the caption for this box
+                if (previous_box and 
+                    previous_box.get("category") == DotsChunkType.CAPTION.value and 
+                    (idx - 1) not in parsed_boxes):
+                    parsed_boxes.add(idx - 1)
+                    return previous_box.get("text", "").strip()
+                # Logic: 2. If next is caption and not used, use caption for this box
+                elif (next_box and 
+                      next_box.get("category") == DotsChunkType.CAPTION.value and 
+                      (idx + 1) not in parsed_boxes):
+                    parsed_boxes.add(idx + 1)
+                    return next_box.get("text", "").strip()
+                return None
+            
+            caption = None
+
+            # Heading hierarchy
+            if category in [DotsChunkType.TITLE.value, DotsChunkType.SECTION_HEADER.value]:
+                level = 0  # Default to highest priority for titles
+                
+                if category == DotsChunkType.SECTION_HEADER.value:
+                    # Section header, level is number of #s at the beginning
+                    level = self._get_level(text)
+                
+                # Update heading hierarchy
+                heading_by_level[level] = (text, idx)
+
+                # Remove all deeper level headings
+                keys_to_del = [k for k in heading_by_level if k > level]
+                for k in keys_to_del:
+                    heading_by_level.pop(k, None)
+
+                header_boxes[idx] = {
+                    "text": text,
+                    "level": level,
+                    "bbox": bbox,
+                    "page_no": page_no,
+                    "children": []
+                }
+                
+                continue
+
+            # Raw Text and List Items
+            elif category in [DotsChunkType.TEXT.value, DotsChunkType.LIST_ITEM.value]:
+                pass
+
+            # Table with potential caption
+            elif category == DotsChunkType.TABLE.value:
+                caption = _get_caption()
+
+            # Picture with potential caption
+            elif category == DotsChunkType.PICTURE.value:
+                caption = _get_caption()
+            
+            # Formula content
+            elif category == DotsChunkType.FORMULA.value:
+                caption = _get_caption()
+            
+            # Footnote content
+            elif category == DotsChunkType.FOOTNOTE.value:
+                pass
+            
+            # Page headers and footers (usually skip or handle differently)
+            elif category in [DotsChunkType.PAGE_HEADER.value, DotsChunkType.PAGE_FOOTER.value]:
+                pass
+            
+            # Handle unknown categories as text
+            else:
+                pass
+            parsed_boxes.add(idx)
+
+            # Get current heading hierarchy as list of heading texts
+            heading_texts = [heading_by_level[k][0] for k in sorted(heading_by_level.keys())]
+            
+            # Add to the direct parent's children list
+            if heading_by_level:
+                # Get the most recent (deepest) heading
+                deepest_level = max(heading_by_level.keys())
+                _, parent_idx = heading_by_level[deepest_level]
+                if parent_idx in header_boxes:
+                    header_boxes[parent_idx]["children"].append(idx)
+
+            chunk = DotsChunk(
+                chunk_idx=idx,
+                text=text,
+                category=category,
+                page_no=page_no,
+                bbox=bbox,
+                headings=heading_texts,
+                caption=caption
+            )
+
+            yield chunk
+
+        # Yield header and title chunks that weren't yielded yet
+        for header_idx, header_info in header_boxes.items():
+            if header_idx not in parsed_boxes:
+                # Get heading hierarchy up to this header's level
+                header_level = header_info["level"]
+                relevant_headings = []
+                for level in sorted(heading_by_level.keys()):
+                    if level < header_level:
+                        relevant_headings.append(heading_by_level[level][0])
+                    elif level == header_level:
+                        break
+                
+                chunk = DotsChunk(
+                    chunk_idx=header_idx,
+                    text=header_info["text"],
+                    category=DotsChunkType.SECTION_HEADER.value if header_level > 0 else DotsChunkType.TITLE.value,
+                    page_no=header_info["page_no"],
+                    bbox=header_info["bbox"],
+                    headings=relevant_headings,
+                    caption=None
+                )
+                yield chunk
+        

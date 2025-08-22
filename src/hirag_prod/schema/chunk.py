@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 
 from langchain_core.documents import Document
 from pydantic import BaseModel
@@ -18,6 +18,7 @@ class ChunkMetadata(FileMetadata):
     page_width: Optional[float]  # the width of the page
     page_height: Optional[float]  # the height of the page
     document_id: Optional[str]  # The id of the document that the chunk is from
+    headers: Optional[List[str]]  # The headers of the chunk
     x_0: Optional[float]  # x coordinate of the top left corner of the bounding box
     y_0: Optional[float]  # y coordinate of the top left corner of the bounding box
     x_1: Optional[float]  # x coordinate of the bottom right corner of the bounding box
