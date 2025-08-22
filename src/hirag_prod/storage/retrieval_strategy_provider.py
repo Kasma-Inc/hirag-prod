@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Any, Dict, List, Union
 
-from lancedb.query import AsyncQuery, AsyncVectorQuery, LanceQueryBuilder
+from lancedb.query import AsyncQuery, LanceQueryBuilder
 from lancedb.rerankers import VoyageAIReranker
 
 from hirag_prod.reranker import LocalReranker
@@ -22,8 +22,11 @@ class BaseRetrievalStrategyProvider:
     ):
         return query
 
-    def rerank_chunk_query(
-        self, query: AsyncQuery, text: str  # pylint: disable=unused-argument
+    async def rerank_chunk_query(
+        self,
+        query: Any,
+        text: str,
+        topn: int | None = None,  # pylint: disable=unused-argument
     ):
         return query
 
@@ -48,27 +51,35 @@ class RetrievalStrategyProvider(BaseRetrievalStrategyProvider):
         logging.info("TODO: add rerank logic for %s", text)
         return query
 
-    def rerank_chunk_query(self, query: AsyncVectorQuery, text: str, topn: int):
+    async def rerank_chunk_query(self, query: Any, text: str, topn: int | None):
         """
-        Rerank chunk query using either API-based or local reranker
+        Rerank chunk query. Supports:
+          - LanceDB query objects (with .rerank)
+          - Python list results from PGVector
         """
-        reranker_type = os.getenv("RERANKER_TYPE", "api")
+        # If it's a LanceDB query object, use its reranker
+        if hasattr(query, "rerank"):
+            reranker_type = os.getenv("RERANKER_TYPE", "api")
+            if reranker_type == "local":
+                reranker = LocalReranker(top_n=topn or self.default_topn)
+                return query.rerank(reranker=reranker, query_string=text)
+            else:
+                reranker = VoyageAIReranker(
+                    api_key=os.getenv("VOYAGE_API_KEY"),
+                    model_name=os.getenv("API_RERANKER_MODEL", "rerank-2"),
+                    top_n=topn or self.default_topn,
+                    return_score="relevance",
+                )
+                return query.rerank(reranker=reranker, query_string=text)
 
-        if reranker_type == "local":
-            # Use deployed reranker
-            reranker = LocalReranker(top_n=topn)
-            reranked_query = query.rerank(reranker=reranker, query_string=text)
-            return reranked_query
-        else:
-            # Use API-based reranker (VoyageAI)
-            reranker = VoyageAIReranker(
-                api_key=os.getenv("VOYAGE_API_KEY"),
-                model_name=os.getenv("API_RERANKER_MODEL", "rerank-2"),
-                top_n=topn,
-                return_score="relevance",
-            )
-            reranked_query = query.rerank(reranker=reranker, query_string=text)
-            return reranked_query
+        # If it's already a list of dicts (PGVector path), keep sorted order and just trim to topn
+        if isinstance(query, list):
+            if isinstance(topn, int) and topn > 0:
+                return query[:topn]
+            return query
+
+        # Fallback: return as-is
+        return query
 
     def format_catalog_search_result_to_llm(
         self, input_data: List[Dict[str, Any]]

@@ -388,6 +388,7 @@ class LocalEmbeddingClient:
     """Client for local embedding service"""
 
     def __init__(self, config: LocalEmbeddingConfig):
+        self._logger = logging.getLogger(LoggerNames.EMBEDDING)
         self.config = config
         self._http_client = httpx.AsyncClient(timeout=30.0)
 
@@ -414,6 +415,7 @@ class LocalEmbeddingClient:
 
         # Extract embeddings from response
         if "data" in result:
+            self._logger.info(f"✅ Completed processing {len(result['data'])} texts")
             return [item["embedding"] for item in result["data"]]
         else:
             if isinstance(result, list):
