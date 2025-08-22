@@ -16,10 +16,23 @@ def _brief(c):
     content = (c.page_content or "").replace("\n", " ")
     # if len(content) > 80:
     #     content = content[:80] + "..."
+
+    # Format bbox - handle the new list of lists format
+    bbox_str = "None"
+    if meta_data.bbox and len(meta_data.bbox) > 0:
+        # Show the first bounding box if multiple exist
+        first_bbox = meta_data.bbox[0]
+        if len(first_bbox) >= 4:
+            bbox_str = (
+                f"({first_bbox[0]},{first_bbox[1]},{first_bbox[2]},{first_bbox[3]})"
+            )
+        else:
+            bbox_str = str(first_bbox)
+
     return (
         f"id={c.id} | idx={meta_data.chunk_idx} | type={meta_data.chunk_type} | "
         f"page={meta_data.page_number} | headers={meta_data.headers} | size=({meta_data.page_width}x{meta_data.page_height}) | "
-        f'bbox=({meta_data.x_0},{meta_data.y_0},{meta_data.x_1},{meta_data.y_1}) | text="{content}"'
+        f'bbox={bbox_str} | text="{content}"'
     )
 
 

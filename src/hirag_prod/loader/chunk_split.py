@@ -178,6 +178,26 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             if page_size is not None:
                 page_width, page_height = page_size
 
+        # Convert x_0, y_0, x_1, y_1 to bbox format if coordinates are available
+        bbox = None
+        if all(
+            coord is not None
+            for coord in [
+                docling_chunk_meta["x_0"],
+                docling_chunk_meta["y_0"],
+                docling_chunk_meta["x_1"],
+                docling_chunk_meta["y_1"],
+            ]
+        ):
+            bbox = [
+                [
+                    docling_chunk_meta["x_0"],
+                    docling_chunk_meta["y_0"],
+                    docling_chunk_meta["x_1"],
+                    docling_chunk_meta["y_1"],
+                ]
+            ]
+
         metadata = ChunkMetadata(
             chunk_idx=idx,
             document_id=doc_md.id,
@@ -186,10 +206,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             page_image_url=None,
             page_width=float(page_width) if page_width is not None else None,
             page_height=float(page_height) if page_height is not None else None,
-            x_0=docling_chunk_meta["x_0"],
-            y_0=docling_chunk_meta["y_0"],
-            x_1=docling_chunk_meta["x_1"],
-            y_1=docling_chunk_meta["y_1"],
+            bbox=bbox,
+            caption=None,
+            # TODO: If using docling in the future, may need to do indexing for headers
             headers=docling_chunk_meta["headers"],
             # inherit file metadata
             type=doc_md.metadata.type,
@@ -246,27 +265,6 @@ def _dots_category_to_chunk_type(category: str) -> ChunkType:
     return category_mapping.get(category, ChunkType.UNKNOWN)
 
 
-def _extract_dots_bbox(
-    bbox: List[int],
-) -> tuple[Optional[float], Optional[float], Optional[float], Optional[float]]:
-    """
-    Extract bounding box coordinates from dots bbox format.
-
-    Args:
-        bbox: List of 4 integers [x0, y0, x1, y1]
-
-    Returns:
-        Tuple of (x_0, y_0, x_1, y_1) as floats or None if bbox is invalid
-    """
-    if not bbox or len(bbox) != 4:
-        return None, None, None, None
-
-    try:
-        return float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])
-    except (ValueError, TypeError):
-        return None, None, None, None
-
-
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
@@ -283,26 +281,24 @@ def chunk_dots_document(
     # Convert DotsChunk objects to Chunk objects
     chunks = []
 
-    for _, dots_chunk in enumerate(dots_chunks):
+    # mapping for tmp_chunk_idx to chunk_id
+    chunk_id_mapping = {}
+
+    for tmp_chunk_idx, dots_chunk in dots_chunks.items():
         # Convert dots category to chunk type
         chunk_type = _dots_category_to_chunk_type(dots_chunk.category)
 
-        # Extract bounding box coordinates
-        x_0, y_0, x_1, y_1 = _extract_dots_bbox(dots_chunk.bbox)
-
         metadata = ChunkMetadata(
-            chunk_idx=dots_chunk.chunk_idx,
+            chunk_idx=tmp_chunk_idx,
             document_id=md_doc.id,
             chunk_type=chunk_type.value,
             page_number=dots_chunk.page_no,
             page_image_url=None,
             page_width=None,  # Dots doesn't provide page dimensions
             page_height=None,
-            x_0=x_0,
-            y_0=y_0,
-            x_1=x_1,
-            y_1=y_1,
-            headers=dots_chunk.headings,
+            bbox=dots_chunk.bbox,
+            caption=dots_chunk.caption,
+            headers=None,  # Fill headers later
             # inherit file metadata
             type=md_doc.metadata.type,
             filename=md_doc.metadata.filename,
@@ -315,18 +311,27 @@ def chunk_dots_document(
 
         # Create the chunk content, including caption if available
         content = dots_chunk.text
-        if dots_chunk.caption:
-            content += f"\n\nCaption: {dots_chunk.caption}"
+
+        chunk_id = compute_mdhash_id(content, prefix="chunk-")
 
         chunk_obj = Chunk(
-            id=compute_mdhash_id(content, prefix="chunk-"),
+            id=chunk_id,
             page_content=content,
             metadata=metadata,
         )
 
+        chunk_id_mapping[tmp_chunk_idx] = chunk_id
+
         chunks.append(chunk_obj)
 
     chunks.sort(key=lambda c: c.metadata.chunk_idx)
+
+    # For all headings, do a mapping
+    for tmp_chunk_idx, dots_chunk in dots_chunks.items():
+        if dots_chunk.headings:
+            # Map the chunk ID to the heading text
+            header_ids = [chunk_id_mapping[h] for h in dots_chunk.headings]
+            chunks[tmp_chunk_idx].metadata.headers = header_ids
 
     return chunks
 
@@ -370,10 +375,9 @@ def chunk_langchain_document(
             page_image_url=None,
             page_width=None,
             page_height=None,
-            x_0=None,
-            y_0=None,
-            x_1=None,
-            y_1=None,
+            bbox=None,
+            caption=None,
+            headers=None,
             knowledge_base_id=langchain_doc.metadata.knowledge_base_id,
             workspace_id=langchain_doc.metadata.workspace_id,
         )
