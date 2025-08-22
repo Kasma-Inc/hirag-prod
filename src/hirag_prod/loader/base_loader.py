@@ -1,6 +1,6 @@
 #! /usr/bin/env python3
 from abc import ABC
-from typing import Any, Optional, Tuple, Type
+from typing import Optional, Tuple, Type
 
 from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
