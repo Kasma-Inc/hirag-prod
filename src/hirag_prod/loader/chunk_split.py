@@ -327,11 +327,14 @@ def chunk_dots_document(
     chunks.sort(key=lambda c: c.metadata.chunk_idx)
 
     # For all headings, do a mapping
-    for tmp_chunk_idx, dots_chunk in dots_chunks.items():
-        if dots_chunk.headings:
+    for chunk in chunks:
+        chunk_meta = chunk.metadata
+        tmp_idx = chunk_meta.chunk_idx
+        raw_headers = dots_chunks[tmp_idx].headings if tmp_idx in dots_chunks else []
+        if raw_headers:
             # Map the chunk ID to the heading text
-            header_ids = [chunk_id_mapping[h] for h in dots_chunk.headings]
-            chunks[tmp_chunk_idx].metadata.headers = header_ids
+            header_ids = [chunk_id_mapping[h] for h in raw_headers]
+            chunk_meta.headers = header_ids
 
     return chunks
 
