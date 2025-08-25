@@ -3,7 +3,7 @@ from typing import Optional
 from langchain_core.documents import Document
 from pydantic import BaseModel
 
-from .file import FileMetadata
+from hirag_prod.schema.file import FileMetadata
 
 
 class ChunkMetadata(FileMetadata):

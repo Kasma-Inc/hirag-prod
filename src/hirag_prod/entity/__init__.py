@@ -1,4 +1,4 @@
-from .base import BaseKG
-from .vanilla import VanillaKG
+from hirag_prod.entity.base import BaseKG
+from hirag_prod.entity.vanilla import VanillaKG
 
 __all__ = ["BaseKG", "VanillaKG"]

@@ -1,6 +1,6 @@
 from langchain_community import document_loaders
 
-from .base_loader import BaseLoader
+from hirag_prod.loader.base_loader import BaseLoader
 
 
 class TxtLoader(BaseLoader):

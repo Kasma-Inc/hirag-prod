@@ -8,7 +8,7 @@ from typing import AsyncIterator, Union
 
 from mcp.server.fastmcp import Context, FastMCP
 
-from .hirag import HiRAG
+from hirag_prod.hirag import HiRAG
 
 logging.basicConfig(
     level=logging.INFO,

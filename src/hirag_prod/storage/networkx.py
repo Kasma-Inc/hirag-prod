@@ -6,10 +6,10 @@ from typing import Callable, List, Optional
 
 import networkx as nx
 
-from .._utils import _limited_gather_with_factory
-from ..schema import Entity, Relation
-from ..summarization import BaseSummarizer, TrancatedAggregateSummarizer
-from .base_gdb import BaseGDB
+from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod.schema import Entity, Relation
+from hirag_prod.storage.base_gdb import BaseGDB
+from hirag_prod.summarization import BaseSummarizer, TrancatedAggregateSummarizer
 
 
 @dataclass

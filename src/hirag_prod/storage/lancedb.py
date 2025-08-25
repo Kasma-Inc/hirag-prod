@@ -5,9 +5,9 @@ from typing import List, Literal, Optional
 
 import lancedb
 
-from .._utils import EmbeddingFunc
-from .base_vdb import BaseVDB
-from .retrieval_strategy_provider import RetrievalStrategyProvider
+from hirag_prod._utils import EmbeddingFunc
+from hirag_prod.storage.base_vdb import BaseVDB
+from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
 logger = logging.getLogger(__name__)
 
@@ -180,32 +180,28 @@ class LanceDB(BaseVDB):
         )
         return result
 
-    def add_filter_by_uri(self, uri_list: Optional[List[str]], query):
-        filter_expr = None
-        if uri_list is not None and len(uri_list) > 0:
-            uri_list = [f"'{uri}'" for uri in uri_list]
-            filter_expr = f"uri in ({','.join(uri_list)})"
-            # prefilter before searching the nearest neighbors
-            query = query.where(filter_expr)
-        return query
+    def add_filter_by_uri(self, uri_list: Optional[List[str]]) -> Optional[str]:
+        if uri_list:
+            values = ", ".join(map(repr, uri_list))
+            return f"uri IN ({values})"
+        return None
 
     def add_filter_by_require_access(
-        self, require_access: Optional[Literal["private", "public"]], query
-    ):
+        self, require_access: Optional[Literal["private", "public"]]
+    ) -> Optional[str]:
         if require_access is not None:
-            query = query.where(f"private = {require_access == 'private'}")
-        return query
+            return f"private = {require_access == 'private'}"
+        return None
 
     def add_filter_by_scope(
         self,
         workspace_id: str,
         knowledge_base_id: str,
-        query,
-    ):
-        query = query.where(
-            f"workspace_id == '{workspace_id}' AND knowledge_base_id == '{knowledge_base_id}'"
+    ) -> str:
+        return (
+            f"workspace_id == '{workspace_id}' AND "
+            f"knowledge_base_id == '{knowledge_base_id}'"
         )
-        return query
 
     async def query(
         self,
@@ -264,9 +260,15 @@ class LanceDB(BaseVDB):
         if hasattr(query, "nprobes"):
             query = query.nprobes(20)  # adjust this value as needed
 
-        query = self.add_filter_by_uri(uri_list, query)
-        query = self.add_filter_by_require_access(require_access, query)
-        query = self.add_filter_by_scope(workspace_id, knowledge_base_id, query)
+        # Build a single combined predicate to avoid .where overriding
+        clauses = [
+            self.add_filter_by_uri(uri_list),
+            self.add_filter_by_require_access(require_access),
+            self.add_filter_by_scope(workspace_id, knowledge_base_id),
+        ]
+        predicate = " AND ".join([c for c in clauses if c])
+        if predicate:
+            query = query.where(predicate)
 
         if distance_threshold is not None:
             query = query.distance_range(upper_bound=distance_threshold)
@@ -316,12 +318,11 @@ class LanceDB(BaseVDB):
             ]
 
         # Build the query with filter for the document key
-        query = (
-            table.query()
-            .where(f"{key_column} IN ({', '.join(map(repr, key_value))})")
-            .select(columns_to_select)
-        )
-        query = self.add_filter_by_scope(workspace_id, knowledge_base_id, query)
+        key_pred = f"{key_column} IN ({', '.join(map(repr, key_value))})"
+        scope_pred = self.add_filter_by_scope(workspace_id, knowledge_base_id)
+        predicate = f"{key_pred} AND {scope_pred}"
+
+        query = table.query().where(predicate).select(columns_to_select)
 
         # Apply limit if specified
         if limit is not None:

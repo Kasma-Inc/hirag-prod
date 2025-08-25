@@ -7,7 +7,7 @@ from contextual import AsyncContextualAI
 from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from ..storage.pg_utils import DatabaseClient
+from hirag_prod.storage.pg_utils import DatabaseClient
 
 
 class ContextualClient:

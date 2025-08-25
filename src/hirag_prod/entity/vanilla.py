@@ -6,13 +6,13 @@ from typing import Callable, List, Tuple
 
 import json_repair
 
-from .._utils import (
+from hirag_prod._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
 )
-from ..prompt import PROMPTS
-from ..schema import Chunk, Entity, Relation
-from .base import BaseKG
+from hirag_prod.entity.base import BaseKG
+from hirag_prod.prompt import PROMPTS
+from hirag_prod.schema import Chunk, Entity, Relation
 
 
 @dataclass

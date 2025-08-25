@@ -14,7 +14,7 @@ import pyarrow as pa
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
 
-from ._llm import (
+from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
     LocalChatService,
@@ -22,23 +22,23 @@ from ._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from ._utils import _limited_gather_with_factory
-from .chunk import BaseChunk, FixTokenChunk
-from .entity import BaseKG, VanillaKG
-from .loader import load_document
-from .loader.chunk_split import (
+from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod.chunk import BaseChunk, FixTokenChunk
+from hirag_prod.entity import BaseKG, VanillaKG
+from hirag_prod.loader import load_document
+from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
 )
-from .parser import (
+from hirag_prod.parser import (
     DictParser,
     ReferenceParser,
 )
-from .prompt import PROMPTS
-from .resume_tracker import JobStatus, ResumeTracker
-from .schema import LoaderType, Relation
-from .storage import (
+from hirag_prod.prompt import PROMPTS
+from hirag_prod.resume_tracker import JobStatus, ResumeTracker
+from hirag_prod.schema import LoaderType, Relation
+from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
     LanceDB,

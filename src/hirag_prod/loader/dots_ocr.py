@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from .._utils import download_oss_file, download_s3_file, exists_s3_file
+from hirag_prod._utils import download_oss_file, download_s3_file, exists_s3_file
 
 # TODO: Fix dots_ocr/ dir DNE problem, now using docling's as temp solution
 OUTPUT_DIR_PREFIX = "docling_cloud/output"

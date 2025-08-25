@@ -6,10 +6,10 @@ from docling.document_converter import DocumentConverter
 from docling_core.types.doc import DoclingDocument
 from langchain_core.document_loaders import BaseLoader as LangchainBaseLoader
 
-from .._utils import compute_mdhash_id
-from ..schema import File, FileMetadata
-from .docling_cloud import DoclingCloudClient
-from .dots_ocr import DotsOCRClient
+from hirag_prod._utils import compute_mdhash_id
+from hirag_prod.loader.docling_cloud import DoclingCloudClient
+from hirag_prod.loader.dots_ocr import DotsOCRClient
+from hirag_prod.schema import File, FileMetadata
 
 
 class BaseLoader(ABC):

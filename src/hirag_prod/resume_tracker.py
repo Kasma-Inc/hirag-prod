@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 import redis
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from .storage.pg_utils import DatabaseClient
+from hirag_prod.storage.pg_utils import DatabaseClient
 
 logger = logging.getLogger(__name__)
 

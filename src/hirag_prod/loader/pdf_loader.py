@@ -2,9 +2,9 @@ from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
 from docling.document_converter import DocumentConverter, PdfFormatOption
 
-from .base_loader import BaseLoader
-from .docling_cloud import DoclingCloudClient
-from .dots_ocr import DotsOCRClient
+from hirag_prod.loader.base_loader import BaseLoader
+from hirag_prod.loader.docling_cloud import DoclingCloudClient
+from hirag_prod.loader.dots_ocr import DotsOCRClient
 
 
 class PDFLoader(BaseLoader):

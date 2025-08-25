@@ -4,17 +4,17 @@ from typing import Any, Optional, Tuple
 
 import requests
 
-from .._utils import route_file_path, validate_document_path
-from ..schema import File, LoaderType
-from .csv_loader import CSVLoader
-from .excel_loader import ExcelLoader
-from .html_loader import HTMLLoader
-from .image_loader import ImageLoader
-from .md_loader import MdLoader
-from .pdf_loader import PDFLoader
-from .ppt_loader import PowerPointLoader
-from .txt_loader import TxtLoader
-from .word_loader import WordLoader
+from hirag_prod._utils import route_file_path, validate_document_path
+from hirag_prod.loader.csv_loader import CSVLoader
+from hirag_prod.loader.excel_loader import ExcelLoader
+from hirag_prod.loader.html_loader import HTMLLoader
+from hirag_prod.loader.image_loader import ImageLoader
+from hirag_prod.loader.md_loader import MdLoader
+from hirag_prod.loader.pdf_loader import PDFLoader
+from hirag_prod.loader.ppt_loader import PowerPointLoader
+from hirag_prod.loader.txt_loader import TxtLoader
+from hirag_prod.loader.word_loader import WordLoader
+from hirag_prod.schema import File, LoaderType
 
 # Configure Logging
 logging.basicConfig(
