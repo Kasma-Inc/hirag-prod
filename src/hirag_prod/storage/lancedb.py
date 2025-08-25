@@ -202,10 +202,8 @@ class LanceDB(BaseVDB):
         knowledge_base_id: str,
         query,
     ):
-        if workspace_id:
-            query = query.where(f"workspace_id == '{workspace_id}'")
-        if knowledge_base_id:
-            query = query.where(f"knowledge_base_id == '{knowledge_base_id}'")
+        query = query.where(f"workspace_id == '{workspace_id}'")
+        query = query.where(f"knowledge_base_id == '{knowledge_base_id}'")
         return query
 
     async def query(
