@@ -5,9 +5,9 @@ from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.schema.chunk import Chunk, ChunkMetadata
-from hirag_prod.schema.file import File
+from .._utils import compute_mdhash_id
+from ..schema.chunk import Chunk, ChunkMetadata
+from ..schema.file import File
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200

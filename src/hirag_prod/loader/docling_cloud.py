@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import requests
 from docling_core.types.doc import DoclingDocument
 
-from hirag_prod._utils import download_oss_file, download_s3_file
+from .._utils import download_oss_file, download_s3_file
 
 OUTPUT_DIR_PREFIX = "docling_cloud/output"
 

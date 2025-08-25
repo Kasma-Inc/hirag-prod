@@ -1,7 +1,7 @@
 from docling.document_converter import DocumentConverter
 
-from hirag_prod.loader.base_loader import BaseLoader
-from hirag_prod.loader.docling_cloud import DoclingCloudClient
+from .base_loader import BaseLoader
+from .docling_cloud import DoclingCloudClient
 
 
 class ImageLoader(BaseLoader):

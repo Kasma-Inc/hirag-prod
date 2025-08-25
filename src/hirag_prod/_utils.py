@@ -22,7 +22,7 @@ from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
 
-from hirag_prod.schema import LoaderType
+from .schema import LoaderType
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None

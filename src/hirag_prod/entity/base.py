@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable, List, Tuple
 
-from hirag_prod.schema import Chunk, Entity, Relation
+from ..schema import Chunk, Entity, Relation
 
 
 @dataclass

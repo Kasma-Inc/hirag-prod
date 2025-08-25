@@ -5,9 +5,8 @@ from typing import List, Literal, Optional
 
 import lancedb
 
-from hirag_prod._utils import EmbeddingFunc
-from hirag_prod.storage.base_vdb import BaseVDB
-
+from .._utils import EmbeddingFunc
+from .base_vdb import BaseVDB
 from .retrieval_strategy_provider import RetrievalStrategyProvider
 
 logger = logging.getLogger(__name__)

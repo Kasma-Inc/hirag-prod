@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Union
 from lancedb.query import AsyncQuery, AsyncVectorQuery, LanceQueryBuilder
 from lancedb.rerankers import VoyageAIReranker
 
-from hirag_prod.reranker import LocalReranker
+from ..reranker import LocalReranker
 
 
 class BaseRetrievalStrategyProvider:
