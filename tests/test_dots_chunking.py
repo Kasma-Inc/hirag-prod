@@ -1,7 +1,6 @@
 import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
-from uuid import uuid4
 
 import pytest
 
