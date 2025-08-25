@@ -72,41 +72,89 @@ class ResumeTracker:
             logger.error(f"Failed to connect to Redis: {e}")
             raise
 
-    def _chunk_key(self, chunk_id: str) -> str:
+    def _scope_prefix(self, workspace_id: str, knowledge_base_id: str) -> str:
+        """Generate Redis key prefix for a given workspace and knowledge base"""
+        return f"{self.key_prefix}:ws:{workspace_id}:kb:{knowledge_base_id}"
+
+    def _chunk_key(
+        self,
+        chunk_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for chunk status"""
-        return f"{self.key_prefix}:chunk:{chunk_id}"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:chunk:{chunk_id}"
 
-    def _doc_chunks_key(self, document_id: str) -> str:
+    def _doc_chunks_key(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for document's chunk set"""
-        return f"{self.key_prefix}:doc:{document_id}:chunks"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:doc:{document_id}:chunks"
 
-    def _doc_entity_completed_key(self, document_id: str) -> str:
+    def _doc_entity_completed_key(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for document's entity-completed chunks"""
-        return f"{self.key_prefix}:doc:{document_id}:entity_completed"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:doc:{document_id}:entity_completed"
 
-    def _doc_relation_completed_key(self, document_id: str) -> str:
+    def _doc_relation_completed_key(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for document's relation-completed chunks"""
-        return f"{self.key_prefix}:doc:{document_id}:relation_completed"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:doc:{document_id}:relation_completed"
 
-    def _doc_info_key(self, document_id: str) -> str:
+    def _doc_info_key(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for document info"""
-        return f"{self.key_prefix}:doc:{document_id}:info"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:doc:{document_id}:info"
 
-    def _doc_completion_key(self, document_id: str) -> str:
+    def _doc_completion_key(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Generate Redis key for document completion status (persistent)"""
-        return f"{self.key_prefix}:completed:{document_id}"
+        return f"{self._scope_prefix(workspace_id, knowledge_base_id)}:completed:{document_id}"
 
     def _job_key(self, job_id: str) -> str:
         """Generate Redis key for ingestion job status"""
         return f"{self.key_prefix}:job:{job_id}"
 
-    def _calculate_chunk_hash(self, chunk_content: str) -> str:
+    def _calculate_chunk_hash(
+        self,
+        chunk_content: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> str:
         """Calculate a hash for chunk content to detect changes"""
-        return hashlib.md5(chunk_content.encode()).hexdigest()
+        return hashlib.md5(
+            f"{chunk_content}:{workspace_id}:{knowledge_base_id}".encode()
+        ).hexdigest()
 
-    def is_document_already_completed(self, document_id: str) -> bool:
+    def is_document_already_completed(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> bool:
         """Check if document was already fully processed in a previous session"""
-        completion_key = self._doc_completion_key(document_id)
+        completion_key = self._doc_completion_key(
+            document_id, workspace_id, knowledge_base_id
+        )
         completion_data = self.redis_client.hgetall(completion_key)
 
         if not completion_data:
@@ -268,14 +316,21 @@ class ResumeTracker:
         )
 
     def register_chunks(
-        self, chunks: List, document_id: str, document_uri: str
+        self,
+        chunks: List,
+        document_id: str,
+        document_uri: str,
+        workspace_id: str,
+        knowledge_base_id: str,
     ) -> None:
         """Register chunks in the tracking system"""
         if not chunks:
             return
 
         # Check if document was already completed
-        if self.is_document_already_completed(document_id):
+        if self.is_document_already_completed(
+            document_id, workspace_id, knowledge_base_id
+        ):
             logger.info(
                 f"Document {document_id} already completed, skipping registration"
             )
@@ -285,7 +340,7 @@ class ResumeTracker:
         now = datetime.now().isoformat()
 
         # Check if document already exists in current session
-        doc_info_key = self._doc_info_key(document_id)
+        doc_info_key = self._doc_info_key(document_id, workspace_id, knowledge_base_id)
         if self.redis_client.exists(doc_info_key):
             logger.debug(
                 f"Document {document_id} already registered in current session, skipping chunk registration"
@@ -299,18 +354,24 @@ class ResumeTracker:
             "total_chunks": len(chunks),
             "created_at": now,
             "last_updated": now,
+            "workspace_id": workspace_id or "",
+            "knowledge_base_id": knowledge_base_id or "",
         }
         pipeline.hset(doc_info_key, mapping=doc_info)
 
         # Register chunks
-        doc_chunks_key = self._doc_chunks_key(document_id)
+        doc_chunks_key = self._doc_chunks_key(
+            document_id, workspace_id, knowledge_base_id
+        )
         for chunk in chunks:
-            chunk_key = self._chunk_key(chunk.id)
+            chunk_key = self._chunk_key(chunk.id, workspace_id, knowledge_base_id)
             chunk_data = {
                 "chunk_id": chunk.id,
                 "document_id": document_id,
                 "document_uri": document_uri,
-                "chunk_hash": self._calculate_chunk_hash(chunk.page_content),
+                "chunk_hash": self._calculate_chunk_hash(
+                    chunk.page_content, workspace_id, knowledge_base_id
+                ),
                 "entity_extraction_completed": "false",
                 "relation_extraction_completed": "false",
                 "entity_count": "0",
@@ -319,7 +380,6 @@ class ResumeTracker:
             }
             pipeline.hset(chunk_key, mapping=chunk_data)
             pipeline.sadd(doc_chunks_key, chunk.id)
-            # Set TTL for chunk data (30 days default)
             pipeline.expire(chunk_key, EXPIRE_TTL)
 
         # Set TTL for document keys (but not completion key)
@@ -332,22 +392,37 @@ class ResumeTracker:
         )
 
     def _get_chunk_ids_with_status(
-        self, chunks: List, extraction_type: ExtractionType
+        self,
+        chunks: List,
+        extraction_type: ExtractionType,
+        workspace_id: str,
+        knowledge_base_id: str,
     ) -> Set[str]:
         """Get chunk IDs that have completed the specified extraction type"""
         if not chunks:
             return set()
 
         document_id = chunks[0].metadata.document_id
+
         if extraction_type == ExtractionType.ENTITY:
-            completed_key = self._doc_entity_completed_key(document_id)
+            completed_key = self._doc_entity_completed_key(
+                document_id, workspace_id, knowledge_base_id
+            )
         else:
-            completed_key = self._doc_relation_completed_key(document_id)
+            completed_key = self._doc_relation_completed_key(
+                document_id, workspace_id, knowledge_base_id
+            )
 
         completed_chunks = self.redis_client.smembers(completed_key)
         return set(completed_chunks)
 
-    def get_pending_chunks(self, chunks: List, extraction_type: ExtractionType) -> List:
+    def get_pending_chunks(
+        self,
+        chunks: List,
+        extraction_type: ExtractionType,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List:
         """Get chunks that need the specified extraction type"""
         if not chunks:
             return []
@@ -375,16 +450,28 @@ class ResumeTracker:
         )
         return pending_chunks
 
-    def get_pending_entity_chunks(self, chunks: List) -> List:
+    def get_pending_entity_chunks(
+        self, chunks: List, workspace_id: str, knowledge_base_id: str
+    ) -> List:
         """Get chunks that need entity extraction"""
-        return self.get_pending_chunks(chunks, ExtractionType.ENTITY)
+        return self.get_pending_chunks(
+            chunks, ExtractionType.ENTITY, workspace_id, knowledge_base_id
+        )
 
-    def get_pending_relation_chunks(self, chunks: List) -> List:
+    def get_pending_relation_chunks(
+        self, chunks: List, workspace_id: str, knowledge_base_id: str
+    ) -> List:
         """Get chunks that need relation extraction"""
-        return self.get_pending_chunks(chunks, ExtractionType.RELATION)
+        return self.get_pending_chunks(
+            chunks, ExtractionType.RELATION, workspace_id, knowledge_base_id
+        )
 
     def mark_extraction_started(
-        self, chunks: List, extraction_type: ExtractionType
+        self,
+        chunks: List,
+        extraction_type: ExtractionType,
+        workspace_id: str,
+        knowledge_base_id: str,
     ) -> None:
         """Mark chunks as having started the specified extraction"""
         if not chunks:
@@ -395,7 +482,7 @@ class ResumeTracker:
         field_name = f"{extraction_type.value}_extraction_started_at"
 
         for chunk in chunks:
-            chunk_key = self._chunk_key(chunk.id)
+            chunk_key = self._chunk_key(chunk.id, workspace_id, knowledge_base_id)
             pipeline.hset(chunk_key, field_name, now)
 
         pipeline.execute()
@@ -407,6 +494,8 @@ class ResumeTracker:
         self,
         chunks: List,
         extraction_type: ExtractionType,
+        workspace_id: str,
+        knowledge_base_id: str,
         counts: Optional[Dict[str, int]] = None,
     ) -> None:
         """Mark chunks as having completed the specified extraction"""
@@ -420,13 +509,17 @@ class ResumeTracker:
 
         # Get the appropriate completed set key
         if extraction_type == ExtractionType.ENTITY:
-            completed_key = self._doc_entity_completed_key(document_id)
+            completed_key = self._doc_entity_completed_key(
+                document_id, workspace_id, knowledge_base_id
+            )
         else:
-            completed_key = self._doc_relation_completed_key(document_id)
+            completed_key = self._doc_relation_completed_key(
+                document_id, workspace_id, knowledge_base_id
+            )
 
         # Update chunk status and add to completed set
         for chunk in chunks:
-            chunk_key = self._chunk_key(chunk.id)
+            chunk_key = self._chunk_key(chunk.id, workspace_id, knowledge_base_id)
             updates = {
                 f"{extraction_type.value}_extraction_completed": "true",
                 f"{extraction_type.value}_extraction_completed_at": now,
@@ -446,34 +539,72 @@ class ResumeTracker:
 
         # Check if document is complete and cleanup if so (only if auto_cleanup is enabled)
         if self.auto_cleanup:
-            self._check_and_cleanup_if_complete(document_id)
+            self._check_and_cleanup_if_complete(
+                document_id, workspace_id, knowledge_base_id
+            )
 
-    def mark_entity_extraction_started(self, chunks: List) -> None:
+    def mark_entity_extraction_started(
+        self, chunks: List, workspace_id: str, knowledge_base_id: str
+    ) -> None:
         """Mark chunks as having started entity extraction"""
-        self.mark_extraction_started(chunks, ExtractionType.ENTITY)
+        self.mark_extraction_started(
+            chunks, ExtractionType.ENTITY, workspace_id, knowledge_base_id
+        )
 
     def mark_entity_extraction_completed(
-        self, chunks: List, entity_counts: Dict[str, int] = None
+        self,
+        chunks: List,
+        workspace_id: str,
+        knowledge_base_id: str,
+        entity_counts: Dict[str, int] = None,
     ) -> None:
         """Mark chunks as having completed entity extraction"""
-        self.mark_extraction_completed(chunks, ExtractionType.ENTITY, entity_counts)
+        self.mark_extraction_completed(
+            chunks,
+            ExtractionType.ENTITY,
+            workspace_id,
+            knowledge_base_id,
+            entity_counts,
+        )
 
-    def mark_relation_extraction_started(self, chunks: List) -> None:
+    def mark_relation_extraction_started(
+        self, chunks: List, workspace_id: str, knowledge_base_id: str
+    ) -> None:
         """Mark chunks as having started relation extraction"""
-        self.mark_extraction_started(chunks, ExtractionType.RELATION)
+        self.mark_extraction_started(
+            chunks, ExtractionType.RELATION, workspace_id, knowledge_base_id
+        )
 
     def mark_relation_extraction_completed(
-        self, chunks: List, relation_counts: Dict[str, int] = None
+        self,
+        chunks: List,
+        workspace_id: str,
+        knowledge_base_id: str,
+        relation_counts: Dict[str, int] = None,
     ) -> None:
         """Mark chunks as having completed relation extraction"""
-        self.mark_extraction_completed(chunks, ExtractionType.RELATION, relation_counts)
+        self.mark_extraction_completed(
+            chunks,
+            ExtractionType.RELATION,
+            workspace_id,
+            knowledge_base_id,
+            relation_counts,
+        )
 
-    def is_document_complete(self, document_id: str) -> bool:
+    def is_document_complete(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> bool:
         """Check if entire document processing is complete in current session"""
-        doc_info_key = self._doc_info_key(document_id)
-        doc_chunks_key = self._doc_chunks_key(document_id)
-        entity_completed_key = self._doc_entity_completed_key(document_id)
-        relation_completed_key = self._doc_relation_completed_key(document_id)
+        doc_info_key = self._doc_info_key(document_id, workspace_id, knowledge_base_id)
+        entity_completed_key = self._doc_entity_completed_key(
+            document_id, workspace_id, knowledge_base_id
+        )
+        relation_completed_key = self._doc_relation_completed_key(
+            document_id, workspace_id, knowledge_base_id
+        )
 
         # Get document info
         doc_info = self.redis_client.hgetall(doc_info_key)
@@ -495,24 +626,33 @@ class ResumeTracker:
 
         return is_complete
 
-    def mark_document_completed(self, document_id: str) -> None:
+    def mark_document_completed(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> None:
         """Mark entire document as completed and trigger cleanup"""
         now = datetime.now().isoformat()
 
         # Store persistent completion record
-        completion_key = self._doc_completion_key(document_id)
+        completion_key = self._doc_completion_key(
+            document_id, workspace_id, knowledge_base_id
+        )
         completion_data = {
             "document_id": document_id,
             "pipeline_completed": "true",
             "completed_at": now,
             "last_updated": now,
+            "workspace_id": (workspace_id or ""),
+            "knowledge_base_id": (knowledge_base_id or ""),
         }
         # Set long TTL for completion records (30 days)
         self.redis_client.hset(completion_key, mapping=completion_data)
         self.redis_client.expire(completion_key, EXPIRE_TTL)
 
         # Update document status in current session
-        doc_info_key = self._doc_info_key(document_id)
+        doc_info_key = self._doc_info_key(document_id, workspace_id, knowledge_base_id)
         if self.redis_client.exists(doc_info_key):
             self.redis_client.hset(
                 doc_info_key,
@@ -526,21 +666,35 @@ class ResumeTracker:
         logger.info(f"Marked document {document_id} as fully completed")
 
         # Cleanup tracking data since processing is complete
-        self._cleanup_document_tracking(document_id)
+        self._cleanup_document_tracking(document_id, workspace_id, knowledge_base_id)
 
-    def _check_and_cleanup_if_complete(self, document_id: str) -> None:
+    def _check_and_cleanup_if_complete(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> None:
         """Check if document is complete and cleanup if so"""
-        if self.is_document_complete(document_id):
+        if self.is_document_complete(document_id, workspace_id, knowledge_base_id):
             logger.info(
                 f"Document {document_id} processing complete, cleaning up tracking data"
             )
-            self._cleanup_document_tracking(document_id)
+            self._cleanup_document_tracking(
+                document_id, workspace_id, knowledge_base_id
+            )
 
-    def _cleanup_document_tracking(self, document_id: str) -> None:
+    def _cleanup_document_tracking(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> None:
         """Clean up session tracking data for a completed document (keeps completion record)"""
         try:
             # Get all chunk IDs for this document
-            doc_chunks_key = self._doc_chunks_key(document_id)
+            doc_chunks_key = self._doc_chunks_key(
+                document_id, workspace_id, knowledge_base_id
+            )
             chunk_ids = self.redis_client.smembers(doc_chunks_key)
 
             # Prepare pipeline for cleanup
@@ -548,14 +702,24 @@ class ResumeTracker:
 
             # Delete chunk status keys
             for chunk_id in chunk_ids:
-                chunk_key = self._chunk_key(chunk_id)
+                chunk_key = self._chunk_key(chunk_id, workspace_id, knowledge_base_id)
                 pipeline.delete(chunk_key)
 
             # Delete document session keys (but keep completion record)
             pipeline.delete(doc_chunks_key)
-            pipeline.delete(self._doc_entity_completed_key(document_id))
-            pipeline.delete(self._doc_relation_completed_key(document_id))
-            pipeline.delete(self._doc_info_key(document_id))
+            pipeline.delete(
+                self._doc_entity_completed_key(
+                    document_id, workspace_id, knowledge_base_id
+                )
+            )
+            pipeline.delete(
+                self._doc_relation_completed_key(
+                    document_id, workspace_id, knowledge_base_id
+                )
+            )
+            pipeline.delete(
+                self._doc_info_key(document_id, workspace_id, knowledge_base_id)
+            )
 
             # Execute cleanup
             pipeline.execute()
@@ -569,14 +733,21 @@ class ResumeTracker:
                 f"Failed to cleanup tracking data for document {document_id}: {e}"
             )
 
-    def get_processing_stats(self, document_id: str) -> Dict:
+    def get_processing_stats(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> Dict:
         """Get detailed processing statistics for a document"""
-        doc_info_key = self._doc_info_key(document_id)
+        doc_info_key = self._doc_info_key(document_id, workspace_id, knowledge_base_id)
         doc_info = self.redis_client.hgetall(doc_info_key)
 
         if not doc_info:
             # Check if document was completed in a previous session
-            completion_key = self._doc_completion_key(document_id)
+            completion_key = self._doc_completion_key(
+                document_id, workspace_id, knowledge_base_id
+            )
             completion_data = self.redis_client.hgetall(completion_key)
             if completion_data:
                 return {
@@ -589,14 +760,18 @@ class ResumeTracker:
 
         total_chunks = int(doc_info.get("total_chunks", 0))
         entity_completed = self.redis_client.scard(
-            self._doc_entity_completed_key(document_id)
+            self._doc_entity_completed_key(document_id, workspace_id, knowledge_base_id)
         )
         relation_completed = self.redis_client.scard(
-            self._doc_relation_completed_key(document_id)
+            self._doc_relation_completed_key(
+                document_id, workspace_id, knowledge_base_id
+            )
         )
 
         # Calculate totals by checking individual chunks
-        doc_chunks_key = self._doc_chunks_key(document_id)
+        doc_chunks_key = self._doc_chunks_key(
+            document_id, workspace_id, knowledge_base_id
+        )
         chunk_ids = self.redis_client.smembers(doc_chunks_key)
 
         total_entities = 0
@@ -605,7 +780,7 @@ class ResumeTracker:
         if chunk_ids:
             pipeline = self.redis_client.pipeline()
             for chunk_id in chunk_ids:
-                chunk_key = self._chunk_key(chunk_id)
+                chunk_key = self._chunk_key(chunk_id, workspace_id, knowledge_base_id)
                 pipeline.hmget(chunk_key, "entity_count", "relation_count")
 
             results = pipeline.execute()
@@ -638,18 +813,17 @@ class ResumeTracker:
             "last_updated": doc_info.get("last_updated"),
         }
 
-    def reset_document(self, document_id: str) -> None:
+    def reset_document(
+        self,
+        document_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> None:
         """Reset processing status for a document (for testing/debugging)"""
         # Clean up both session data and completion record
-        self._cleanup_document_tracking(document_id)
-        completion_key = self._doc_completion_key(document_id)
+        self._cleanup_document_tracking(document_id, workspace_id, knowledge_base_id)
+        completion_key = self._doc_completion_key(
+            document_id, workspace_id, knowledge_base_id
+        )
         self.redis_client.delete(completion_key)
         logger.info(f"Reset processing status for document {document_id}")
-
-    def cleanup_old_entries(self, days: int = 30) -> None:
-        """Clean up tracking entries older than specified days (Redis TTL handles this automatically)"""
-        # Redis TTL automatically handles cleanup, but we can manually clean expired keys
-        # This is mainly for compatibility with the interface
-        logger.info(
-            f"Redis TTL automatically handles cleanup of entries older than {days} days"
-        )
