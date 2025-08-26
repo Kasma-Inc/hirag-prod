@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
-import pyarrow as pa
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
 
@@ -50,6 +49,10 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
+from hirag_prod.storage.pg_schema import Base as PGBase
+from hirag_prod.storage.pgvector import PGVector
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 load_dotenv("/chatbot/.env")
 
@@ -58,6 +61,8 @@ load_dotenv("/chatbot/.env")
 # ============================================================================
 
 # Database Configuration
+DEFAULT_VDB_TYPE = "lancedb"
+DEFAULT_GDB_TYPE = "networkx"
 DEFAULT_VECTOR_DB_PATH = "kb/hirag.db"
 DEFAULT_GRAPH_DB_PATH = "kb/hirag.gpickle"
 
@@ -135,6 +140,8 @@ class HiRAGConfig:
     # Database configuration
     vector_db_path: str = DEFAULT_VECTOR_DB_PATH
     graph_db_path: str = DEFAULT_GRAPH_DB_PATH
+    vdb_type: Literal["lancedb", "pgvector"] = DEFAULT_VDB_TYPE
+    gdb_type: Literal["networkx", "neo4j"] = DEFAULT_GDB_TYPE  #TODO: neo4j not implemented yet
 
     # Redis Configuration for resume tracker
     redis_url: str = os.environ.get("REDIS_URL", "redis://redis:6379/2")
@@ -265,20 +272,29 @@ def validate_input(document_path: str, content_type: str) -> None:
 
 
 class StorageManager:
-    """Unified manager for vector database and graph database operations"""
+    """Unified manager for vector database and graph database operations."""
 
-    def __init__(self, vdb: BaseVDB, gdb: BaseGDB, embedding_dimension: int):
+    def __init__(
+        self,
+        vdb: BaseVDB,
+        gdb: BaseGDB,
+        embedding_dimension: int,
+        vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
+        gdb_type: Literal["neo4j", "networkx"] = "networkx",
+    ):
         self.vdb = vdb
         self.gdb = gdb
-        self.chunks_table = None
-        self.relations_table = None
         self.files_table = None
         self.embedding_dimension = embedding_dimension
+        self.vdb_type = vdb_type
+        self.gdb_type = gdb_type
 
     async def initialize(self) -> None:
         """Initialize storage tables"""
-        await self._initialize_chunks_table()
-        await self._initialize_relations_table()
+        try:
+            await self.vdb._init_vdb(embedding_dimension=self.embedding_dimension)
+        except Exception as e:
+            raise StorageError(f"Failed to initialize VDB: {e}")
         await self._initialize_files_table()
 
     # Modified to automatically following the schema defined in schema: chunk & file
@@ -293,196 +309,170 @@ class StorageManager:
             else:
                 raise StorageError(f"Failed to initialize files table: {e}")
 
-    async def _initialize_chunks_table(self) -> None:
-        """Initialize chunks table"""
-        try:
-            self.chunks_table = await self.vdb.db.open_table("chunks")
-        except Exception as e:
-            if "was not found" in str(e):
-                self.chunks_table = await self.vdb.db.create_table(
-                    "chunks",
-                    schema=pa.schema(
-                        [
-                            pa.field("knowledge_base_id", pa.string()),
-                            pa.field("workspace_id", pa.string()),
-                            pa.field("text", pa.string()),
-                            pa.field("document_key", pa.string()),
-                            pa.field("type", pa.string()),
-                            pa.field("filename", pa.string()),
-                            pa.field("page_number", pa.int32()),
-                            pa.field("uri", pa.string()),
-                            pa.field("private", pa.bool_()),
-                            pa.field("chunk_idx", pa.int32()),
-                            pa.field("document_id", pa.string()),
-                            pa.field("chunk_type", pa.string()),
-                            # Optional metadata fields from ChunkMetadata
-                            pa.field("page_image_url", pa.string()),
-                            pa.field("page_width", pa.float32()),
-                            pa.field("page_height", pa.float32()),
-                            pa.field("x_0", pa.float32()),
-                            pa.field("y_0", pa.float32()),
-                            pa.field("x_1", pa.float32()),
-                            pa.field("y_1", pa.float32()),
-                            pa.field(
-                                "vector",
-                                pa.list_(pa.float32(), self.embedding_dimension),
-                            ),
-                            pa.field("uploaded_at", pa.timestamp("us")),
-                        ]
-                    ),
-                )
-            else:
-                raise StorageError(f"Failed to initialize chunks table: {e}")
-
-    async def _initialize_relations_table(self) -> None:
-        """Initialize relations table"""
-        try:
-            self.relations_table = await self.vdb.db.open_table("relations")
-        except Exception as e:
-            if "was not found" in str(e):
-                self.relations_table = await self.vdb.db.create_table(
-                    "relations",
-                    schema=pa.schema(
-                        [
-                            pa.field("source", pa.string()),
-                            pa.field("target", pa.string()),
-                            pa.field("description", pa.string()),
-                            pa.field("file_name", pa.string()),
-                            pa.field(
-                                "vector",
-                                pa.list_(pa.float32(), self.embedding_dimension),
-                            ),
-                            pa.field("knowledge_base_id", pa.string()),
-                            pa.field("workspace_id", pa.string()),
-                        ]
-                    ),
-                )
-            else:
-                raise StorageError(f"Failed to initialize relations table: {e}")
+    def _chunk_props_for_vdb(self, chunk: Chunk) -> Dict[str, Any]:
+        metadata = chunk.metadata
+        return {
+            "text": chunk.page_content,
+            "documentKey": chunk.id,
+            "workspaceId": getattr(metadata, "workspace_id", None),
+            "knowledgeBaseId": getattr(metadata, "knowledge_base_id", None),
+            "fileName": getattr(metadata, "filename", None),
+            "uri": getattr(metadata, "uri", None),
+            "private": getattr(metadata, "private", False),
+            "documentId": getattr(metadata, "document_id", None),
+            "chunkType": getattr(metadata, "chunk_type", None),
+            "pageNumber": getattr(metadata, "page_number", None),
+            "chunkIdx": getattr(metadata, "chunk_idx", None),
+            "pageImageUrl": getattr(metadata, "page_image_url", None),
+            "pageWidth": getattr(metadata, "page_width", None),
+            "pageHeight": getattr(metadata, "page_height", None),
+            "x0": getattr(metadata, "x_0", getattr(metadata, "x0", None)),
+            "y0": getattr(metadata, "y_0", getattr(metadata, "y0", None)),
+            "x1": getattr(metadata, "x_1", getattr(metadata, "x1", None)),
+            "y1": getattr(metadata, "y_1", getattr(metadata, "y1", None)),
+            "type": getattr(metadata, "type", None),
+        }
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
-    async def upsert_files(self, files: List[File]) -> None:
-        """Batch insert files"""
-        # TODO: Use PG for storage
-        if not files:
-            return
-
-        try:
-            pass
-
-        except Exception as e:
-            raise StorageError(f"Failed to upsert files: {e}")
-
-    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
-    async def upsert_chunks(self, chunks: List[Chunk]) -> None:
-        """Batch insert chunks"""
-        # TODO: Implement intelligent batching based on chunk size and content complexity
+    async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return
-
-        try:
-            texts_to_embed = [chunk.page_content for chunk in chunks]
-            properties_list = [
-                {
-                    "document_key": chunk.id,
-                    "text": chunk.page_content,
-                    **chunk.metadata.__dict__,
-                }
-                for chunk in chunks
-            ]
-
-            await self.vdb.upsert_texts(
-                texts_to_embed=texts_to_embed,
-                properties_list=properties_list,
-                table=self.chunks_table,
-                mode="append",
-            )
-        except Exception as e:
-            raise StorageError(f"Failed to upsert chunks: {e}")
+        texts_to_embed = [c.page_content for c in chunks]
+        properties_list = [self._chunk_props_for_vdb(c) for c in chunks]
+        await self.vdb.upsert_texts(
+            texts_to_embed=texts_to_embed,
+            properties_list=properties_list,
+            table_name="Chunks",
+            mode="append",
+        )
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_relations_to_vdb(self, relations: List[Relation]) -> None:
-        """Batch insert relations to vector database"""
         if not relations:
             return
-
-        try:
-            filtered_relations = [
-                relation
-                for relation in relations
-                if not relation.source.startswith("chunk-")
-            ]
-
-            if not filtered_relations:
-                return
-
-            texts_to_embed = [
-                relation.properties.get("description", "")
-                for relation in filtered_relations
-            ]
-            properties_list = [
-                {
-                    "source": relation.source,
-                    "target": relation.target,
-                    "description": relation.properties.get("description", ""),
-                    "file_name": relation.properties.get("file_name", ""),
-                    "knowledge_base_id": relation.properties.get(
-                        "knowledge_base_id", ""
-                    ),
-                    "workspace_id": relation.properties.get("workspace_id", ""),
-                }
-                for relation in filtered_relations
-            ]
-
-            await self.vdb.upsert_texts(
-                texts_to_embed=texts_to_embed,
-                properties_list=properties_list,
-                table=self.relations_table,
-                mode="append",
-            )
-        except Exception as e:
-            raise StorageError(f"Failed to upsert relations: {e}")
+        filtered = [r for r in relations if not r.source.startswith("chunk-")]
+        if not filtered:
+            return
+        texts_to_embed = [r.properties.get("description", "") for r in filtered]
+        properties_list = [
+            {
+                "source": r.source,
+                "target": r.target,
+                "description": r.properties.get("description", ""),
+                "fileName": r.properties.get("file_name", ""),
+                "knowledgeBaseId": r.properties.get("knowledge_base_id", ""),
+                "workspaceId": r.properties.get("workspace_id", ""),
+            }
+            for r in filtered
+        ]
+        await self.vdb.upsert_texts(
+            texts_to_embed=texts_to_embed,
+            properties_list=properties_list,
+            table_name="Triplets",
+            mode="append",
+        )
 
     async def get_existing_chunks(
-        self,
-        uri: str,
-        workspace_id: str,
-        knowledge_base_id: str,
+        self, uri: str, workspace_id: str, knowledge_base_id: str
     ) -> List[str]:
-        """Get existing chunk IDs"""
         try:
-            where_clauses = [f"uri == '{uri}'"]
-            where_clauses.append(f"workspace_id == '{workspace_id}'")
-            where_clauses.append(f"knowledge_base_id == '{knowledge_base_id}'")
-            where_expr = " and ".join(where_clauses)
-            existing_data = await self.chunks_table.query().where(where_expr).to_list()
-            return [chunk["document_key"] for chunk in existing_data]
+            return await self.vdb.get_existing_document_keys(
+                uri=uri,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                table_name="Chunks",
+            )
         except Exception as e:
             logger.warning(f"Failed to get existing chunks: {e}")
             return []
 
-    async def health_check(self) -> Dict[str, bool]:
-        """Health check"""
-        health = {}
+    async def query_chunks(
+        self,
+        query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: int,
+        topn: Optional[int],
+        rerank: bool,
+    ) -> List[Dict[str, Any]]:
+        rows = await self.vdb.query(
+            query=query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Chunks",
+            topk=topk,
+            topn=topn,
+            columns_to_select=[
+                "text",
+                "uri",
+                "fileName",
+                "private",
+                "updatedAt",
+                "documentKey",
+            ],
+            rerank=rerank,
+        )
+        return rows
 
+    async def query_triplets(
+        self,
+        query: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: int,
+        topn: Optional[int],
+        rerank: bool,
+    ) -> List[Dict[str, Any]]:
+        rows = await self.vdb.query(
+            query=query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Triplets",
+            topk=topk,
+            topn=topn,
+            columns_to_select=["source", "target", "description", "fileName"],
+            rerank=rerank,
+        )
+        return rows
+
+    async def query_by_keys(
+        self,
+        chunk_ids: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        rows = await self.vdb.query_by_keys(
+            key_value=chunk_ids,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Chunks",
+            key_column="documentKey",
+            columns_to_select=columns_to_select or ["documentKey", "vector"],
+        )
+        return rows
+
+    # ------------------------------ Health/Cleanup ------------------------------
+    async def health_check(self) -> Dict[str, bool]:
+        health: Dict[str, bool] = {}
         try:
-            # Check vector database
-            await self.vdb.db.table_names()
+            if self.vdb_type == "lancedb":
+                await self.vdb.db.table_names()
+            elif self.vdb_type == "pgvector":
+                async with AsyncSession(self.vdb.engine, expire_on_commit=False) as s:
+                    await s.execute(select(1))
             health["vdb"] = True
         except Exception:
             health["vdb"] = False
 
         try:
-            # Check graph database
             await self.gdb.health_check() if hasattr(self.gdb, "health_check") else None
             health["gdb"] = True
         except Exception:
             health["gdb"] = False
-
         return health
 
     async def cleanup(self) -> None:
-        """Clean up resources"""
         try:
             await self.gdb.clean_up()
             await self.vdb.clean_up()
@@ -713,7 +703,7 @@ class DocumentProcessor:
             logger.info(f"📤 Processing {len(pending_chunks)} pending chunks...")
 
             # Batch storage
-            await self.storage.upsert_chunks(pending_chunks)
+            await self.storage.upsert_chunks_to_vdb(pending_chunks)
             self.metrics.metrics.processed_chunks += len(pending_chunks)
 
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
@@ -790,25 +780,16 @@ class QueryService:
         knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
-        rerank: bool = True,
+        rerank: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Query chunks"""
-        return await self.storage.vdb.query(
+        """Query chunks via unified storage"""
+        return await self.storage.query_chunks(
             query=query,
-            table=self.storage.chunks_table,
-            topk=topk,
-            topn=topn,
-            columns_to_select=[
-                "text",
-                "uri",
-                "filename",
-                "private",
-                "uploaded_at",
-                "document_key",
-            ],
-            rerank=rerank,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
+            topk=topk,
+            topn=topn,
+            rerank=rerank,
         )
 
     async def recall_chunks(
@@ -818,7 +799,7 @@ class QueryService:
         knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
-        rerank: bool = True,
+        rerank: bool = False,
     ) -> Dict[str, Any]:
         """Recall chunks and return both raw results and extracted chunk_ids.
 
@@ -841,7 +822,7 @@ class QueryService:
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
         )
-        chunk_ids = [c.get("document_key") for c in chunks if c.get("document_key")]
+        chunk_ids = [c.get("documentKey") for c in chunks if c.get("documentKey")]
         return {"chunks": chunks, "chunk_ids": chunk_ids}
 
     async def query_triplets(
@@ -851,17 +832,16 @@ class QueryService:
         knowledge_base_id: str,
         topk: int = DEFAULT_QUERY_TOPK,
         topn: int = DEFAULT_QUERY_TOPN,
+        rerank: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Query relations from vector database using semantic search"""
-        return await self.storage.vdb.query(
+        """Query relations using unified storage"""
+        return await self.storage.query_triplets(
             query=query,
-            table=self.storage.relations_table,
-            topk=topk,
-            topn=topn,
-            columns_to_select=["source", "target", "description", "file_name"],
-            rerank=False,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
+            topk=topk,
+            topn=topn,
+            rerank=rerank,
         )
 
     async def recall_triplets(
@@ -901,16 +881,6 @@ class QueryService:
                 entity_id_set.add(tgt)
         return {"relations": relations, "entity_ids": list(entity_id_set)}
 
-    async def pagerank_top_chunks(
-        self,
-        seed_chunk_ids: List[str],
-        seed_entity_ids: List[str],
-        topk: int,
-    ) -> List[Tuple[str, float]]:
-        """Delegate personalized PageRank on GDB to get top-k chunk nodes."""
-        return await self.storage.gdb.pagerank_top_chunks(
-            seed_chunk_ids=seed_chunk_ids, seed_entity_ids=seed_entity_ids, topk=topk
-        )
 
     async def query_chunk_embeddings(
         self, workspace_id: str, knowledge_base_id: str, chunk_ids: List[str]
@@ -921,29 +891,22 @@ class QueryService:
 
         res = {}
         try:
-            # Query chunk embeddings by keys
-            chunk_data = await self.storage.vdb.query_by_keys(
+            rows = await self.storage.query_by_keys(
+                chunk_ids=chunk_ids,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                key_value=chunk_ids,
-                key_column="document_key",
-                table=self.storage.chunks_table,
-                columns_to_select=["document_key", "vector"],
+                columns_to_select=["documentKey", "vector"],
             )
-
-            # chunk data is a list of dicts with 'vector' key
-            for chunk in chunk_data:
-                if "vector" in chunk and chunk["vector"] is not None:
-                    res[chunk["document_key"]] = chunk["vector"]
-                else:
-                    # Log missing vector data and raise exception
-                    logger.warning(f"Chunk {chunk['document_key']} has no vector data")
-                    res[chunk["document_key"]] = None
-
+            for row in rows:
+                key = row.get("documentKey")
+                if key and row.get("vector") is not None:
+                    res[key] = row.get("vector")
+                elif key:
+                    logger.warning(f"Chunk {key} has no vector data")
+                    res[key] = None
         except Exception as e:
             logger.error(f"Failed to query chunk embeddings: {e}")
             return {}
-
         return res
 
     async def get_chunks_by_ids(
@@ -960,21 +923,19 @@ class QueryService:
             columns_to_select = [
                 "text",
                 "uri",
-                "filename",
+                "fileName",
                 "private",
-                "uploaded_at",
-                "document_key",
+                "updatedAt",
+                "documentKey",
             ]
-        rows = await self.storage.vdb.query_by_keys(
-            key_value=chunk_ids,
-            key_column="document_key",
-            table=self.storage.chunks_table,
-            columns_to_select=columns_to_select,
+        rows = await self.storage.query_by_keys(
+            chunk_ids=chunk_ids,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
+            columns_to_select=columns_to_select,
         )
         # Build map for stable ordering
-        by_id = {row.get("document_key"): row for row in rows}
+        by_id = {row.get("documentKey"): row for row in rows}
         return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
     async def dual_recall_with_pagerank(
@@ -1113,7 +1074,7 @@ class QueryService:
         )
         pr_score_map = {cid: score for cid, score in pr_ranked}
         for row in pr_rows:
-            row["pagerank_score"] = pr_score_map.get(row.get("document_key"), 0.0)
+            row["pagerank_score"] = pr_score_map.get(row.get("documentKey"), 0.0)
 
         return {
             "pagerank": pr_rows,
@@ -1177,12 +1138,16 @@ class HiRAG:
     async def create(
         cls,
         config: Optional[HiRAGConfig] = None,
+        vdb_type: Optional[str] = "lancedb",
+        gdb_type: Optional[str] = "networkx",
         vector_db_path: Optional[str] = None,
         graph_db_path: Optional[str] = None,
         **kwargs,
     ) -> "HiRAG":
         """Create HiRAG instance"""
         config = config or HiRAGConfig()
+        config.vdb_type = (vdb_type if vdb_type else DEFAULT_VDB_TYPE)
+        config.gdb_type = (gdb_type if gdb_type else DEFAULT_GDB_TYPE)
 
         # Override the default database paths if provided
         config.vector_db_path = (
@@ -1225,19 +1190,42 @@ class HiRAG:
                 "Services not initialized - cannot reinitialize storage"
             )
 
-        vdb = await LanceDB.create(
-            embedding_func=self.embedding_service.create_embeddings,
-            db_url=self.config.vector_db_path,
-            strategy_provider=RetrievalStrategyProvider(),
-        )
+        # Build VDB by type
+        if self.config.vdb_type == "lancedb":
+            vdb = await LanceDB.create(
+                embedding_func=self.embedding_service.create_embeddings,
+                db_url=self.config.vector_db_path,
+                strategy_provider=RetrievalStrategyProvider(),
+            )
+        elif self.config.vdb_type == "pgvector":
+            vdb = PGVector.create(
+                embedding_func=self.embedding_service.create_embeddings,
+                db_url=self.config.vector_db_path,
+                strategy_provider=RetrievalStrategyProvider(),
+                vector_type="halfvec",
+            )
+        else:
+            raise HiRAGException(f"Unsupported VDB type: {self.config.vdb_type}")
 
-        gdb = NetworkXGDB.create(
-            path=self.config.graph_db_path,
-            llm_func=self.chat_service.complete,
-        )
+        # Build GDB by type
+        if self.config.gdb_type == "networkx":
+            gdb = NetworkXGDB.create(
+                path=self.config.graph_db_path,
+                llm_func=self.chat_service.complete,
+            )
+        elif self.config.gdb_type == "neo4j":
+            # Placeholder for future Neo4j adapter
+            raise HiRAGException("Neo4j GDB not implemented yet")
+        else:
+            raise HiRAGException(f"Unsupported GDB type: {self.config.gdb_type}")
 
         # Initialize new storage manager
-        self._storage = StorageManager(vdb, gdb, self.config.embedding_dimension)
+        self._storage = StorageManager(
+            vdb,
+            gdb,
+            self.config.embedding_dimension,
+            vdb_type=self.config.vdb_type,
+        )
         await self._storage.initialize()
 
         # Update dependent components
@@ -1256,25 +1244,44 @@ class HiRAG:
             default_batch_size=self.config.embedding_batch_size
         )
 
-        # Initialize storage
-        if kwargs.get("vdb") is None:
-            vdb = await LanceDB.create(
-                embedding_func=self.embedding_service.create_embeddings,
-                db_url=self.config.vector_db_path,
-                strategy_provider=RetrievalStrategyProvider(),
-            )
+        # Initialize storage via factories
+        vdb = kwargs.get("vdb")
+        if vdb is None:
+            if self.config.vdb_type == "lancedb":
+                vdb = await LanceDB.create(
+                    embedding_func=self.embedding_service.create_embeddings,
+                    db_url=self.config.vector_db_path,
+                    strategy_provider=RetrievalStrategyProvider(),
+                )
+            elif self.config.vdb_type == "pgvector":
+                vdb = PGVector.create(
+                    embedding_func=self.embedding_service.create_embeddings,
+                    db_url=self.config.vector_db_path,
+                    strategy_provider=RetrievalStrategyProvider(),
+                    vector_type="halfvec",
+                )
         else:
-            vdb = kwargs["vdb"]
+            raise HiRAGException(f"Unsupported VDB type: {self.config.vdb_type}")
 
-        if kwargs.get("gdb") is None:
-            gdb = NetworkXGDB.create(
-                path=self.config.graph_db_path,
-                llm_func=self.chat_service.complete,
-            )
+        gdb = kwargs.get("gdb")
+        if gdb is None:
+            if self.config.gdb_type == "networkx":
+                gdb = NetworkXGDB.create(
+                    path=self.config.graph_db_path,
+                    llm_func=self.chat_service.complete,
+                )
+            elif self.config.gdb_type == "neo4j":
+                # Placeholder for future Neo4j adapter
+                raise HiRAGException("Neo4j GDB not implemented yet")
         else:
-            gdb = kwargs["gdb"]
+            raise HiRAGException(f"Unsupported GDB type: {self.config.gdb_type}")
 
-        self._storage = StorageManager(vdb, gdb, self.config.embedding_dimension)
+        self._storage = StorageManager(
+            vdb,
+            gdb,
+            self.config.embedding_dimension,
+            vdb_type=self.config.vdb_type,
+        )
         await self._storage.initialize()
 
         # Initialize other components
@@ -1328,7 +1335,7 @@ class HiRAG:
                     [sentence_embedding], [embedding]
                 )[0][0]
                 similar_refs.append(
-                    {"document_key": entity_key, "similarity": similarity}
+                    {"documentKey": entity_key, "similarity": similarity}
                 )
         return similar_refs
 
@@ -1366,7 +1373,7 @@ class HiRAG:
         ref_parser = ReferenceParser()
         ref_sentences = await ref_parser.parse_references(summary, placeholder)
 
-        chunk_ids = [c["document_key"] for c in chunks]
+        chunk_ids = [c["documentKey"] for c in chunks]
 
         # Generate embeddings for each reference sentence
         if not ref_sentences:
@@ -1402,7 +1409,7 @@ class HiRAG:
                 continue
 
             most_similar_chunk = reference_list[0]
-            reference_chunk_list.append(most_similar_chunk["document_key"])
+            reference_chunk_list.append(most_similar_chunk["documentKey"])
 
         return reference_chunk_list
 
@@ -1460,7 +1467,7 @@ class HiRAG:
             # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
 
-            chunk_ids = [c["document_key"] for c in chunks]
+            chunk_ids = [c["documentKey"] for c in chunks]
 
             # Generate embeddings for each reference sentence
             if not ref_sentences:
@@ -1531,7 +1538,7 @@ class HiRAG:
 
                 # Separate the references by "," and sort by type as primary, similarity as secondary
                 filtered_references.sort(
-                    key=lambda x: (x["document_key"].split("_")[0], -x["similarity"])
+                    key=lambda x: (x["documentKey"].split("_")[0], -x["similarity"])
                 )
 
                 # Append the document keys to the result
@@ -1544,10 +1551,10 @@ class HiRAG:
                     )
 
                 if len(filtered_references) == 1:
-                    result.append([filtered_references[0]["document_key"]])
+                    result.append([filtered_references[0]["documentKey"]])
                 else:
                     # Join the document keys with ", "
-                    result.append([ref["document_key"] for ref in filtered_references])
+                    result.append([ref["documentKey"] for ref in filtered_references])
 
             format_prompt = PROMPTS["REFERENCE_FORMAT"]
 
@@ -1813,10 +1820,15 @@ class HiRAG:
 
         # Step 1: candidate pool (no rerank)
         candidates = await self._query_service.query_chunks(
-            query=query, topk=pool_size, topn=None, rerank=False
+            query=query,
+            topk=pool_size,
+            topn=None,
+            rerank=False,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
         candidate_ids = [
-            c.get("document_key") for c in candidates if c.get("document_key")
+            c.get("documentKey") for c in candidates if c.get("documentKey")
         ]
         if not candidate_ids:
             return {"chunk_ids": [], "scores": [], "chunks": []}
@@ -1825,7 +1837,7 @@ class HiRAG:
         chunk_vec_map = await self._query_service.query_chunk_embeddings(
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
-            candidate_ids=candidate_ids,
+            chunk_ids=candidate_ids,
         )
         # Filter out None vectors while preserving id order
         filtered_ids = [
@@ -1868,12 +1880,16 @@ class HiRAG:
         order = np.argsort(-norm_scores)[: max(0, topk)]
         top_ids = [filtered_ids[i] for i in order]
         top_scores = [float(norm_scores[i]) for i in order]
-        top_rows = await self._query_service.get_chunks_by_ids(top_ids)
+        top_rows = await self._query_service.get_chunks_by_ids(
+            top_ids,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
         # Attach score for convenience
-        by_id = {row.get("document_key"): row for row in top_rows}
+        by_id = {row.get("documentKey"): row for row in top_rows}
         result_rows = []
         for cid, sc in zip(top_ids, top_scores):
-            row = by_id.get(cid, {"document_key": cid})
+            row = by_id.get(cid, {"documentKey": cid})
             row = dict(row)
             row["dpr_score"] = sc
             result_rows.append(row)

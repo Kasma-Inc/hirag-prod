@@ -8,6 +8,7 @@ import lancedb
 from hirag_prod._utils import EmbeddingFunc
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
+from hirag_prod.storage.lance_schema import get_chunks_schema, get_relations_schema
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,6 @@ class LanceDB(BaseVDB):
         self,
         table_name: str,
         data: List[dict],
-        table: Optional[lancedb.AsyncTable] = None,
     ) -> lancedb.AsyncTable:
         """
         Ensure table exists and add data to it. This method handles table creation
@@ -45,16 +45,10 @@ class LanceDB(BaseVDB):
         Args:
             table_name: Name of the table
             data: List of dictionaries containing the data to insert
-            table: Optional existing table instance
 
         Returns:
             The table instance with data added
         """
-        if table is not None:
-            # Table instance provided, just add data
-            await table.add(data)
-            return table
-
         # Try to open existing table first
         try:
             table = await self.db.open_table(table_name)
@@ -90,8 +84,7 @@ class LanceDB(BaseVDB):
         self,
         text_to_embed: str,
         properties: dict,
-        table: Optional[lancedb.AsyncTable] = None,
-        table_name: Optional[str] = None,
+        table_name: str,
         mode: Literal["append", "overwrite"] = "append",
     ) -> lancedb.AsyncTable:
         """
@@ -101,18 +94,12 @@ class LanceDB(BaseVDB):
         Args:
             text_to_embed: Text to generate embedding for
             properties: Metadata properties for the record
-            table: Optional existing table instance
-            table_name: Table name (required if table is None)
-            mode: Legacy parameter, always appends regardless of value
+            table_name: Table name to upsert data into.
+            mode: Mode to use for upserting data.
 
         Returns:
             The table instance
         """
-        if table is None and table_name is None:
-            raise ValueError("Either table or table_name must be provided")
-
-        table_info = table_name if table is None else f"table_instance_{id(table)}"
-
         start = time.perf_counter()
 
         # Generate embedding
@@ -120,13 +107,11 @@ class LanceDB(BaseVDB):
         properties["vector"] = embedding[0].tolist()
 
         # Ensure table exists and add data
-        result = await self._ensure_table_exists_and_add_data(
-            table_name if table_name else table.name, [properties], table
-        )
+        result = await self._ensure_table_exists_and_add_data(table_name, [properties])
 
         elapsed = time.perf_counter() - start
         logger.info(
-            f"[upsert_text] Successfully added 1 record to table '{table_info}', elapsed={elapsed:.3f}s"
+            f"[upsert_text] Successfully added 1 record to table '{table_name}', elapsed={elapsed:.3f}s"
         )
         return result
 
@@ -134,8 +119,7 @@ class LanceDB(BaseVDB):
         self,
         texts_to_embed: list[str],
         properties_list: list[dict],
-        table: Optional[lancedb.AsyncTable] = None,
-        table_name: Optional[str] = None,
+        table_name: str,
         mode: Literal["append", "overwrite"] = "append",
     ) -> lancedb.AsyncTable:
         """
@@ -145,22 +129,16 @@ class LanceDB(BaseVDB):
         Args:
             texts_to_embed: List of texts to embed.
             properties_list: Corresponding metadata for each text.
-            table: Existing table instance. If None, table_name must be provided.
-            table_name: Name of the table when table is None.
-            mode: Legacy parameter, always appends regardless of value
+            table_name: Name of the table to upsert data into.
+            mode: Mode to use for upserting data.
 
         Returns:
             The table where the data was inserted.
         """
-        if table is None and table_name is None:
-            raise ValueError("Either table or table_name must be provided")
-
         if len(texts_to_embed) != len(properties_list):
             raise ValueError(
                 "texts_to_embed and properties_list must have the same length"
             )
-
-        table_info = table_name if table is None else f"table_instance_{id(table)}"
 
         start = time.perf_counter()
 
@@ -171,12 +149,12 @@ class LanceDB(BaseVDB):
 
         # Ensure table exists and add data
         result = await self._ensure_table_exists_and_add_data(
-            table_name if table_name else table.name, properties_list, table
+            table_name, properties_list
         )
 
         elapsed = time.perf_counter() - start
         logger.info(
-            f"[upsert_texts] Successfully added {len(properties_list)} records to table '{table_info}', elapsed={elapsed:.3f}s"
+            f"[upsert_texts] Successfully added {len(properties_list)} records to table '{table_name}', elapsed={elapsed:.3f}s"
         )
         return result
 
@@ -199,8 +177,8 @@ class LanceDB(BaseVDB):
         knowledge_base_id: str,
     ) -> str:
         return (
-            f"workspace_id == '{workspace_id}' AND "
-            f"knowledge_base_id == '{knowledge_base_id}'"
+            f"`workspaceId` = '{workspace_id}' AND "
+            f"`knowledgeBaseId` = '{knowledge_base_id}'"
         )
 
     async def query(
@@ -208,20 +186,22 @@ class LanceDB(BaseVDB):
         query: str,
         workspace_id: str,
         knowledge_base_id: str,
-        table: lancedb.AsyncTable,
+        table_name: str,
         topk: Optional[int] = TOPK,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = ["filename", "text"],
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
         topn: Optional[int] = TOPN,
-        rerank: bool = True,
+        rerank: bool = False,
     ) -> List[dict]:
         """Search the chunk table by text and return the topk results
 
         Args:
             query (str): The query string.
-            table (Union[lancedb.AsyncTable, lancedb.table.Table]): The lancedb table to search.
+            workspace_id (str): The workspace ID.
+            knowledge_base_id (str): The knowledge base ID.
+            table_name (str): The name of the table to search.
             topk (Optional[int]): The number of results to return. Defaults to 10.
             uri_list (Optional[List[str]]): The list of documents (by uri) to search in.
             require_access (Optional[Literal["private", "public"]]): The access level of the documents to search in.
@@ -237,6 +217,8 @@ class LanceDB(BaseVDB):
         Returns:
             List[dict]: _description_
         """
+        table = await self.db.open_table(table_name)
+
         query_text = query
         embedding = await self.embedding_func([query_text])
         embedding = embedding[0].tolist()
@@ -244,23 +226,18 @@ class LanceDB(BaseVDB):
             columns_to_select = [
                 "text",
                 "uri",
-                "filename",
+                "fileName",
                 "private",
             ]
 
         if topk is None:
             topk = self.strategy_provider.default_topk
 
-        # We use the cosine distance to calculate the distance between the query and the embeddings
-        query = table.query().nearest_to(embedding).distance_type("cosine")
+        q = table.query().nearest_to(embedding).distance_type("cosine")
 
-        # Set nprobes to avoid the warning - adjust the value based on your needs
-        # Higher values = more accurate but slower, lower values = faster but less accurate
-        # Common values: 20-50 for balanced performance
-        if hasattr(query, "nprobes"):
-            query = query.nprobes(20)  # adjust this value as needed
+        if hasattr(q, "nprobes"):
+            q = q.nprobes(20)
 
-        # Build a single combined predicate to avoid .where overriding
         clauses = [
             self.add_filter_by_uri(uri_list),
             self.add_filter_by_require_access(require_access),
@@ -268,39 +245,37 @@ class LanceDB(BaseVDB):
         ]
         predicate = " AND ".join([c for c in clauses if c])
         if predicate:
-            query = query.where(predicate)
+            q = q.where(predicate)
 
         if distance_threshold is not None:
-            query = query.distance_range(upper_bound=distance_threshold)
-        query = query.select(columns_to_select).limit(topk)
-
+            q = q.distance_range(upper_bound=distance_threshold)
+        q = q.select(columns_to_select).limit(topk)
         if topn is None:
             topn = self.strategy_provider.default_topn
 
         if rerank:
-            reranked_query = self.strategy_provider.rerank_chunk_query(
-                query, query_text, topn
-            )
-            return await reranked_query.to_list()
+            pass # TODO: refactor the rerank logic to directly rerank the retrieved content
 
-        return await query.to_list()
+        return await q.to_list()
 
     async def query_by_keys(
         self,
         key_value: List[str],
         workspace_id: str,
         knowledge_base_id: str,
-        table: lancedb.AsyncTable,
-        key_column: str = "document_key",
+        table_name: str,
+        key_column: str = "documentKey",
         columns_to_select: Optional[List[str]] = None,
         limit: Optional[int] = None,
     ) -> List[dict]:
         """Query the table by document key and return matching results.
 
         Args:
-            document_key (str): The document key value to search for.
-            table (lancedb.AsyncTable): The lancedb table to search.
-            key_column (str): The name of the column containing document keys. Defaults to "document_key".
+            key_value (List[str]): The document key value to search for.
+            workspace_id (str): The workspace ID.
+            knowledge_base_id (str): The knowledge base ID.
+            table_name (str): The name of the table to search.
+            key_column (str): The name of the column containing document keys. Defaults to "documentKey".
             columns_to_select (Optional[List[str]]): The columns to select from the table.
                 If None, defaults to common columns.
             limit (Optional[int]): Maximum number of results to return. If None, returns all matches.
@@ -308,33 +283,77 @@ class LanceDB(BaseVDB):
         Returns:
             List[dict]: List of matching records from the table.
         """
+        table = await self.db.open_table(table_name)
+
         if columns_to_select is None:
             columns_to_select = [
                 "text",
                 "uri",
-                "filename",
+                "fileName",
                 "private",
                 key_column,
             ]
 
-        # Build the query with filter for the document key
-        key_pred = f"{key_column} IN ({', '.join(map(repr, key_value))})"
+        key_pred = f"`{key_column}` IN ({', '.join(map(repr, key_value))})"
         scope_pred = self.add_filter_by_scope(workspace_id, knowledge_base_id)
         predicate = f"{key_pred} AND {scope_pred}"
 
-        query = table.query().where(predicate).select(columns_to_select)
+        q = table.query().where(predicate).select(columns_to_select)
 
-        # Apply limit if specified
         if limit is not None:
-            query = query.limit(limit)
+            q = q.limit(limit)
 
-        return await query.to_list()
+        return await q.to_list()
+
+    async def get_existing_document_keys(
+        self,
+        uri: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+    ) -> List[str]:
+        table = await self.db.open_table(table_name)
+        where_clauses = [
+            f"uri = '{uri}'",
+            f"`workspaceId` = '{workspace_id}'",
+            f"`knowledgeBaseId` = '{knowledge_base_id}'",
+        ]
+        where_expr = " and ".join(where_clauses)
+        existing = await table.query().where(where_expr).to_list()
+        return [row.get("documentKey") for row in existing]
+
+    async def ensure_tables(
+        self,
+        embedding_dimension: int,
+        chunks_table_name: str = "chunks",
+        relations_table_name: str = "relations",
+    ) -> None:
+        names = await self.db.table_names()
+        if chunks_table_name not in names:
+            await self.db.create_table(
+                chunks_table_name, schema=get_chunks_schema(embedding_dimension)
+            )
+        if relations_table_name not in names:
+            await self.db.create_table(
+                relations_table_name, schema=get_relations_schema(embedding_dimension)
+            )
 
     async def get_table(self, table_name: str) -> str:
         """Get a table from the database."""
         table = await self.db.open_table(table_name)
         data = await table.to_arrow()
         return data
+
+    async def _init_vdb(self, embedding_dimension: int, *args, **kwargs):
+        names = await self.db.table_names()
+        if "Chunks" not in names:
+            await self.db.create_table(
+                "Chunks", schema=get_chunks_schema(embedding_dimension)
+            )
+        if "Triplets" not in names:
+            await self.db.create_table(
+                "Triplets", schema=get_relations_schema(embedding_dimension)
+            )
 
     async def clean_up(self):
         pass

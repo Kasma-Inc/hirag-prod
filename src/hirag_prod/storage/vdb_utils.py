@@ -351,7 +351,7 @@ async def get_chunk_info(
             safe_id = json.dumps(chunk_id, ensure_ascii=False)
 
             results = await (
-                table.query().where(f"document_key == {safe_id}").limit(1).to_list()
+                table.query().where(f"documentKey == {safe_id}").limit(1).to_list()
             )
             if len(results) > 0:
                 return results[0]

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List
+from typing import Dict, List, Tuple
 
 from hirag_prod.schema import Entity, Relation
 
@@ -10,5 +10,30 @@ class BaseGDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def query_one_hop(self, query: str) -> (List[Entity], List[Relation]):
+    async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]):
         raise NotImplementedError
+
+    @abstractmethod
+    async def query_node(self, node_id: str) -> Entity:
+        raise NotImplementedError
+
+
+    @abstractmethod
+    async def pagerank_top_chunks_with_reset(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+        reset_weights: Dict[str, float],
+        topk: int,
+        alpha: float = 0.85,
+    ) -> List[Tuple[str, float]]:
+        raise NotImplementedError
+
+    async def health_check(self) -> None:
+        return None
+
+    async def clean_up(self) -> None:
+        return None
+
+    async def dump(self) -> None:
+        return None

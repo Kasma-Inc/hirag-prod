@@ -10,7 +10,7 @@ PROMPTS = {}
 
 # for reference format in generation
 PROMPTS["REFERENCE_PLACEHOLDER"] = "[|REFERENCE|]"
-PROMPTS["REFERENCE_FORMAT"] = "[Data: {document_key}]"
+PROMPTS["REFERENCE_FORMAT"] = "[Data: {documentKey}]"
 
 # ===============================
 # Prompt(EN): Prompt in English
