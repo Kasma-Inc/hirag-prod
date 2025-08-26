@@ -47,5 +47,3 @@ def get_relations_schema(embedding_dimension: int) -> pa.Schema:
             pa.field("workspaceId", pa.string()),
         ]
     )
-
-

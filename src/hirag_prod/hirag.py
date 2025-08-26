@@ -7,11 +7,13 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from hirag_prod._llm import (
     ChatCompletion,
@@ -49,10 +51,7 @@ from hirag_prod.storage import (
     NetworkXGDB,
     RetrievalStrategyProvider,
 )
-from hirag_prod.storage.pg_schema import Base as PGBase
 from hirag_prod.storage.pgvector import PGVector
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 load_dotenv("/chatbot/.env")
 
@@ -141,7 +140,9 @@ class HiRAGConfig:
     vector_db_path: str = DEFAULT_VECTOR_DB_PATH
     graph_db_path: str = DEFAULT_GRAPH_DB_PATH
     vdb_type: Literal["lancedb", "pgvector"] = DEFAULT_VDB_TYPE
-    gdb_type: Literal["networkx", "neo4j"] = DEFAULT_GDB_TYPE  #TODO: neo4j not implemented yet
+    gdb_type: Literal["networkx", "neo4j"] = (
+        DEFAULT_GDB_TYPE  # TODO: neo4j not implemented yet
+    )
 
     # Redis Configuration for resume tracker
     redis_url: str = os.environ.get("REDIS_URL", "redis://redis:6379/2")
@@ -881,7 +882,6 @@ class QueryService:
                 entity_id_set.add(tgt)
         return {"relations": relations, "entity_ids": list(entity_id_set)}
 
-
     async def query_chunk_embeddings(
         self, workspace_id: str, knowledge_base_id: str, chunk_ids: List[str]
     ) -> Dict[str, Any]:
@@ -1146,8 +1146,8 @@ class HiRAG:
     ) -> "HiRAG":
         """Create HiRAG instance"""
         config = config or HiRAGConfig()
-        config.vdb_type = (vdb_type if vdb_type else DEFAULT_VDB_TYPE)
-        config.gdb_type = (gdb_type if gdb_type else DEFAULT_GDB_TYPE)
+        config.vdb_type = vdb_type if vdb_type else DEFAULT_VDB_TYPE
+        config.gdb_type = gdb_type if gdb_type else DEFAULT_GDB_TYPE
 
         # Override the default database paths if provided
         config.vector_db_path = (

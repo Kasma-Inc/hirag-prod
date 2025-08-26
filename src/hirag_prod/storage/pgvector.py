@@ -12,7 +12,8 @@ from .._utils import EmbeddingFunc
 from ..storage.base_vdb import BaseVDB
 from ..storage.pg_utils import DatabaseClient
 from ..storage.retrieval_strategy_provider import RetrievalStrategyProvider
-from .pg_schema import create_chunks_model, create_triplets_model, Base as PGBase
+from .pg_schema import Base as PGBase
+from .pg_schema import create_chunks_model, create_triplets_model
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +206,7 @@ class PGVector(BaseVDB):
                 scored.append(payload)
 
             if rerank:
-                pass # TODO: refactor the rerank logic to directly rerank the retrieved content
+                pass  # TODO: refactor the rerank logic to directly rerank the retrieved content
 
             elapsed = time.perf_counter() - start
             logger.info(
@@ -276,7 +277,9 @@ class PGVector(BaseVDB):
             result = await s.execute(stmt)
             rows = list(result.scalars().all())
             return [
-                getattr(r, "documentKey", None) for r in rows if getattr(r, "documentKey", None)
+                getattr(r, "documentKey", None)
+                for r in rows
+                if getattr(r, "documentKey", None)
             ]
 
     async def get_table(self, table_name: str) -> List[dict]:

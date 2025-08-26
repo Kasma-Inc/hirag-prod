@@ -7,8 +7,8 @@ import lancedb
 
 from hirag_prod._utils import EmbeddingFunc
 from hirag_prod.storage.base_vdb import BaseVDB
-from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 from hirag_prod.storage.lance_schema import get_chunks_schema, get_relations_schema
+from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +254,7 @@ class LanceDB(BaseVDB):
             topn = self.strategy_provider.default_topn
 
         if rerank:
-            pass # TODO: refactor the rerank logic to directly rerank the retrieved content
+            pass  # TODO: refactor the rerank logic to directly rerank the retrieved content
 
         return await q.to_list()
 

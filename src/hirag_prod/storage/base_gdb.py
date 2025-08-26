@@ -17,7 +17,6 @@ class BaseGDB(ABC):
     async def query_node(self, node_id: str) -> Entity:
         raise NotImplementedError
 
-
     @abstractmethod
     async def pagerank_top_chunks_with_reset(
         self,
