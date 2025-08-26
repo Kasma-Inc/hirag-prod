@@ -80,12 +80,7 @@ class DotsHierarchicalChunker:
             page_no = page.get("page_no", 0)
             layout_info = page.get("full_layout_info", [])
 
-            # Sort by vertical position to maintain reading order, for capturing captions
-            sorted_page_boxes = sorted(
-                layout_info, key=lambda x: x.get("bbox", [0, 0, 0, 0])[1]
-            )
-
-            for box in sorted_page_boxes:
+            for box in layout_info:
                 # Add the box to the sorted boxes
                 box["page_no"] = page_no
                 box["idx"] = len(sorted_boxes)  # Assign a box idx for simplicity
