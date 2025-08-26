@@ -274,6 +274,49 @@ def _transform_bbox_dims(bboxes: List[List[float]], height) -> List[List[float]]
     return transformed
 
 
+def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
+    ToC = []
+    vis_chunks = set()
+    chunk_to_index = {}
+    for idx, chunk in enumerate(chunks):
+        chunk_to_index[chunk.id] = idx
+
+    def _is_header(chunk: Chunk) -> bool:
+        return chunk.metadata.chunk_type in [
+            ChunkType.TITLE.value,
+            ChunkType.SECTION_HEADER.value,
+        ]
+
+    def _extract_term(chunk: Chunk) -> Dict[str, Any]:
+        if not _is_header(chunk):
+            return None
+        term = {
+            "title": chunk.page_content,
+            "chunk_id": chunk.id,
+        }
+        # Go through children
+        valid_children = []
+        for child_id in chunk.metadata.children:
+            child_idx = chunk_to_index.get(child_id)
+            vis_chunks.add(child_id)
+            extracted_child = _extract_term(chunks[child_idx])
+            if extracted_child:
+                valid_children.append(extracted_child)
+
+        term["children"] = valid_children
+        return term
+
+    for chunk in chunks:
+        if chunk.id in vis_chunks:
+            continue
+        vis_chunks.add(chunk.id)
+        term = _extract_term(chunk)
+        if term:
+            ToC.append(term)
+
+    return ToC
+
+
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
@@ -283,7 +326,6 @@ def chunk_dots_document(
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
     """
-    # TODO: Ensure origin starts from the left bottom corner
 
     chunker = DotsHierarchicalChunker()
 
@@ -358,7 +400,7 @@ def chunk_dots_document(
 
     chunks.sort(key=lambda c: c.metadata.chunk_idx)
 
-    # For all headings, do a mapping
+    # For all headings & children, do a mapping
     for chunk in chunks:
         chunk_meta = chunk.metadata
         tmp_idx = chunk_meta.chunk_idx
