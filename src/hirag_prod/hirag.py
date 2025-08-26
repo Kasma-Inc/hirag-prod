@@ -37,7 +37,14 @@ from hirag_prod.parser import (
 )
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
-from hirag_prod.schema import Chunk, File, LoaderType, Relation, get_chunk_schema, get_file_schema
+from hirag_prod.schema import (
+    Chunk,
+    File,
+    LoaderType,
+    Relation,
+    get_chunk_schema,
+    get_file_schema,
+)
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,

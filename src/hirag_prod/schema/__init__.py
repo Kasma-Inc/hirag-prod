@@ -3,7 +3,7 @@ from hirag_prod.schema.entity import Entity
 from hirag_prod.schema.file import File, FileMetadata
 from hirag_prod.schema.loader import LoaderType
 from hirag_prod.schema.relation import Relation
-from hirag_prod.schema_utils import (
+from hirag_prod.schema.schema_utils import (
     get_chunk_schema,
     get_file_schema,
     pydantic_model_to_pyarrow_schema,
