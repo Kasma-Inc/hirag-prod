@@ -49,6 +49,7 @@ dependencies = [
     "json-repair==0.48.0",
     "sqlmodel==0.0.24",
     "asyncpg==0.30.0",
+    "pgvector==0.4.1",
 ]
 
 [project.scripts]
