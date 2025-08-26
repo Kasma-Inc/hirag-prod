@@ -273,6 +273,8 @@ def chunk_dots_document(
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
     """
+    # TODO: Ensure origin starts from the left bottom corner
+
     chunker = DotsHierarchicalChunker()
 
     # Get chunks from the hierarchical chunker
@@ -294,7 +296,7 @@ def chunk_dots_document(
             chunk_type=chunk_type.value,
             page_number=dots_chunk.page_no,
             page_image_url=None,
-            page_width=None,  # Dots doesn't provide page dimensions
+            page_width=None,  # TODO: Dots doesn't provide page dimensions, fill in later
             page_height=None,
             bbox=dots_chunk.bbox,
             caption=dots_chunk.caption,
