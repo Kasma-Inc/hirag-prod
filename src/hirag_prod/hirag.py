@@ -42,8 +42,6 @@ from hirag_prod.schema import (
     File,
     LoaderType,
     Relation,
-    get_chunk_schema,
-    get_file_schema,
 )
 from hirag_prod.storage import (
     BaseGDB,
@@ -290,10 +288,8 @@ class StorageManager:
             self.files_table = await self.vdb.db.open_table("files")
         except Exception as e:
             if "was not found" in str(e):
-
-                schema = get_file_schema()
-
-                # TODO: Use PG
+                # TODO: Use PG to store in a separate table
+                pass
             else:
                 raise StorageError(f"Failed to initialize files table: {e}")
 
