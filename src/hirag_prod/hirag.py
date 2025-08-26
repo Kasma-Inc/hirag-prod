@@ -38,12 +38,16 @@ from hirag_prod.parser import (
 )
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
+<<<<<<< HEAD
 from hirag_prod.schema import (
     Chunk,
     File,
     LoaderType,
     Relation,
 )
+=======
+from hirag_prod.schema import Chunk, LoaderType, Relation
+>>>>>>> 31a3992 (fix: typo)
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -298,6 +302,7 @@ class StorageManager:
             raise StorageError(f"Failed to initialize VDB: {e}")
         await self._initialize_files_table()
 
+<<<<<<< HEAD
     # Modified to automatically following the schema defined in schema: chunk & file
     async def _initialize_files_table(self) -> None:
         """Initialize files table using dynamic schema from FileMetadata"""
@@ -310,6 +315,8 @@ class StorageManager:
             else:
                 raise StorageError(f"Failed to initialize files table: {e}")
 
+=======
+>>>>>>> 31a3992 (fix: typo)
     def _chunk_props_for_vdb(self, chunk: Chunk) -> Dict[str, Any]:
         metadata = chunk.metadata
         return {
