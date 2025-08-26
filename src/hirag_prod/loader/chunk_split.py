@@ -265,9 +265,19 @@ def _dots_category_to_chunk_type(category: str) -> ChunkType:
     return category_mapping.get(category, ChunkType.UNKNOWN)
 
 
+def _transform_bbox_dims(bboxes: List[List[float]], height) -> List[List[float]]:
+    # The dim from dots is from top left, transform to bottom left
+    transformed = []
+    for bbox in bboxes:
+        x_0, y_0, x_1, y_1 = bbox
+        transformed.append([x_0, height - y_1, x_1, height - y_0])
+    return transformed
+
+
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
+    left_bottom_origin: bool = True,
 ) -> List[Chunk]:
     """
     Split a dots document into chunks and return a list of Chunk objects.
@@ -283,12 +293,30 @@ def chunk_dots_document(
     # Convert DotsChunk objects to Chunk objects
     chunks = []
 
-    # mapping for tmp_chunk_idx to chunk_id
+    # Mapping for tmp_chunk_idx to chunk_id
     chunk_id_mapping = {}
+
+    # Try to obtain page dimensions
+    page_dimensions = {}
+    for page in json_doc:
+        page_no = page.get("page_no")
+        if page_no is not None:
+            page_dimensions[page_no] = {
+                "width": page.get("width"),
+                "height": page.get("height"),
+            }
 
     for tmp_chunk_idx, dots_chunk in dots_chunks.items():
         # Convert dots category to chunk type
         chunk_type = _dots_category_to_chunk_type(dots_chunk.category)
+        page_size = page_dimensions.get(dots_chunk.page_no, {})
+        page_width = page_size.get("width", None)
+        page_height = page_size.get("height", None)
+
+        bboxes = dots_chunk.bbox
+
+        if left_bottom_origin and page_height is not None:
+            bboxes = _transform_bbox_dims(bboxes, page_height)
 
         metadata = ChunkMetadata(
             chunk_idx=tmp_chunk_idx,
@@ -296,9 +324,9 @@ def chunk_dots_document(
             chunk_type=chunk_type.value,
             page_number=dots_chunk.page_no,
             page_image_url=None,
-            page_width=None,  # TODO: Dots doesn't provide page dimensions, fill in later
-            page_height=None,
-            bbox=dots_chunk.bbox,
+            page_width=page_width,
+            page_height=page_height,
+            bbox=bboxes,
             caption=dots_chunk.caption,
             # Terms using temporary idx, would be filled later after chunks created
             headers=None,
