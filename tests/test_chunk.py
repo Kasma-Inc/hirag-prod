@@ -1,7 +1,6 @@
 import json
 import os
 
-from hirag_prod.chunk.hierachical_chunk import DotsHierarchicalChunker
 from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
@@ -9,7 +8,6 @@ from hirag_prod.loader.chunk_split import (
     chunk_langchain_document,
     get_ToC_from_chunks,
 )
-from hirag_prod.schema.file import File, FileMetadata
 
 
 def _brief(c):

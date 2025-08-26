@@ -7,7 +7,7 @@ import logging
 import os
 import tempfile
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, Literal
 from urllib.parse import urlparse
 
 import requests

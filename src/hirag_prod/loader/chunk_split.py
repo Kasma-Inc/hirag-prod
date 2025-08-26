@@ -218,6 +218,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             uploaded_at=doc_md.metadata.uploaded_at,
             knowledge_base_id=doc_md.metadata.knowledge_base_id,
             workspace_id=doc_md.metadata.workspace_id,
+            children=None,
         )
 
         chunk_obj = Chunk(
@@ -463,6 +464,7 @@ def chunk_langchain_document(
             headers=None,
             knowledge_base_id=langchain_doc.metadata.knowledge_base_id,
             workspace_id=langchain_doc.metadata.workspace_id,
+            children=None,
         )
 
         chunk_obj = Chunk(
