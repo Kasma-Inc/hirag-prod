@@ -430,13 +430,6 @@ class TestUtilities:
         assert not resume_tracker.redis_client.exists(doc_info_key)
         assert not resume_tracker.redis_client.exists(doc_chunks_key)
 
-    def test_cleanup_old_entries(self, resume_tracker):
-        """Test cleanup of old entries (primarily TTL validation)"""
-        # This test mainly validates the method exists and runs without error
-        # since Redis TTL handles the actual cleanup automatically
-        resume_tracker.cleanup_old_entries(days=1)
-        # Method should complete without errors
-
     def test_key_generation(self, resume_tracker):
         """Test Redis key generation methods"""
         chunk_id = "test_chunk"

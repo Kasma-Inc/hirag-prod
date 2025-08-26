@@ -3,8 +3,7 @@ from typing import Callable, List
 
 from hirag_prod._utils import decode_tokens_by_tiktoken, encode_string_by_tiktoken
 from hirag_prod.prompt import PROMPTS
-
-from .base import BaseSummarizer
+from hirag_prod.summarization.base import BaseSummarizer
 
 
 class TrancatedAggregateSummarizer(BaseSummarizer):

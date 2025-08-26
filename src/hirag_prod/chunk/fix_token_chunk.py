@@ -2,9 +2,8 @@ from langchain_text_splitters import Tokenizer
 from langchain_text_splitters.base import split_text_on_tokens
 
 from hirag_prod._utils import compute_mdhash_id
+from hirag_prod.chunk.base_chunk import BaseChunk
 from hirag_prod.schema import Chunk, File
-
-from .base_chunk import BaseChunk
 
 
 class FixTokenChunk(BaseChunk):

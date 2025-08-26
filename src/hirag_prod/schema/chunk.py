@@ -3,7 +3,7 @@ from typing import List, Optional
 from langchain_core.documents import Document
 from pydantic import BaseModel
 
-from .file import FileMetadata
+from hirag_prod.schema.file import FileMetadata
 
 
 # If you change this file, you may need to change src/hirag_prod/hirag.py: class StorageManager: _initialize_chunks_table

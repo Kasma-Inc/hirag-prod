@@ -134,18 +134,27 @@ class RedisStorageManager:
         doc_ids = set()
 
         # Extract from document info keys
-        info_pattern = f"{self.key_prefix}:doc:*:info"
+        info_pattern = f"{self.key_prefix}:*doc:*:info"
         for key in self.client.keys(info_pattern):
             parts = key.split(":")
-            if len(parts) >= 4:
-                doc_ids.add(parts[2])
+            # find 'doc' and take the next token
+            if "doc" in parts:
+                try:
+                    idx = parts.index("doc")
+                    doc_ids.add(parts[idx + 1])
+                except Exception:
+                    continue
 
         # Extract from completion keys
-        completion_pattern = f"{self.key_prefix}:completed:*"
+        completion_pattern = f"{self.key_prefix}:*completed:*"
         for key in self.client.keys(completion_pattern):
             parts = key.split(":")
-            if len(parts) >= 3:
-                doc_ids.add(parts[2])
+            if "completed" in parts:
+                try:
+                    idx = parts.index("completed")
+                    doc_ids.add(parts[idx + 1])
+                except Exception:
+                    continue
 
         return doc_ids
 
@@ -166,28 +175,38 @@ class RedisStorageManager:
         status = DocumentStatus(document_id=document_id)
 
         # Check completion status
-        completion_key = f"{self.key_prefix}:completed:{document_id}"
-        completion_data = self.client.hgetall(completion_key)
-        if completion_data:
-            status.completed = (
-                completion_data.get("pipeline_completed", "false") == "true"
-            )
-            status.completion_info = completion_data
+        completion_keys = self.client.keys(
+            f"{self.key_prefix}:*completed:{document_id}"
+        )
+        if completion_keys:
+            completion_data = self.client.hgetall(completion_keys[0])
+            if completion_data:
+                status.completed = (
+                    completion_data.get("pipeline_completed", "false") == "true"
+                )
+                status.completion_info = completion_data
 
         # Check active session status
-        doc_info_key = f"{self.key_prefix}:doc:{document_id}:info"
-        session_data = self.client.hgetall(doc_info_key)
-        if session_data:
-            status.active_session = True
-            status.session_info = session_data
-            status.total_chunks = int(session_data.get("total_chunks", 0))
+        doc_info_keys = self.client.keys(f"{self.key_prefix}:*doc:{document_id}:info")
+        if doc_info_keys:
+            session_data = self.client.hgetall(doc_info_keys[0])
+            if session_data:
+                status.active_session = True
+                status.session_info = session_data
+                status.total_chunks = int(session_data.get("total_chunks", 0))
 
-            # Get completion counts
-            entity_key = f"{self.key_prefix}:doc:{document_id}:entity_completed"
-            relation_key = f"{self.key_prefix}:doc:{document_id}:relation_completed"
+                # Get completion counts
+                entity_keys = self.client.keys(
+                    f"{self.key_prefix}:*doc:{document_id}:entity_completed"
+                )
+                relation_keys = self.client.keys(
+                    f"{self.key_prefix}:*doc:{document_id}:relation_completed"
+                )
 
-            status.entity_completed = self.client.scard(entity_key)
-            status.relation_completed = self.client.scard(relation_key)
+                if entity_keys:
+                    status.entity_completed = self.client.scard(entity_keys[0])
+                if relation_keys:
+                    status.relation_completed = self.client.scard(relation_keys[0])
 
         return status
 
@@ -259,20 +278,23 @@ class RedisStorageManager:
 
         # Collect document-related keys
         patterns = [
-            f"{self.key_prefix}:doc:{document_id}:*",
-            f"{self.key_prefix}:completed:{document_id}",
+            f"{self.key_prefix}:*doc:{document_id}:*",
+            f"{self.key_prefix}:*completed:{document_id}",
         ]
 
         for pattern in patterns:
             keys_to_delete.extend(self.client.keys(pattern))
 
         # Collect chunk keys
-        doc_chunks_key = f"{self.key_prefix}:doc:{document_id}:chunks"
-        if self.client.exists(doc_chunks_key):
-            chunk_ids = self.client.smembers(doc_chunks_key)
+        doc_chunks_keys = self.client.keys(
+            f"{self.key_prefix}:*doc:{document_id}:chunks"
+        )
+        if doc_chunks_keys:
+            chunk_ids = self.client.smembers(doc_chunks_keys[0])
             for chunk_id in chunk_ids:
-                chunk_key = f"{self.key_prefix}:chunk:{chunk_id}"
-                keys_to_delete.append(chunk_key)
+                # delete all scoped chunk keys
+                chunk_keys = self.client.keys(f"{self.key_prefix}:*chunk:{chunk_id}")
+                keys_to_delete.extend(chunk_keys)
 
         # Delete all collected keys
         deleted_count = 0

@@ -7,14 +7,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
 
-from ._llm import (
+from hirag_prod._llm import (
     ChatCompletion,
     EmbeddingService,
     LocalChatService,
@@ -22,23 +22,23 @@ from ._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from ._utils import _limited_gather_with_factory
-from .chunk import BaseChunk, FixTokenChunk
-from .entity import BaseKG, VanillaKG
-from .loader import load_document
-from .loader.chunk_split import (
+from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod.chunk import BaseChunk, FixTokenChunk
+from hirag_prod.entity import BaseKG, VanillaKG
+from hirag_prod.loader import load_document
+from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
 )
-from .parser import (
+from hirag_prod.parser import (
     DictParser,
     ReferenceParser,
 )
-from .prompt import PROMPTS
-from .resume_tracker import JobStatus, ResumeTracker
-from .schema import Chunk, File, LoaderType, Relation, get_chunk_schema, get_file_schema
-from .storage import (
+from hirag_prod.prompt import PROMPTS
+from hirag_prod.resume_tracker import JobStatus, ResumeTracker
+from hirag_prod.schema import Chunk, File, LoaderType, Relation, get_chunk_schema, get_file_schema
+from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
     LanceDB,
@@ -440,12 +440,19 @@ class StorageManager:
         except Exception as e:
             raise StorageError(f"Failed to upsert relations: {e}")
 
-    async def get_existing_chunks(self, uri: str) -> List[str]:
+    async def get_existing_chunks(
+        self,
+        uri: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List[str]:
         """Get existing chunk IDs"""
         try:
-            existing_data = (
-                await self.chunks_table.query().where(f"uri == '{uri}'").to_list()
-            )
+            where_clauses = [f"uri == '{uri}'"]
+            where_clauses.append(f"workspace_id == '{workspace_id}'")
+            where_clauses.append(f"knowledge_base_id == '{knowledge_base_id}'")
+            where_expr = " and ".join(where_clauses)
+            existing_data = await self.chunks_table.query().where(where_expr).to_list()
             return [chunk["document_key"] for chunk in existing_data]
         except Exception as e:
             logger.warning(f"Failed to get existing chunks: {e}")
@@ -508,6 +515,8 @@ class DocumentProcessor:
         self,
         document_path: str,
         content_type: str,
+        workspace_id: str,
+        knowledge_base_id: str,
         with_graph: bool = True,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
@@ -555,7 +564,9 @@ class DocumentProcessor:
                         )
                     except Exception:
                         pass
-                if self.resume_tracker.is_document_already_completed(document_id):
+                if self.resume_tracker.is_document_already_completed(
+                    document_id, workspace_id, knowledge_base_id
+                ):
                     logger.info(
                         "🎉 Document already fully processed in previous session!"
                     )
@@ -568,11 +579,15 @@ class DocumentProcessor:
                 else:
                     document_uri = chunks[0].metadata.uri
                     self.resume_tracker.register_chunks(
-                        chunks, document_id, document_uri
+                        chunks,
+                        document_id,
+                        document_uri,
+                        workspace_id,
+                        knowledge_base_id,
                     )
 
             # Process chunks
-            await self._process_chunks(chunks)
+            await self._process_chunks(chunks, workspace_id, knowledge_base_id)
             # Update job progress for processed chunks
             if self.resume_tracker and job_id:
                 try:
@@ -600,7 +615,9 @@ class DocumentProcessor:
             # Mark as complete
             if self.resume_tracker:
                 self.resume_tracker.mark_document_completed(
-                    chunks[0].metadata.document_id
+                    document_id=chunks[0].metadata.document_id,
+                    workspace_id=workspace_id,
+                    knowledge_base_id=knowledge_base_id,
                 )
                 if job_id:
                     try:
@@ -640,7 +657,7 @@ class DocumentProcessor:
                             content_type,
                             document_meta,
                             loader_configs,
-                            loader_type="docling_cloud",
+                            loader_type=loader_type,
                         )
                         chunks = chunk_docling_document(docling_doc, doc_md)
                     elif loader_type == "dots_ocr":
@@ -673,11 +690,18 @@ class DocumentProcessor:
                     f"Failed to load document {document_path}: {e}"
                 )
 
-    async def _process_chunks(self, chunks: List[Chunk]) -> None:
+    async def _process_chunks(
+        self,
+        chunks: List[Chunk],
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> None:
         """Process chunks for vector storage"""
         async with self.metrics.track_operation("process_chunks"):
             # Get chunks that need processing
-            pending_chunks = await self._get_pending_chunks(chunks)
+            pending_chunks = await self._get_pending_chunks(
+                chunks, workspace_id, knowledge_base_id
+            )
 
             if not pending_chunks:
                 logger.info("⏭️ All chunks already processed")
@@ -691,7 +715,12 @@ class DocumentProcessor:
 
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
 
-    async def _get_pending_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
+    async def _get_pending_chunks(
+        self,
+        chunks: List[Chunk],
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List[Chunk]:
         """Get chunks that need processing"""
         if not chunks:
             return []
@@ -699,7 +728,9 @@ class DocumentProcessor:
         if self.resume_tracker:
             # Check for existing chunks in vector database
             uri = chunks[0].metadata.uri
-            existing_chunk_ids = await self.storage.get_existing_chunks(uri)
+            existing_chunk_ids = await self.storage.get_existing_chunks(
+                uri, workspace_id, knowledge_base_id
+            )
             return [chunk for chunk in chunks if chunk.id not in existing_chunk_ids]
 
         return chunks
@@ -1569,6 +1600,10 @@ class HiRAG:
         """
         if not self._processor:
             raise HiRAGException("HiRAG instance not properly initialized")
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
@@ -1598,6 +1633,8 @@ class HiRAG:
                 document_meta=document_meta,
                 loader_configs=loader_configs,
                 job_id=job_id,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
                 loader_type=loader_type,
             )
 
@@ -1657,7 +1694,10 @@ class HiRAG:
         """Query all types of data"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
-
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
         if summary:
             query_results = await self._query_service.query(
                 query=query,
@@ -1672,7 +1712,9 @@ class HiRAG:
             query_results["summary"] = text_summary
             return query_results
         return await self._query_service.query(
-            query=query, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
+            query=query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
         )
 
     async def get_health_status(self) -> Dict[str, Any]:
