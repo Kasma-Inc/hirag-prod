@@ -37,7 +37,7 @@ from .parser import (
 )
 from .prompt import PROMPTS
 from .resume_tracker import JobStatus, ResumeTracker
-from .schema import LoaderType, Relation
+from .schema import Chunk, File, LoaderType, Relation, get_chunk_schema, get_file_schema
 from .storage import (
     BaseGDB,
     BaseVDB,
@@ -267,12 +267,28 @@ class StorageManager:
         self.gdb = gdb
         self.chunks_table = None
         self.relations_table = None
+        self.files_table = None
         self.embedding_dimension = embedding_dimension
 
     async def initialize(self) -> None:
         """Initialize storage tables"""
         await self._initialize_chunks_table()
         await self._initialize_relations_table()
+        await self._initialize_files_table()
+
+    # Modified to automatically following the schema defined in schema: chunk & file
+    async def _initialize_files_table(self) -> None:
+        """Initialize files table using dynamic schema from FileMetadata"""
+        try:
+            self.files_table = await self.vdb.db.open_table("files")
+        except Exception as e:
+            if "was not found" in str(e):
+
+                schema = get_file_schema()
+
+                # TODO: Use PG
+            else:
+                raise StorageError(f"Failed to initialize files table: {e}")
 
     async def _initialize_chunks_table(self) -> None:
         """Initialize chunks table"""
@@ -342,7 +358,20 @@ class StorageManager:
                 raise StorageError(f"Failed to initialize relations table: {e}")
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
-    async def upsert_chunks(self, chunks: List[BaseChunk]) -> None:
+    async def upsert_files(self, files: List[File]) -> None:
+        """Batch insert files"""
+        # TODO: Use PG for storage
+        if not files:
+            return
+
+        try:
+            pass
+
+        except Exception as e:
+            raise StorageError(f"Failed to upsert files: {e}")
+
+    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
+    async def upsert_chunks(self, chunks: List[Chunk]) -> None:
         """Batch insert chunks"""
         # TODO: Implement intelligent batching based on chunk size and content complexity
         if not chunks:
@@ -644,7 +673,7 @@ class DocumentProcessor:
                     f"Failed to load document {document_path}: {e}"
                 )
 
-    async def _process_chunks(self, chunks: List[BaseChunk]) -> None:
+    async def _process_chunks(self, chunks: List[Chunk]) -> None:
         """Process chunks for vector storage"""
         async with self.metrics.track_operation("process_chunks"):
             # Get chunks that need processing
@@ -662,7 +691,7 @@ class DocumentProcessor:
 
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
 
-    async def _get_pending_chunks(self, chunks: List[BaseChunk]) -> List[BaseChunk]:
+    async def _get_pending_chunks(self, chunks: List[Chunk]) -> List[Chunk]:
         """Get chunks that need processing"""
         if not chunks:
             return []
@@ -675,7 +704,7 @@ class DocumentProcessor:
 
         return chunks
 
-    async def _construct_kg(self, chunks: List[BaseChunk]) -> None:
+    async def _construct_kg(self, chunks: List[Chunk]) -> None:
         """Construct knowledge graph from chunks"""
         logger.info(f"🔍 Constructing knowledge graph from {len(chunks)} chunks...")
 

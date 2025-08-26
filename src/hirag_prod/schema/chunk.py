@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from .file import FileMetadata
 
 
+# If you change this file, you may need to change src/hirag_prod/hirag.py: class StorageManager: _initialize_chunks_table
 class ChunkMetadata(FileMetadata):
     knowledge_base_id: Optional[
         str
@@ -19,6 +20,7 @@ class ChunkMetadata(FileMetadata):
     page_height: Optional[float]  # the height of the page
     document_id: Optional[str]  # The id of the document that the chunk is from
     headers: Optional[List[str]]  # The header's chunk's id of the chunk
+    children: Optional[List[str]]  # The children's chunk's id of the chunk
     caption: Optional[str]  # The caption of the chunk
     bbox: Optional[
         List[List[float]]

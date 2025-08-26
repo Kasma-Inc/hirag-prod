@@ -19,8 +19,8 @@ def _brief(c):
 
     return (
         f"id={c.id} | idx={meta_data.chunk_idx} | type={meta_data.chunk_type} | "
-        f"page={meta_data.page_number} | headers={meta_data.headers} | caption={meta_data.caption} | "
-        f'bbox={meta_data.bbox} | text="{content} | size=({meta_data.page_width}x{meta_data.page_height})"'
+        f"page={meta_data.page_number} | headers={meta_data.headers} | children={meta_data.children} | caption={meta_data.caption} | "
+        f'bbox={meta_data.bbox} | text={content} | size=({meta_data.page_width}x{meta_data.page_height})"'
     )
 
 

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from langchain_core.documents import Document
 from pydantic import BaseModel
@@ -36,6 +36,10 @@ class FileMetadata(BaseModel):
         None  # The id of the knowledge base that the file is from
     )
     workspace_id: Optional[str] = None
+
+    # New fields for enhanced file storage
+    markdown_content: Optional[str] = None  # Full markdown representation
+    table_of_contents: Optional[List[Dict[str, Any]]] = None  # Structured TOC
 
 
 class File(Document, BaseModel):

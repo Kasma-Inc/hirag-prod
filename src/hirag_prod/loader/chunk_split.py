@@ -298,7 +298,9 @@ def chunk_dots_document(
             page_height=None,
             bbox=dots_chunk.bbox,
             caption=dots_chunk.caption,
-            headers=None,  # Fill headers later
+            # Terms using temporary idx, would be filled later after chunks created
+            headers=None,
+            children=None,
             # inherit file metadata
             type=md_doc.metadata.type,
             filename=md_doc.metadata.filename,
@@ -335,6 +337,12 @@ def chunk_dots_document(
             # Map the chunk ID to the heading text
             header_ids = [chunk_id_mapping[h] for h in raw_headers]
             chunk_meta.headers = header_ids
+
+        raw_children = dots_chunks[tmp_idx].children if tmp_idx in dots_chunks else []
+        if raw_children:
+            # Map the chunk ID to the children
+            child_ids = [chunk_id_mapping[c] for c in raw_children]
+            chunk_meta.children = child_ids
 
     return chunks
 

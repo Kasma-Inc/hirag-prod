@@ -32,6 +32,7 @@ class DotsChunk:
     bbox: List[List[float]]
     headings: List[int]  # Hierarchical context
     caption: Optional[str] = None
+    children: Optional[List[int]] = None
 
 
 class DotsHierarchicalChunker:
@@ -79,7 +80,7 @@ class DotsHierarchicalChunker:
             page_no = page.get("page_no", 0)
             layout_info = page.get("full_layout_info", [])
 
-            # Sort by vertical position to maintain reading order
+            # Sort by vertical position to maintain reading order, for capturing captions
             sorted_page_boxes = sorted(
                 layout_info, key=lambda x: x.get("bbox", [0, 0, 0, 0])[1]
             )
@@ -130,6 +131,25 @@ class DotsHierarchicalChunker:
                     return next_box
                 return None
 
+            def _get_headers_and_register() -> List[int]:
+                """Register headers in the chunk."""
+                if not header_boxes:
+                    return []
+
+                heading_ids = [
+                    heading_by_level[k] for k in sorted(heading_by_level.keys())
+                ]
+
+                # Add self to the children of its direct parent
+                if heading_by_level:
+                    # Get the most recent (deepest) heading
+                    deepest_level = max(heading_by_level.keys())
+                    parent_idx = heading_by_level[deepest_level]
+                    if parent_idx in header_boxes:
+                        header_boxes[parent_idx]["children"].append(idx)
+
+                return heading_ids
+
             caption_block = None
 
             # Heading hierarchy, don't parse immediately
@@ -143,21 +163,24 @@ class DotsHierarchicalChunker:
                     # Section header, level is number of #s at the beginning
                     level = self._get_level(text)
 
-                # Update heading hierarchy
-                heading_by_level[level] = idx
-
-                # Remove all deeper level headings
-                keys_to_del = [k for k in heading_by_level if k > level]
+                # Remove all deeper and same level headings
+                keys_to_del = [k for k in heading_by_level if k >= level]
                 for k in keys_to_del:
                     heading_by_level.pop(k, None)
+
+                heading_ids = _get_headers_and_register()
 
                 header_boxes[idx] = {
                     "text": text,
                     "level": level,
                     "bbox": bbox,
                     "page_no": page_no,
+                    "headers": heading_ids,
                     "children": [],
                 }
+
+                # Update heading hierarchy
+                heading_by_level[level] = idx
 
                 continue
 
@@ -193,17 +216,7 @@ class DotsHierarchicalChunker:
                 pass
 
             # Get current heading hierarchy as list of heading texts
-            heading_texts = [
-                heading_by_level[k] for k in sorted(heading_by_level.keys())
-            ]
-
-            # Add to the direct parent's children list
-            if heading_by_level:
-                # Get the most recent (deepest) heading
-                deepest_level = max(heading_by_level.keys())
-                parent_idx = heading_by_level[deepest_level]
-                if parent_idx in header_boxes:
-                    header_boxes[parent_idx]["children"].append(idx)
+            heading_ids = _get_headers_and_register()
 
             bbox_list = [bbox]
 
@@ -220,7 +233,7 @@ class DotsHierarchicalChunker:
                 category=category,
                 page_no=page_no,
                 bbox=bbox_list,
-                headings=heading_texts,
+                headings=heading_ids,
                 caption=caption,
             )
 
@@ -229,27 +242,26 @@ class DotsHierarchicalChunker:
         # Add headers to parsed_chunks
         for header_idx, header_info in header_boxes.items():
             # Get heading hierarchy up to this header's level
-            header_level = header_info["level"]
-            relevant_headings = []
-            for level in sorted(heading_by_level.keys()):
-                if level < header_level:
-                    relevant_headings.append(heading_by_level[level])
-                elif level == header_level:
-                    break
+            category = (
+                DotsChunkType.SECTION_HEADER.value
+                if header_info["level"] > 0
+                else DotsChunkType.TITLE.value
+            )
+
+            if header_info["children"] == []:
+                category = DotsChunkType.TEXT.value
 
             chunk = DotsChunk(
                 chunk_idx=header_idx,
                 text=header_info["text"],
-                category=(
-                    DotsChunkType.SECTION_HEADER.value
-                    if header_level > 0
-                    else DotsChunkType.TITLE.value
-                ),
+                category=category,
                 page_no=header_info["page_no"],
                 bbox=[header_info["bbox"]],
-                headings=relevant_headings,
+                headings=header_info["headers"],
                 caption=None,
+                children=header_info["children"],
             )
+
             parsed_chunks[header_idx] = chunk
 
         return parsed_chunks
