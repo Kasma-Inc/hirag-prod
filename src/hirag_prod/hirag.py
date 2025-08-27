@@ -23,7 +23,7 @@ from hirag_prod._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod._utils import _limited_gather_with_factory, compute_mdhash_id
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseKG, VanillaKG
 from hirag_prod.loader import load_document
@@ -353,12 +353,11 @@ class StorageManager:
         self, file: Union[File, Chunk], metadata: Optional[Dict]
     ) -> Dict[str, Any]:
         file_metadata = file.metadata
+        content = getattr(file_metadata, "markdown_content", file.page_content)
         obtained_props = {
             # File Data
-            "id": file.id,
-            "pageContent": getattr(
-                file_metadata, "markdown_content", file.page_content
-            ),
+            "id": "file-" + compute_mdhash_id(content=content),
+            "pageContent": content,
             # FileMetadata
             "fileName": getattr(file_metadata, "filename", None),
             "uri": getattr(file_metadata, "uri", None),
