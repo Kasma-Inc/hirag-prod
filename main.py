@@ -37,6 +37,7 @@ async def index():
         document_meta=document_meta,
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
+        loader_type="dots_ocr",
     )
 
     ret = await index.query(

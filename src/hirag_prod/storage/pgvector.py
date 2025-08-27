@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hirag_prod._utils import EmbeddingFunc
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.pg_schema import Base as PGBase
-from hirag_prod.storage.pg_schema import create_chunks_model, create_triplets_model
+from hirag_prod.storage.pg_schema import (
+    create_chunks_model,
+    create_file_model,
+    create_triplets_model,
+)
 from hirag_prod.storage.pg_utils import DatabaseClient
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
@@ -56,6 +60,7 @@ class PGVector(BaseVDB):
         self.models = {}  # cache of models for each table
         self.factories = {
             "Chunks": create_chunks_model,
+            "Files": create_file_model,
             "Triplets": create_triplets_model,
         }  # mapping of table names to model creation functions
 
@@ -306,6 +311,7 @@ class PGVector(BaseVDB):
             pass
         async with self.engine.begin() as conn:
             Chunks = self.get_model("Chunks")
+            Files = self.get_model("Files")
             Triplets = self.get_model("Triplets")
 
             def _create(sync_conn):

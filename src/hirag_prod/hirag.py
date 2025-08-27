@@ -329,10 +329,7 @@ class StorageManager:
             "pageImageUrl": getattr(metadata, "page_image_url", None),
             "pageWidth": getattr(metadata, "page_width", None),
             "pageHeight": getattr(metadata, "page_height", None),
-            "x0": getattr(metadata, "x_0", getattr(metadata, "x0", None)),
-            "y0": getattr(metadata, "y_0", getattr(metadata, "y0", None)),
-            "x1": getattr(metadata, "x_1", getattr(metadata, "x1", None)),
-            "y1": getattr(metadata, "y_1", getattr(metadata, "y1", None)),
+            "bbox": getattr(metadata, "bbox", None),
             "type": getattr(metadata, "type", None),
         }
 

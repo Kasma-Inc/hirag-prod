@@ -20,33 +20,65 @@ def create_chunks_model(use_halfvec: bool, dim: int):
     class Chunks(Base):
         __tablename__ = "Chunks"
 
+        # Chunk Data
         documentKey: Mapped[str] = mapped_column(
             String, primary_key=True, nullable=False
         )
         text: Mapped[str] = mapped_column(Text, nullable=False)
-        workspaceId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
-        knowledgeBaseId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
-        type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-        fileName: Mapped[Optional[str]] = mapped_column(String, nullable=False)
-        pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-        uri: Mapped[Optional[str]] = mapped_column(String, nullable=False)
+        # From FileMetadata
+        fileName: Mapped[str] = mapped_column(String, nullable=False)
+        uri: Mapped[str] = mapped_column(String, nullable=False)
         private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+        knowledgeBaseId: Mapped[str] = mapped_column(String, nullable=False)
+        workspaceId: Mapped[str] = mapped_column(String, nullable=False)
+        type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+        pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+        # From ChunkMetadata
+        documentId: Mapped[str] = mapped_column(String, nullable=False)
         chunkIdx: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-        documentId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
         chunkType: Mapped[Optional[str]] = mapped_column(String, nullable=True)
         pageImageUrl: Mapped[Optional[str]] = mapped_column(String, nullable=True)
         pageWidth: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
         pageHeight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        x0: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        y0: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        x1: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        y1: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+        headers: Mapped[Optional[List[str]]] = mapped_column(String, nullable=True)
+        children: Mapped[Optional[List[str]]] = mapped_column(String, nullable=True)
+        caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+        bbox: Mapped[Optional[List[List[float]]]] = mapped_column(String, nullable=True)
+        # Computed Data
         vector: Mapped[List[float]] = mapped_column(vec_col_type, nullable=False)
         updatedAt: Mapped[datetime] = mapped_column(
             DateTime, default=datetime.now, nullable=False
         )
 
     return Chunks
+
+
+def create_file_model(use_halfvec: bool, dim: int):
+    # Currently not using embedding, however keep params for fitting in factory in pgvector.py
+    class Files(Base):
+        __tablename__ = "Files"
+
+        # File Data
+        id: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+        pageContent: Mapped[str] = mapped_column(Text, nullable=False)
+        # FileMetadata
+        fileName: Mapped[str] = mapped_column(String, nullable=False)
+        uri: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+        private: Mapped[Optional[bool]] = mapped_column(
+            Boolean, default=False, nullable=True
+        )
+        knowledgeBaseId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
+        workspaceId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
+        pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+        uploadedAt: Mapped[datetime] = mapped_column(
+            DateTime, default=datetime.now, nullable=False
+        )
+        # Computed Data
+        updatedAt: Mapped[datetime] = mapped_column(
+            DateTime, default=datetime.now, nullable=False
+        )
+
+    return Files
 
 
 def create_triplets_model(use_halfvec: bool, dim: int):
