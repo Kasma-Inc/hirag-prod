@@ -150,6 +150,38 @@ class PGVector(BaseVDB):
             )
             return rows
 
+    async def upsert_file(
+        self,
+        properties_list: List[dict],
+        table_name: str = "Files",
+        mode: Literal["append", "overwrite"] = "append",
+    ):
+        model = self.get_model(table_name)
+
+        start = time.perf_counter()
+        async with AsyncSession(self.engine, expire_on_commit=False) as session:
+            now = datetime.now()
+            rows = []
+            for props in properties_list:
+                row = dict(props or {})
+                row["updatedAt"] = now
+                rows.append(row)
+
+            table = model.__table__
+            pk_cols = [c.name for c in table.primary_key.columns]
+            ins = insert(table).values(rows)
+            stmt = ins.on_conflict_do_nothing(
+                index_elements=[table.c[name] for name in pk_cols]
+            )
+
+            await session.execute(stmt)
+            await session.commit()
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"[upsert_texts] Upserted {len(rows)} into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+            )
+            return rows
+
     async def query(
         self,
         query: str,
@@ -316,7 +348,8 @@ class PGVector(BaseVDB):
 
             def _create(sync_conn):
                 PGBase.metadata.create_all(
-                    bind=sync_conn, tables=[Chunks.__table__, Triplets.__table__]
+                    bind=sync_conn,
+                    tables=[Chunks.__table__, Files.__table__, Triplets.__table__],
                 )
 
             await conn.run_sync(_create)

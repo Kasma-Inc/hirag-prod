@@ -23,6 +23,7 @@ async def index():
 
     await index.set_language("en")  # en | cn
 
+    # Langchain file
     document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
     content_type = "text/plain"
     document_meta = {
@@ -31,13 +32,27 @@ async def index():
         "uri": document_path,
         "private": False,
     }
+
+    # Online file
+    # file_name = "Attention 1706.03762v7.pdf"
+
+    # document_path = f"s3://monkeyocr/test/input/test_pdf/{file_name}"
+
+    # content_type = "application/pdf"
+    # document_meta = {
+    #     "type": "pdf",
+    #     "filename": file_name,
+    #     "uri": document_path,
+    #     "private": False,
+    # }
+
     await index.insert_to_kb(
         document_path=document_path,
         content_type=content_type,
         document_meta=document_meta,
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
-        loader_type="dots_ocr",
+        # loader_type="dots_ocr",
     )
 
     ret = await index.query(

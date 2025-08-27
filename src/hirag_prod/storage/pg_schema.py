@@ -4,6 +4,7 @@ from typing import List, Optional
 from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import ARRAY
 
 
 class Base(DeclarativeBase):
@@ -40,10 +41,16 @@ def create_chunks_model(use_halfvec: bool, dim: int):
         pageImageUrl: Mapped[Optional[str]] = mapped_column(String, nullable=True)
         pageWidth: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
         pageHeight: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
-        headers: Mapped[Optional[List[str]]] = mapped_column(String, nullable=True)
-        children: Mapped[Optional[List[str]]] = mapped_column(String, nullable=True)
+        headers: Mapped[Optional[List[str]]] = mapped_column(
+            ARRAY(String), nullable=True
+        )
+        children: Mapped[Optional[List[str]]] = mapped_column(
+            ARRAY(String), nullable=True
+        )
         caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-        bbox: Mapped[Optional[List[List[float]]]] = mapped_column(String, nullable=True)
+        bbox: Mapped[Optional[List[List[float]]]] = mapped_column(
+            ARRAY(Float), nullable=True
+        )
         # Computed Data
         vector: Mapped[List[float]] = mapped_column(vec_col_type, nullable=False)
         updatedAt: Mapped[datetime] = mapped_column(
@@ -54,7 +61,7 @@ def create_chunks_model(use_halfvec: bool, dim: int):
 
 
 def create_file_model(use_halfvec: bool, dim: int):
-    # Currently not using embedding, however keep params for fitting in factory in pgvector.py
+    # keeping args to fit into factories
     class Files(Base):
         __tablename__ = "Files"
 
@@ -69,10 +76,13 @@ def create_file_model(use_halfvec: bool, dim: int):
         )
         knowledgeBaseId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
         workspaceId: Mapped[Optional[str]] = mapped_column(String, nullable=False)
+        type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
         pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
         uploadedAt: Mapped[datetime] = mapped_column(
             DateTime, default=datetime.now, nullable=False
         )
+        markdownContent: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+        tableOfContents: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
         # Computed Data
         updatedAt: Mapped[datetime] = mapped_column(
             DateTime, default=datetime.now, nullable=False

@@ -31,6 +31,7 @@ from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
+    get_ToC_from_chunks,
 )
 from hirag_prod.parser import (
     DictParser,
@@ -40,6 +41,8 @@ from hirag_prod.prompt import PROMPTS
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import (
     Chunk,
+    File,
+    FileMetadata,
     LoaderType,
     Relation,
 )
@@ -300,37 +303,31 @@ class StorageManager:
         ):  # TODO: temporary fix for hardcode lancedb connection logic
             await self._initialize_files_table()
 
-    # Modified to automatically following the schema defined in schema: chunk & file
-    async def _initialize_files_table(self) -> None:
-        """Initialize files table using dynamic schema from FileMetadata"""
-        try:
-            self.files_table = await self.vdb.db.open_table("files")
-        except Exception as e:
-            if "was not found" in str(e):
-                # TODO: Use PG to store in a separate table
-                pass
-            else:
-                raise StorageError(f"Failed to initialize files table: {e}")
-
     def _chunk_props_for_vdb(self, chunk: Chunk) -> Dict[str, Any]:
         metadata = chunk.metadata
         return {
-            "text": chunk.page_content,
+            # Chunk Data (following pg_schema.py order)
             "documentKey": chunk.id,
-            "workspaceId": getattr(metadata, "workspace_id", None),
-            "knowledgeBaseId": getattr(metadata, "knowledge_base_id", None),
+            "text": chunk.page_content,
+            # From FileMetadata
             "fileName": getattr(metadata, "filename", None),
             "uri": getattr(metadata, "uri", None),
             "private": getattr(metadata, "private", False),
-            "documentId": getattr(metadata, "document_id", None),
-            "chunkType": getattr(metadata, "chunk_type", None),
+            "knowledgeBaseId": getattr(metadata, "knowledge_base_id", None),
+            "workspaceId": getattr(metadata, "workspace_id", None),
+            "type": getattr(metadata, "type", None),
             "pageNumber": getattr(metadata, "page_number", None),
+            # From ChunkMetadata
+            "documentId": getattr(metadata, "document_id", None),
             "chunkIdx": getattr(metadata, "chunk_idx", None),
+            "chunkType": getattr(metadata, "chunk_type", None),
             "pageImageUrl": getattr(metadata, "page_image_url", None),
             "pageWidth": getattr(metadata, "page_width", None),
             "pageHeight": getattr(metadata, "page_height", None),
+            "headers": getattr(metadata, "headers", None),
+            "children": getattr(metadata, "children", None),
+            "caption": getattr(metadata, "caption", None),
             "bbox": getattr(metadata, "bbox", None),
-            "type": getattr(metadata, "type", None),
         }
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
@@ -343,6 +340,53 @@ class StorageManager:
             texts_to_embed=texts_to_embed,
             properties_list=properties_list,
             table_name="Chunks",
+            mode="append",
+        )
+
+    def _snake_to_camel(self, name: str) -> str:
+        if name == "filename":
+            return "fileName"
+        components = name.split("_")
+        return components[0] + "".join(word.capitalize() for word in components[1:])
+
+    def _file_props_for_vdb(
+        self, file: Union[File, Chunk], metadata: Optional[Dict]
+    ) -> Dict[str, Any]:
+        file_metadata = file.metadata
+        obtained_props = {
+            # File Data
+            "id": file.id,
+            "pageContent": getattr(
+                file_metadata, "markdown_content", file.page_content
+            ),
+            # FileMetadata
+            "fileName": getattr(file_metadata, "filename", None),
+            "uri": getattr(file_metadata, "uri", None),
+            "private": getattr(file_metadata, "private", False),
+            "knowledgeBaseId": getattr(file_metadata, "knowledge_base_id", None),
+            "workspaceId": getattr(file_metadata, "workspace_id", None),
+            "pageNumber": getattr(file_metadata, "page_number", None),
+            "uploadedAt": getattr(file_metadata, "uploaded_at", None),
+            "markdownContent": getattr(file_metadata, "markdown_content", None),
+            "tableOfContents": getattr(file_metadata, "table_of_contents", None),
+        }
+        if metadata:
+            for key, value in metadata.items():
+                if value is not None:
+                    camel_key = self._snake_to_camel(key)
+                    obtained_props[camel_key] = value
+
+        return obtained_props
+
+    @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
+    async def upsert_file_to_vdb(
+        self, file: Union[File, Chunk], metadata: Optional[Dict]
+    ) -> None:
+        if not file:
+            return
+        properties = self._file_props_for_vdb(file, metadata)
+        await self.vdb.upsert_file(
+            properties_list=[properties],
             mode="append",
         )
 
@@ -579,6 +623,10 @@ class DocumentProcessor:
                         knowledge_base_id,
                     )
 
+            # Store file information after chunking but before processing chunks
+            if chunks:
+                await self.storage.upsert_file_to_vdb(chunks[0], document_meta)
+
             # Process chunks
             await self._process_chunks(chunks, workspace_id, knowledge_base_id)
             # Update job progress for processed chunks
@@ -631,9 +679,11 @@ class DocumentProcessor:
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
+            generated_md = ""
+            pages = 0
             try:
                 if content_type == "text/plain":
-                    _, langchain_doc = await asyncio.to_thread(
+                    _, generated_md = await asyncio.to_thread(
                         load_document,
                         document_path,
                         content_type,
@@ -641,10 +691,10 @@ class DocumentProcessor:
                         loader_configs,
                         loader_type="langchain",
                     )
-                    chunks = chunk_langchain_document(langchain_doc)
+                    chunks = chunk_langchain_document(generated_md)
                 else:
                     if loader_type == "docling_cloud" or loader_type == "docling":
-                        docling_doc, doc_md = await asyncio.to_thread(
+                        docling_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path,
                             content_type,
@@ -652,9 +702,9 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type=loader_type,
                         )
-                        chunks = chunk_docling_document(docling_doc, doc_md)
+                        chunks = chunk_docling_document(docling_doc, generated_md)
                     elif loader_type == "dots_ocr":
-                        json_doc, md_doc = await asyncio.to_thread(
+                        json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path,
                             content_type,
@@ -665,17 +715,28 @@ class DocumentProcessor:
                         # Validate instance, as it may fall back to docling if cloud service unavailable
                         if isinstance(json_doc, list):
                             # Chunk the Dots OCR document
-                            chunks = chunk_dots_document(json_doc, md_doc)
+                            pages = len(json_doc)
+                            chunks = chunk_dots_document(json_doc, generated_md)
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
-                            chunks = chunk_docling_document(json_doc, md_doc)
+                            chunks = chunk_docling_document(json_doc, generated_md)
                         else:
                             raise DocumentProcessingError(
                                 "Invalid document format returned by loader"
                             )
+                        # Add markdown and table of contents to the first chunk if possible
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )
+
+                if chunks:
+                    first_chunk = chunks[0]
+                    first_chunk.metadata.page_number = pages
+                    first_chunk.metadata.markdown_content = generated_md.page_content
+                    first_chunk.metadata.table_of_contents = str(
+                        get_ToC_from_chunks(chunks)
+                    )
+
                 return chunks
 
             except Exception as e:
@@ -1618,7 +1679,7 @@ class HiRAG:
         start_time = time.perf_counter()
         document_meta["knowledge_base_id"] = knowledge_base_id
         document_meta["workspace_id"] = workspace_id
-        document_meta["uploaded_at"] = datetime.now().isoformat()
+        document_meta["uploaded_at"] = datetime.now()
         if job_id and self._processor and self._processor.resume_tracker is not None:
             try:
                 await self._processor.resume_tracker.set_job_status(
