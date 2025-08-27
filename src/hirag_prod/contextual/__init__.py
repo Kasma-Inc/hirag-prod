@@ -1,4 +1,4 @@
-from .client import (
+from hirag_prod.contextual.client import (
     ContextualClient,
 )
 

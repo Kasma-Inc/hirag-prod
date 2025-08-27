@@ -295,7 +295,9 @@ class StorageManager:
             await self.vdb._init_vdb(embedding_dimension=self.embedding_dimension)
         except Exception as e:
             raise StorageError(f"Failed to initialize VDB: {e}")
-        if self.vdb_type == "lancedb":  # TODO: temporary fix for hardcode lancedb connection logic
+        if (
+            self.vdb_type == "lancedb"
+        ):  # TODO: temporary fix for hardcode lancedb connection logic
             await self._initialize_files_table()
 
     # Modified to automatically following the schema defined in schema: chunk & file

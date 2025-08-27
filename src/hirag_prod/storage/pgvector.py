@@ -8,12 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .._utils import EmbeddingFunc
-from ..storage.base_vdb import BaseVDB
-from ..storage.pg_utils import DatabaseClient
-from ..storage.retrieval_strategy_provider import RetrievalStrategyProvider
-from .pg_schema import Base as PGBase
-from .pg_schema import create_chunks_model, create_triplets_model
+from hirag_prod._utils import EmbeddingFunc
+from hirag_prod.storage.base_vdb import BaseVDB
+from hirag_prod.storage.pg_schema import Base as PGBase
+from hirag_prod.storage.pg_schema import create_chunks_model, create_triplets_model
+from hirag_prod.storage.pg_utils import DatabaseClient
+from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
 logger = logging.getLogger(__name__)
 
