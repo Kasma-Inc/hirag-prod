@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Literal, Optional, Set
 
 import lancedb
 import pyarrow as pa
@@ -12,6 +12,9 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+
+from hirag_prod.storage.pgvector import PGVector
+from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -327,38 +330,72 @@ class VDBManager:
 async def get_chunk_info(
     chunk_id: str,
     vdb_path: str = "kb/hirag.db",
+    vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
     knowledge_base_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Get a single chunk record from LanceDB by its id.
+    """Get a single chunk record from vector database by its id.
 
     Note: the chunk identifier is stored in the `document_key` column of the
-    `chunks` table.
+    `chunks` table for LanceDB, and `documentKey` column for PostgreSQL.
 
     Args:
         chunk_id: The chunk's unique identifier
-        vdb_path: Path to the LanceDB database directory
-        knowledge_base_id: The id of the knowledge base that the chunk is from
+        vdb_path: Path to the LanceDB database directory or PostgreSQL connection URL
+        vdb_type: Type of vector database ("lancedb" or "pgvector")
+        knowledge_base_id: The id of the knowledge base that the chunk is from (optional)
+        workspace_id: The id of the workspace that the chunk is from (optional)
 
     Returns:
         A dict of the chunk row if found, otherwise None.
     """
-    try:
-        async with VDBManager(vdb_path) as vdb:
-            table = await vdb._get_table("chunks")
+    if vdb_type == "lancedb":
+        try:
+            async with VDBManager(vdb_path) as vdb:
+                table = await vdb._get_table("chunks")
 
-            # Use JSON encoding to safely quote/escape the id in the filter expression
-            safe_id = json.dumps(chunk_id, ensure_ascii=False)
+                # Use JSON encoding to safely quote/escape the id in the filter expression
+                safe_id = json.dumps(chunk_id, ensure_ascii=False)
 
-            results = await (
-                table.query().where(f"documentKey == {safe_id}").limit(1).to_list()
+                results = await (
+                    table.query().where(f"documentKey == {safe_id}").limit(1).to_list()
+                )
+                if len(results) > 0:
+                    return results[0]
+                return None
+        except Exception as e:
+            logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
+            return None
+    elif vdb_type == "pgvector":
+        try:
+            # Create PGVector instance
+            vdb = PGVector.create(
+                embedding_func=None,
+                db_url=vdb_path,
+                strategy_provider=RetrievalStrategyProvider(),
+                vector_type="halfvec",
             )
-            if len(results) > 0:
+
+            # Use the existing query_by_keys method to get the chunk
+            results = await vdb.query_by_keys(
+                key_value=[chunk_id],
+                workspace_id=workspace_id or "",
+                knowledge_base_id=knowledge_base_id or "",
+                table_name="Chunks",
+                key_column="documentKey",
+                limit=1,
+            )
+
+            # Clean up the database connection
+            await vdb.clean_up()
+
+            if results and len(results) > 0:
                 return results[0]
             return None
-    except Exception as e:
-        logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
-        return None
+
+        except Exception as e:
+            logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
+            return None
 
 
 async def main():

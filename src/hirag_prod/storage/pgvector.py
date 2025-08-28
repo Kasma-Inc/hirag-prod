@@ -276,8 +276,8 @@ class PGVector(BaseVDB):
             result = await session.execute(stmt)
             rows = list(result.scalars().all())
 
-            if columns_to_select is None:
-                columns_to_select = ["text", "uri", "fileName", "private", key_column]
+            if columns_to_select is None:  # query all if nothing provided
+                columns_to_select = [c.name for c in model.__table__.columns]
 
             out: List[dict] = []
             for r in rows:
