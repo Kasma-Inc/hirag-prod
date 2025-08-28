@@ -450,7 +450,7 @@ async def get_chunk_info_by_scope(
                 strategy_provider=RetrievalStrategyProvider(),
                 vector_type="halfvec",
             )
-            rows = await vdb.query_by_keys(
+            results = await vdb.query_by_keys(
                 key_value=[],
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
@@ -460,7 +460,7 @@ async def get_chunk_info_by_scope(
                 limit=None,
             )
             await vdb.clean_up()
-            return rows
+            return results
         except Exception as e:
             logger.error(
                 f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}: {e}"
