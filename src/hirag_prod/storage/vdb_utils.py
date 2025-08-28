@@ -328,44 +328,52 @@ class VDBManager:
 
 
 async def get_chunk_info(
-    chunk_id: str,
+    chunk_ids: list[str],
     vdb_path: str = "kb/hirag.db",
     vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
     knowledge_base_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
-    """Get a single chunk record from vector database by its id.
+) -> Optional[list[Dict[str, Any]]]:
+    """Get a list of chunk records from vector database by its ids.
 
     Note: the chunk identifier is stored in the `document_key` column of the
     `chunks` table for LanceDB, and `documentKey` column for PostgreSQL.
 
     Args:
-        chunk_id: The chunk's unique identifier
+        chunk_ids: list of chunk ids to get info for
         vdb_path: Path to the LanceDB database directory or PostgreSQL connection URL
         vdb_type: Type of vector database ("lancedb" or "pgvector")
         knowledge_base_id: The id of the knowledge base that the chunk is from (optional)
         workspace_id: The id of the workspace that the chunk is from (optional)
 
     Returns:
-        A dict of the chunk row if found, otherwise None.
+        A list of dicts of the chunk rows if found, otherwise None.
     """
+    if not chunk_ids:
+        return []
+
+    results = []
     if vdb_type == "lancedb":
         try:
             async with VDBManager(vdb_path) as vdb:
                 table = await vdb._get_table("chunks")
 
-                # Use JSON encoding to safely quote/escape the id in the filter expression
-                safe_id = json.dumps(chunk_id, ensure_ascii=False)
+                key_pred = f"`documentKey` IN ({', '.join(map(repr, chunk_ids))})"
+                scope_clauses = []
+                if workspace_id:
+                    scope_clauses.append(f"`workspaceId` = {repr(workspace_id)}")
+                if knowledge_base_id:
+                    scope_clauses.append(
+                        f"`knowledgeBaseId` = {repr(knowledge_base_id)}"
+                    )
+                predicate = " AND ".join([key_pred] + scope_clauses)
 
-                results = await (
-                    table.query().where(f"documentKey == {safe_id}").limit(1).to_list()
-                )
-                if len(results) > 0:
-                    return results[0]
-                return None
+                results = await table.query().where(predicate).to_list()
+                return results
         except Exception as e:
-            logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
-            return None
+            logger.error(f"Failed to get chunk info for ids={chunk_ids}: {e}")
+            return results
+
     elif vdb_type == "pgvector":
         try:
             # Create PGVector instance
@@ -376,26 +384,88 @@ async def get_chunk_info(
                 vector_type="halfvec",
             )
 
-            # Use the existing query_by_keys method to get the chunk
-            results = await vdb.query_by_keys(
-                key_value=[chunk_id],
-                workspace_id=workspace_id or "",
-                knowledge_base_id=knowledge_base_id or "",
-                table_name="Chunks",
-                key_column="documentKey",
-                limit=1,
+            results = await asyncio.gather(
+                *[
+                    vdb.query_by_keys(
+                        key_value=[chunk_id],
+                        workspace_id=workspace_id or "",
+                        knowledge_base_id=knowledge_base_id or "",
+                        table_name="Chunks",
+                        key_column="documentKey",
+                    )
+                    for chunk_id in chunk_ids
+                ]
             )
 
-            # Clean up the database connection
             await vdb.clean_up()
-
-            if results and len(results) > 0:
-                return results[0]
-            return None
+            return results
 
         except Exception as e:
-            logger.error(f"Failed to get chunk info for id={chunk_id}: {e}")
-            return None
+            logger.error(f"Failed to get chunks info for ids={chunk_ids}: {e}")
+            return results
+
+
+async def get_chunk_info_by_scope(
+    knowledge_base_id: str,
+    workspace_id: str,
+    vdb_path: str = "kb/hirag.db",
+    vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
+) -> list[dict[str, Any]]:
+    """Get chunk info by scope (knowledgeBaseId and workspaceId).
+
+    Args:
+        knowledge_base_id: The id of the knowledge base that the chunk is from
+        workspace_id: The id of the workspace that the chunk is from
+        vdb_path: Path to the LanceDB database directory or PostgreSQL connection URL
+        vdb_type: Type of vector database ("lancedb" or "pgvector")
+
+    Returns:
+        A list of dicts of the chunk rows if found, otherwise an empty list.
+    """
+    if not knowledge_base_id or not workspace_id:
+        raise ValueError("knowledge_base_id and workspace_id are required")
+
+    results: list[dict[str, Any]] = []
+
+    if vdb_type == "lancedb":
+        try:
+            async with VDBManager(vdb_path) as vdb:
+                table = await vdb._get_table("chunks")
+                predicate = (
+                    f"`workspaceId` = {repr(workspace_id)} AND "
+                    f"`knowledgeBaseId` = {repr(knowledge_base_id)}"
+                )
+                return await table.query().where(predicate).to_list()
+        except Exception as e:
+            logger.error(
+                f"Failed to get chunk info by scope (lancedb) kb={knowledge_base_id}, ws={workspace_id}: {e}"
+            )
+            return results
+
+    elif vdb_type == "pgvector":
+        try:
+            vdb = PGVector.create(
+                embedding_func=None,
+                db_url=vdb_path,
+                strategy_provider=RetrievalStrategyProvider(),
+                vector_type="halfvec",
+            )
+            rows = await vdb.query_by_keys(
+                key_value=[],
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                table_name="Chunks",
+                key_column="documentKey",
+                columns_to_select=None,
+                limit=None,
+            )
+            await vdb.clean_up()
+            return rows
+        except Exception as e:
+            logger.error(
+                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}: {e}"
+            )
+            return results
 
 
 async def main():

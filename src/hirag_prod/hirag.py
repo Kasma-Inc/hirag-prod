@@ -42,7 +42,6 @@ from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import (
     Chunk,
     File,
-    FileMetadata,
     LoaderType,
     Relation,
 )
