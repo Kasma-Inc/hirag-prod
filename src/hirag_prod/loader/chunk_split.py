@@ -7,7 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.chunk import DotsHierarchicalChunker
-from hirag_prod.schema.chunk import Chunk, ChunkMetadata
+from hirag_prod.schema.chunk import Chunk
 from hirag_prod.schema.file import File
 
 CHUNK_SIZE = 1200
@@ -198,9 +198,11 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
                 ]
             ]
 
-        metadata = ChunkMetadata(
+        chunk_obj = Chunk(
+            id=compute_mdhash_id(chunk.text, prefix="chunk-"),
+            page_content=chunk.text,
             chunk_idx=idx,
-            document_id=doc_md.id,
+            document_id=doc_md.documentKey,
             chunk_type=chunk_type.value,
             page_number=page_number,
             page_image_url=None,
@@ -211,20 +213,14 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             # TODO: If using docling in the future, may need to do indexing for headers
             headers=docling_chunk_meta["headers"],
             # inherit file metadata
-            type=doc_md.metadata.type,
-            filename=doc_md.metadata.filename,
-            uri=doc_md.metadata.uri,
-            private=doc_md.metadata.private,
-            uploaded_at=doc_md.metadata.uploaded_at,
-            knowledge_base_id=doc_md.metadata.knowledge_base_id,
-            workspace_id=doc_md.metadata.workspace_id,
+            type=doc_md.type,
+            fileName=doc_md.fileName,
+            uri=doc_md.uri,
+            private=doc_md.private,
+            uploadedAt=doc_md.uploadedAt,
+            knowledgeBaseId=doc_md.knowledgeBaseId,
+            workspaceId=doc_md.workspaceId,
             children=None,
-        )
-
-        chunk_obj = Chunk(
-            id=compute_mdhash_id(chunk.text, prefix="chunk-"),
-            page_content=chunk.text,
-            metadata=metadata,
         )
 
         chunks.append(chunk_obj)
@@ -280,10 +276,10 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
     vis_chunks = set()
     chunk_to_index = {}
     for idx, chunk in enumerate(chunks):
-        chunk_to_index[chunk.id] = idx
+        chunk_to_index[chunk.documentKey] = idx
 
     def _is_header(chunk: Chunk) -> bool:
-        return chunk.metadata.chunk_type in [
+        return chunk.chunk_type in [
             ChunkType.TITLE.value,
             ChunkType.SECTION_HEADER.value,
         ]
@@ -292,12 +288,12 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         if not _is_header(chunk):
             return None
         term = {
-            "title": chunk.page_content,
-            "chunk_id": chunk.id,
+            "title": chunk.text,
+            "chunk_id": chunk.documentKey,
         }
         # Go through children
         valid_children = []
-        for child_id in chunk.metadata.children:
+        for child_id in chunk.children:
             child_idx = chunk_to_index.get(child_id)
             vis_chunks.add(child_id)
             extracted_child = _extract_term(chunks[child_idx])
@@ -308,9 +304,9 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         return term
 
     for chunk in chunks:
-        if chunk.id in vis_chunks:
+        if chunk.documentKey in vis_chunks:
             continue
-        vis_chunks.add(chunk.id)
+        vis_chunks.add(chunk.documentKey)
         term = _extract_term(chunk)
         if term:
             ToC.append(term)
@@ -361,9 +357,16 @@ def chunk_dots_document(
         if left_bottom_origin and page_height is not None:
             bboxes = _transform_bbox_dims(bboxes, page_height)
 
-        metadata = ChunkMetadata(
+        # Create the chunk content, including caption if available
+        content = dots_chunk.text
+
+        chunk_id = compute_mdhash_id(content, prefix="chunk-")
+
+        chunk_obj = Chunk(
+            documentKey=chunk_id,
+            page_content=content,
             chunk_idx=tmp_chunk_idx,
-            document_id=md_doc.id,
+            document_id=md_doc.documentKey,
             chunk_type=chunk_type.value,
             page_number=dots_chunk.page_no,
             page_image_url=None,
@@ -375,47 +378,35 @@ def chunk_dots_document(
             headers=None,
             children=None,
             # inherit file metadata
-            type=md_doc.metadata.type,
-            filename=md_doc.metadata.filename,
-            uri=md_doc.metadata.uri,
-            private=md_doc.metadata.private,
-            uploaded_at=md_doc.metadata.uploaded_at,
-            knowledge_base_id=md_doc.metadata.knowledge_base_id,
-            workspace_id=md_doc.metadata.workspace_id,
-        )
-
-        # Create the chunk content, including caption if available
-        content = dots_chunk.text
-
-        chunk_id = compute_mdhash_id(content, prefix="chunk-")
-
-        chunk_obj = Chunk(
-            id=chunk_id,
-            page_content=content,
-            metadata=metadata,
+            type=md_doc.type,
+            fileName=md_doc.fileName,
+            uri=md_doc.uri,
+            private=md_doc.private,
+            uploadedAt=md_doc.uploadedAt,
+            knowledgeBaseId=md_doc.knowledgeBaseId,
+            workspaceId=md_doc.workspaceId,
         )
 
         chunk_id_mapping[tmp_chunk_idx] = chunk_id
 
         chunks.append(chunk_obj)
 
-    chunks.sort(key=lambda c: c.metadata.chunk_idx)
+    chunks.sort(key=lambda c: c.chunkIdx)
 
     # For all headings & children, do a mapping
     for chunk in chunks:
-        chunk_meta = chunk.metadata
-        tmp_idx = chunk_meta.chunk_idx
+        tmp_idx = chunk.chunkIdx
         raw_headers = dots_chunks[tmp_idx].headings if tmp_idx in dots_chunks else []
         if raw_headers:
             # Map the chunk ID to the heading text
             header_ids = [chunk_id_mapping[h] for h in raw_headers]
-            chunk_meta.headers = header_ids
+            chunk.headers = header_ids
 
         raw_children = dots_chunks[tmp_idx].children if tmp_idx in dots_chunks else []
         if raw_children:
             # Map the chunk ID to the children
             child_ids = [chunk_id_mapping[c] for c in raw_children]
-            chunk_meta.children = child_ids
+            chunk.children = child_ids
 
     return chunks
 
@@ -444,33 +435,29 @@ def chunk_langchain_document(
 
     chunks = []
     for idx, chunk in enumerate(chunk_texts):
-        metadata = ChunkMetadata(
-            chunk_idx=idx,
-            document_id=langchain_doc.id,
-            chunk_type="text",
+        chunk_obj = Chunk(
+            documentKey=compute_mdhash_id(chunk, prefix="chunk-"),
+            text=chunk,
+            chunkIdx=idx,
+            documentId=langchain_doc.documentKey,
+            chunkType="text",
             # Inherit file metadata from doc_md
-            type=langchain_doc.metadata.type,
-            filename=langchain_doc.metadata.filename,
-            page_number=langchain_doc.metadata.page_number,
-            uri=langchain_doc.metadata.uri,
-            private=langchain_doc.metadata.private,
-            uploaded_at=langchain_doc.metadata.uploaded_at,
+            type=langchain_doc.type,
+            fileName=langchain_doc.fileName,
+            page_number=langchain_doc.pageNumber,
+            uri=langchain_doc.uri,
+            private=langchain_doc.private,
+            uploadedAt=langchain_doc.uploadedAt,
             # Fields required by ChunkMetadata but not applicable for langchain chunks
-            page_image_url=None,
-            page_width=None,
-            page_height=None,
+            pageImageUrl=None,
+            pageWidth=None,
+            pageHeight=None,
             bbox=None,
             caption=None,
             headers=None,
-            knowledge_base_id=langchain_doc.metadata.knowledge_base_id,
-            workspace_id=langchain_doc.metadata.workspace_id,
+            knowledgeBaseId=langchain_doc.knowledgeBaseId,
+            workspaceId=langchain_doc.workspaceId,
             children=None,
-        )
-
-        chunk_obj = Chunk(
-            id=compute_mdhash_id(chunk, prefix="chunk-"),
-            page_content=chunk,
-            metadata=metadata,
         )
 
         chunks.append(chunk_obj)

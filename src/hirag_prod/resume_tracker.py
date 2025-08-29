@@ -295,18 +295,18 @@ class ResumeTracker:
             document_id, workspace_id, knowledge_base_id
         )
         for chunk in chunks:
-            chunk_key = self._chunk_key(chunk.id, workspace_id, knowledge_base_id)
+            chunk_key = self._chunk_key(chunk.documentKey, workspace_id, knowledge_base_id)
             chunk_data = {
-                "chunk_id": chunk.id,
+                "chunk_id": chunk.documentKey,
                 "document_id": document_id,
                 "document_uri": document_uri,
                 "chunk_hash": self._calculate_chunk_hash(
-                    chunk.page_content, workspace_id, knowledge_base_id
+                    chunk.text, workspace_id, knowledge_base_id
                 ),
                 "created_at": now,
             }
             pipeline.hset(chunk_key, mapping=chunk_data)
-            pipeline.sadd(doc_chunks_key, chunk.id)
+            pipeline.sadd(doc_chunks_key, chunk.documentKey)
             pipeline.expire(chunk_key, EXPIRE_TTL)
 
         pipeline.expire(doc_info_key, EXPIRE_TTL)

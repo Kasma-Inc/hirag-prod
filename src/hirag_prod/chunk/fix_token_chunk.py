@@ -3,7 +3,7 @@ from langchain_text_splitters.base import split_text_on_tokens
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.chunk.base_chunk import BaseChunk
-from hirag_prod.schema import Chunk, File
+from hirag_prod.schema import Chunk, File, file_to_chunk
 
 
 class FixTokenChunk(BaseChunk):
@@ -20,21 +20,18 @@ class FixTokenChunk(BaseChunk):
             encode=(lambda it: [ord(c) for c in it]),
         )
         chunks = split_text_on_tokens(
-            text=document.page_content,
+            text=document.text,
             tokenizer=tokenizer,
         )
-        metadata = document.metadata
-        document_id = document.id
+        document_id = document.documentKey
 
         return [
-            Chunk(
-                id=compute_mdhash_id(chunk, prefix="chunk-"),
-                page_content=chunk,
-                metadata={
-                    **metadata.__dict__,  # Get all attributes from metadata object
-                    "chunk_idx": chunk_idx,
-                    "document_id": document_id,
-                },
+            file_to_chunk(
+                file=document,
+                documentKey=compute_mdhash_id(chunk, prefix="chunk-"),
+                text=chunk,
+                chunk_idx=chunk_idx,
+                document_id=document_id,
             )
             for chunk_idx, chunk in enumerate(chunks)
         ]

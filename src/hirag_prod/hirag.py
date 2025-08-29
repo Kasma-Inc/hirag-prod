@@ -42,7 +42,6 @@ from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import (
     Chunk,
     File,
-    FileMetadata,
     LoaderType,
     Relation,
 )
@@ -303,42 +302,14 @@ class StorageManager:
         ):  # TODO: temporary fix for hardcode lancedb connection logic
             await self._initialize_files_table()
 
-    def _chunk_props_for_vdb(self, chunk: Chunk) -> Dict[str, Any]:
-        metadata = chunk.metadata
-        return {
-            # Chunk Data (following pg_schema.py order)
-            "documentKey": chunk.id,
-            "text": chunk.page_content,
-            # From FileMetadata
-            "fileName": getattr(metadata, "filename", None),
-            "uri": getattr(metadata, "uri", None),
-            "private": getattr(metadata, "private", False),
-            "knowledgeBaseId": getattr(metadata, "knowledge_base_id", None),
-            "workspaceId": getattr(metadata, "workspace_id", None),
-            "type": getattr(metadata, "type", None),
-            "pageNumber": getattr(metadata, "page_number", None),
-            # From ChunkMetadata
-            "documentId": getattr(metadata, "document_id", None),
-            "chunkIdx": getattr(metadata, "chunk_idx", None),
-            "chunkType": getattr(metadata, "chunk_type", None),
-            "pageImageUrl": getattr(metadata, "page_image_url", None),
-            "pageWidth": getattr(metadata, "page_width", None),
-            "pageHeight": getattr(metadata, "page_height", None),
-            "headers": getattr(metadata, "headers", None),
-            "children": getattr(metadata, "children", None),
-            "caption": getattr(metadata, "caption", None),
-            "bbox": getattr(metadata, "bbox", None),
-        }
-
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return
-        texts_to_embed = [c.page_content for c in chunks]
-        properties_list = [self._chunk_props_for_vdb(c) for c in chunks]
+        texts_to_embed = [c.text for c in chunks]
         await self.vdb.upsert_texts(
             texts_to_embed=texts_to_embed,
-            properties_list=properties_list,
+            properties_list=chunks,
             table_name="Chunks",
             mode="append",
         )
@@ -349,43 +320,14 @@ class StorageManager:
         components = name.split("_")
         return components[0] + "".join(word.capitalize() for word in components[1:])
 
-    def _file_props_for_vdb(
-        self, file: Union[File, Chunk], metadata: Optional[Dict]
-    ) -> Dict[str, Any]:
-        file_metadata = file.metadata
-        content = getattr(file_metadata, "markdown_content", file.page_content)
-        obtained_props = {
-            # File Data
-            "id": "file-" + compute_mdhash_id(content=content),
-            "pageContent": content,
-            # FileMetadata
-            "fileName": getattr(file_metadata, "filename", None),
-            "uri": getattr(file_metadata, "uri", None),
-            "private": getattr(file_metadata, "private", False),
-            "knowledgeBaseId": getattr(file_metadata, "knowledge_base_id", None),
-            "workspaceId": getattr(file_metadata, "workspace_id", None),
-            "pageNumber": getattr(file_metadata, "page_number", None),
-            "uploadedAt": getattr(file_metadata, "uploaded_at", None),
-            "markdownContent": getattr(file_metadata, "markdown_content", None),
-            "tableOfContents": getattr(file_metadata, "table_of_contents", None),
-        }
-        if metadata:
-            for key, value in metadata.items():
-                if value is not None:
-                    camel_key = self._snake_to_camel(key)
-                    obtained_props[camel_key] = value
-
-        return obtained_props
-
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
     async def upsert_file_to_vdb(
-        self, file: Union[File, Chunk], metadata: Optional[Dict]
+        self, file: File
     ) -> None:
         if not file:
             return
-        properties = self._file_props_for_vdb(file, metadata)
         await self.vdb.upsert_file(
-            properties_list=[properties],
+            properties_list=[file],
             mode="append",
         )
 
@@ -564,7 +506,7 @@ class DocumentProcessor:
 
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
-            chunks = await self._load_and_chunk_document(
+            chunks, file = await self._load_and_chunk_document(
                 document_path,
                 content_type,
                 document_meta,
@@ -589,7 +531,7 @@ class DocumentProcessor:
 
             # Check if document was already completed in a previous session
             if self.resume_tracker:
-                document_id = chunks[0].metadata.document_id
+                document_id = chunks[0].documentId
                 # Update job -> processing with doc info as soon as we know
                 if job_id:
                     try:
@@ -613,7 +555,7 @@ class DocumentProcessor:
                             pass
                     return self.metrics.metrics
                 else:
-                    document_uri = chunks[0].metadata.uri
+                    document_uri = chunks[0].uri
                     self.resume_tracker.register_chunks(
                         chunks,
                         document_id,
@@ -623,8 +565,7 @@ class DocumentProcessor:
                     )
 
             # Store file information after chunking but before processing chunks
-            if chunks:
-                await self.storage.upsert_file_to_vdb(chunks[0], document_meta)
+            await self.storage.upsert_file_to_vdb(file, document_meta)
 
             # Process chunks
             await self._process_chunks(chunks, workspace_id, knowledge_base_id)
@@ -655,7 +596,7 @@ class DocumentProcessor:
             # Mark as complete
             if self.resume_tracker:
                 self.resume_tracker.mark_document_completed(
-                    document_id=chunks[0].metadata.document_id,
+                    document_id=chunks[0].documentId,
                     workspace_id=workspace_id,
                     knowledge_base_id=knowledge_base_id,
                 )
@@ -674,11 +615,11 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[str],
-    ) -> List[Chunk]:
+    ) -> (List[Chunk], File):  # type: ignore
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
-            generated_md = ""
+            generated_md = None
             pages = 0
             try:
                 if content_type == "text/plain":
@@ -714,7 +655,6 @@ class DocumentProcessor:
                         # Validate instance, as it may fall back to docling if cloud service unavailable
                         if isinstance(json_doc, list):
                             # Chunk the Dots OCR document
-                            pages = len(json_doc)
                             chunks = chunk_dots_document(json_doc, generated_md)
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
@@ -728,15 +668,7 @@ class DocumentProcessor:
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )
 
-                if chunks:
-                    first_chunk = chunks[0]
-                    first_chunk.metadata.page_number = pages
-                    first_chunk.metadata.markdown_content = generated_md.page_content
-                    first_chunk.metadata.table_of_contents = str(
-                        get_ToC_from_chunks(chunks)
-                    )
-
-                return chunks
+                return chunks, generated_md
 
             except Exception as e:
                 raise DocumentProcessingError(
@@ -780,11 +712,11 @@ class DocumentProcessor:
 
         if self.resume_tracker:
             # Check for existing chunks in vector database
-            uri = chunks[0].metadata.uri
+            uri = chunks[0].uri
             existing_chunk_ids = await self.storage.get_existing_chunks(
                 uri, workspace_id, knowledge_base_id
             )
-            return [chunk for chunk in chunks if chunk.id not in existing_chunk_ids]
+            return [chunk for chunk in chunks if chunk.documentKey not in existing_chunk_ids]
 
         return chunks
 
@@ -1676,9 +1608,9 @@ class HiRAG:
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
-        document_meta["knowledge_base_id"] = knowledge_base_id
-        document_meta["workspace_id"] = workspace_id
-        document_meta["uploaded_at"] = datetime.now()
+        document_meta["knowledgeBaseId"] = knowledge_base_id
+        document_meta["workspaceId"] = workspace_id
+        document_meta["uploadedAt"] = datetime.now()
         if job_id and self._processor and self._processor.resume_tracker is not None:
             try:
                 await self._processor.resume_tracker.set_job_status(

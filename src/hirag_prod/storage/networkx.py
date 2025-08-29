@@ -225,7 +225,7 @@ class NetworkXGDB(BaseGDB):
             properties=edge,
         )
 
-    async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]):
+    async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]): # type: ignore
         neighbors = list(self.graph.neighbors(node_id))
         edges = list(self.graph.edges(node_id))
         neighbor_results = await asyncio.gather(

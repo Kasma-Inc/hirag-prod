@@ -22,7 +22,7 @@ def get_test(id: str):
         content_type = "text/plain"
         document_meta = {
             "type": "txt",
-            "filename": "2wiki_subcorpus.txt",
+            "fileName": "2wiki_subcorpus.txt",
             "uri": document_path,
             "private": False,
         }
@@ -32,7 +32,7 @@ def get_test(id: str):
         content_type = "application/pdf"
         document_meta = {
             "type": "pdf",
-            "filename": "small.pdf",
+            "fileName": "small.pdf",
             "uri": document_path,
             "private": False,
         }

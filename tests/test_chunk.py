@@ -11,15 +11,14 @@ from hirag_prod.loader.chunk_split import (
 
 
 def _brief(c):
-    meta_data = c.metadata
-    content = (c.page_content or "").replace("\n", " ")
+    content = (c.text or "").replace("\n", " ")
     # if len(content) > 80:
     #     content = content[:80] + "..."
 
     return (
-        f"id={c.id} | idx={meta_data.chunk_idx} | type={meta_data.chunk_type} | "
-        f"page={meta_data.page_number} | headers={meta_data.headers} | children={meta_data.children} | caption={meta_data.caption} | "
-        f'bbox={meta_data.bbox} | text={content} | size=({meta_data.page_width}x{meta_data.page_height})"'
+        f"id={c.id} | idx={c.chunkIdx} | type={c.chunkType} | "
+        f"page={c.pageNumber} | headers={c.headers} | children={c.children} | caption={c.caption} | "
+        f'bbox={c.bbox} | text={content} | size=({c.pageWidth}x{c.pageHeight})"'
     )
 
 
@@ -54,25 +53,24 @@ def test_chunk_docling_document():
     assert chunks is not None
     assert len(chunks) > 0
 
-    assert hasattr(chunks[0], "id")
-    assert hasattr(chunks[0], "page_content")
-    assert hasattr(chunks[0], "metadata")
+    assert hasattr(chunks[0], "documentKey")
+    assert hasattr(chunks[0], "text")
 
-    assert chunks[0].id.startswith("chunk-")
-    assert chunks[0].page_content is not None
+    assert chunks[0].documentKey.startswith("chunk-")
+    assert chunks[0].text is not None
 
-    assert hasattr(chunks[0].metadata, "chunk_idx")
-    assert hasattr(chunks[0].metadata, "document_id")
-    assert hasattr(chunks[0].metadata, "chunk_type")
+    assert hasattr(chunks[0], "chunkIdx")
+    assert hasattr(chunks[0], "documentId")
+    assert hasattr(chunks[0], "chunkType")
 
-    assert chunks[0].metadata.type == "pdf"
-    assert chunks[0].metadata.filename == "Guide-to-U.S.-Healthcare-System.pdf"
-    assert chunks[0].metadata.uri == document_path
-    assert chunks[0].metadata.private is False
-    assert chunks[0].metadata.document_id == doc_md.id
+    assert chunks[0].type == "pdf"
+    assert chunks[0].fileName == "Guide-to-U.S.-Healthcare-System.pdf"
+    assert chunks[0].uri == document_path
+    assert chunks[0].private is False
+    assert chunks[0].documentId == doc_md.id
 
-    assert chunks[0].metadata.chunk_idx == 0
-    assert chunks[0].metadata.chunk_type is not None
+    assert chunks[0].chunkIdx == 0
+    assert chunks[0].chunkType is not None
 
     print(f"[docling] total chunks: {len(chunks)}")
     # for c in chunks[:3]:
@@ -111,25 +109,24 @@ def test_chunk_dots_document():
     assert chunks is not None
     assert len(chunks) > 0
 
-    assert hasattr(chunks[0], "id")
-    assert hasattr(chunks[0], "page_content")
-    assert hasattr(chunks[0], "metadata")
+    assert hasattr(chunks[0], "documentKey")
+    assert hasattr(chunks[0], "text")
 
-    assert chunks[0].id.startswith("chunk-")
-    assert chunks[0].page_content is not None
+    assert chunks[0].documentKey.startswith("chunk-")
+    assert chunks[0].text is not None
 
-    assert hasattr(chunks[0].metadata, "chunk_idx")
-    assert hasattr(chunks[0].metadata, "document_id")
-    assert hasattr(chunks[0].metadata, "chunk_type")
+    assert hasattr(chunks[0], "chunkIdx")
+    assert hasattr(chunks[0], "documentId")
+    assert hasattr(chunks[0], "chunkType")
 
-    assert chunks[0].metadata.type == "pdf"
-    assert chunks[0].metadata.filename == file_name
-    assert chunks[0].metadata.uri == document_path
-    assert chunks[0].metadata.private is False
-    assert chunks[0].metadata.document_id == doc_md.id
+    assert chunks[0].chunkType == "pdf"
+    assert chunks[0].fileName == file_name
+    assert chunks[0].uri == document_path
+    assert chunks[0].private is False
+    assert chunks[0].documentId == doc_md.id
 
-    assert chunks[0].metadata.chunk_idx == 0
-    assert chunks[0].metadata.chunk_type is not None
+    assert chunks[0].chunkIdx == 0
+    assert chunks[0].chunkType is not None
 
     print(f"[dots] total chunks: {len(chunks)}")
     toc = get_ToC_from_chunks(chunks)
@@ -163,25 +160,24 @@ def test_chunk_langchain_document():
     assert chunks is not None
     assert len(chunks) > 0
 
-    assert hasattr(chunks[0], "id")
-    assert hasattr(chunks[0], "page_content")
-    assert hasattr(chunks[0], "metadata")
+    assert hasattr(chunks[0], "documentKey")
+    assert hasattr(chunks[0], "text")
 
-    assert chunks[0].id.startswith("chunk-")
-    assert chunks[0].page_content is not None
+    assert chunks[0].documentKey.startswith("chunk-")
+    assert chunks[0].text is not None
 
-    assert hasattr(chunks[0].metadata, "chunk_idx")
-    assert hasattr(chunks[0].metadata, "document_id")
-    assert hasattr(chunks[0].metadata, "chunk_type")
+    assert hasattr(chunks[0], "chunkIdx")
+    assert hasattr(chunks[0], "documentId")
+    assert hasattr(chunks[0], "chunkType")
 
-    assert chunks[0].metadata.type == "txt"
-    assert chunks[0].metadata.filename == "test.txt"
-    assert chunks[0].metadata.uri == document_path
-    assert chunks[0].metadata.private is False
-    assert chunks[0].metadata.document_id == langchain_doc.id
+    assert chunks[0].chunkType == "txt"
+    assert chunks[0].fileName == "test.txt"
+    assert chunks[0].uri == document_path
+    assert chunks[0].private is False
+    assert chunks[0].documentId == langchain_doc.id
 
-    assert chunks[0].metadata.chunk_idx == 0
-    assert chunks[0].metadata.chunk_type is not None
+    assert chunks[0].chunkIdx == 0
+    assert chunks[0].chunkType is not None
 
     print(f"[langchain] total chunks: {len(chunks)}")
     for c in chunks[:2]:

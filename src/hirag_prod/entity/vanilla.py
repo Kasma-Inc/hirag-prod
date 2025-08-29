@@ -86,18 +86,18 @@ class VanillaKG(BaseKG):
         for entity in entities:
             dense_sparse_relations.append(
                 Relation(
-                    source=chunk.id,
+                    source=chunk.documentKey,
                     target=entity.id,
                     properties={
-                        "source": chunk.id,
+                        "source": chunk.documentKey,
                         "relation": "contains",
                         "target": entity.page_content,
-                        "description": f"Chunk {chunk.id} contains Entity {entity.page_content}",
+                        "description": f"Chunk {chunk.documentKey} contains Entity {entity.page_content}",
                         "weight": 1.0,
-                        "chunk_id": chunk.id,
-                        "file_name": chunk.metadata.filename,
-                        "workspace_id": chunk.metadata.workspace_id,
-                        "knowledge_base_id": chunk.metadata.knowledge_base_id,
+                        "chunk_id": chunk.documentKey,
+                        "file_name": chunk.fileName,
+                        "workspace_id": chunk.workspaceId,
+                        "knowledge_base_id": chunk.knowledgeBaseId,
                     },
                 )
             )
@@ -123,7 +123,7 @@ class VanillaKG(BaseKG):
             start_time = time.time()
 
             entity_prompt = self.entity_extract_prompt.format(
-                input_text=chunk.page_content
+                input_text=chunk.text
             )
 
             entity_result = await self.extract_func(
@@ -133,22 +133,22 @@ class VanillaKG(BaseKG):
 
             entities = await self._parse_entities_from_result(
                 entity_result,
-                chunk.id,
-                chunk.metadata.workspace_id,
-                chunk.metadata.knowledge_base_id,
+                chunk.documentKey,
+                chunk.workspaceId,
+                chunk.knowledgeBaseId,
             )
 
             elapsed = time.time() - start_time
             logging.info(
-                f"[Entity] Extracted {len(entities)} entities from chunk {chunk.id} "
+                f"[Entity] Extracted {len(entities)} entities from chunk {chunk.documentKey} "
                 f"in {elapsed:.2f}s"
             )
 
             return entities
 
         except Exception as e:
-            logging.exception(f"[Entity] Extraction failed for chunk {chunk.id}")
-            warnings.warn(f"Entity extraction failed for chunk {chunk.id}: {e}")
+            logging.exception(f"[Entity] Extraction failed for chunk {chunk.documentKey}")
+            warnings.warn(f"Entity extraction failed for chunk {chunk.documentKey}: {e}")
             return []
 
     async def _parse_entities_from_result(
@@ -209,7 +209,7 @@ class VanillaKG(BaseKG):
 
             if not entities:
                 logging.info(
-                    f"[Relation] No entities found for chunk {chunk.id}, skipping"
+                    f"[Relation] No entities found for chunk {chunk.documentKey}, skipping"
                 )
                 return []
 
@@ -218,7 +218,7 @@ class VanillaKG(BaseKG):
 
             relation_prompt = self.relation_extract_prompt.format(
                 entity_list=entity_names,
-                input_text=chunk.page_content,
+                input_text=chunk.text,
             )
 
             # Step 1: Initial relation extraction
@@ -231,15 +231,15 @@ class VanillaKG(BaseKG):
 
             elapsed = time.time() - start_time
             logging.info(
-                f"[Relation] Extracted {len(relations)} relations from chunk {chunk.id} "
+                f"[Relation] Extracted {len(relations)} relations from chunk {chunk.documentKey} "
                 f"in {elapsed:.2f}s"
             )
 
             return relations
 
         except Exception as e:
-            logging.exception(f"[Relation] Extraction failed for chunk {chunk.id}")
-            warnings.warn(f"Relation extraction failed for chunk {chunk.id}: {e}")
+            logging.exception(f"[Relation] Extraction failed for chunk {chunk.documentKey}")
+            warnings.warn(f"Relation extraction failed for chunk {chunk.documentKey}: {e}")
             return []
 
     async def _parse_relations_from_result(
@@ -278,10 +278,10 @@ class VanillaKG(BaseKG):
                 "target": tail,
                 "description": f"{head} {relation} {tail}",
                 "weight": 1.0,
-                "chunk_id": chunk.id,
-                "file_name": chunk.metadata.filename,
-                "workspace_id": chunk.metadata.workspace_id,
-                "knowledge_base_id": chunk.metadata.knowledge_base_id,
+                "chunk_id": chunk.documentKey,
+                "file_name": chunk.fileName,
+                "workspace_id": chunk.workspaceId,
+                "knowledge_base_id": chunk.knowledgeBaseId,
             }
 
             rel = Relation(
@@ -297,9 +297,9 @@ class VanillaKG(BaseKG):
                 metadata={
                     "entity_type": "entity",
                     "description": [],
-                    "chunk_ids": [chunk.id],
-                    "workspace_id": chunk.metadata.workspace_id,
-                    "knowledge_base_id": chunk.metadata.knowledge_base_id,
+                    "chunk_ids": [chunk.documentKey],
+                    "workspace_id": chunk.workspaceId,
+                    "knowledge_base_id": chunk.knowledgeBaseId,
                 },
             )
             target_entity = Entity(
@@ -308,9 +308,9 @@ class VanillaKG(BaseKG):
                 metadata={
                     "entity_type": "entity",
                     "description": [],
-                    "chunk_ids": [chunk.id],
-                    "workspace_id": chunk.metadata.workspace_id,
-                    "knowledge_base_id": chunk.metadata.knowledge_base_id,
+                    "chunk_ids": [chunk.documentKey],
+                    "workspace_id": chunk.workspaceId,
+                    "knowledge_base_id": chunk.knowledgeBaseId,
                 },
             )
 
@@ -395,13 +395,13 @@ class VanillaKG(BaseKG):
 
             elapsed = time.time() - start_time
             logging.info(
-                f"[SingleChunk] Processed chunk {chunk.id}: "
+                f"[SingleChunk] Processed chunk {chunk.documentKey}: "
                 f"{len(entities)} entities, {len(relations)} relations in {elapsed:.2f}s"
             )
 
             return entities, relations
 
         except Exception as e:
-            logging.exception(f"[SingleChunk] Failed to process chunk {chunk.id}")
-            warnings.warn(f"Chunk processing failed for {chunk.id}: {e}")
+            logging.exception(f"[SingleChunk] Failed to process chunk {chunk.documentKey}")
+            warnings.warn(f"Chunk processing failed for {chunk.documentKey}: {e}")
             return [], []

@@ -1,78 +1,31 @@
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Optional
 
-from langchain_core.documents import Document
-from pydantic import BaseModel
+from hirag_prod.schema.base import Base
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Column
 
+class File(Base):
+    __tablename__ = "Files"
 
-class FileMetadata(BaseModel):
-    # Required fields
-    filename: str
-    # The uri of the file
-    # When the file is a local file, the uri is the path to the file
-    # When the file is a remote file, the uri is the url of the file
-    uri: str
-    # Whether the file is private
-    private: bool
-    knowledge_base_id: str
-    workspace_id: str
-
-    # Optional fields
-    type: Optional[
-        Literal[
-            "pdf",
-            "docx",
-            "pptx",
-            "xlsx",
-            "jpg",
-            "png",
-            "zip",
-            "txt",
-            "csv",
-            "text",
-            "tsv",
-            "html",
-            "md",
-        ]
-    ] = None
-    page_number: Optional[int] = None
-    uploaded_at: Optional[datetime] = None
-    # New fields for enhanced file storage
-    markdown_content: Optional[str] = None  # Full markdown representation
-    table_of_contents: Optional[str] = None  # Structured TOC in string format
-
-    def to_dict(self, camelize: bool = False) -> Dict[str, Any]:
-        if camelize:
-            return {
-                "filename": self.filename,
-                "uri": self.uri,
-                "private": self.private,
-                "knowledgeBaseId": self.knowledge_base_id,
-                "workspaceId": self.workspace_id,
-                "type": self.type,
-                "pageNumber": self.page_number,
-                "uploadedAt": self.uploaded_at,
-                "markdownContent": self.markdown_content,
-                "tableOfContents": self.table_of_contents,
-            }
-        return {
-            "filename": self.filename,
-            "uri": self.uri,
-            "private": self.private,
-            "knowledge_base_id": self.knowledge_base_id,
-            "workspace_id": self.workspace_id,
-            "type": self.type,
-            "page_number": self.page_number,
-            "uploaded_at": self.uploaded_at,
-            "markdown_content": self.markdown_content,
-            "table_of_contents": self.table_of_contents,
-        }
-
-
-class File(Document, BaseModel):
-    # "file-mdhash(filename)"
-    id: str
-    # The content of the file
-    page_content: str
-    # The metadata of the file
-    metadata: FileMetadata
+    # File Data
+    documentKey: str = Column(String, primary_key=True, nullable=False)
+    text: str = Column(Text, nullable=False)
+    # FileMetadata
+    fileName: str = Column(String, nullable=False)
+    uri: Optional[str] = Column(String, nullable=True)
+    private: Optional[bool] = Column(
+        Boolean, default=False, nullable=True
+    )
+    knowledgeBaseId: str = Column(String, nullable=False)
+    workspaceId: str = Column(String, nullable=False)
+    type: Optional[str] = Column(String, nullable=True)
+    pageNumber: Optional[int] = Column(Integer, nullable=True)
+    uploadedAt: datetime = Column(
+        DateTime, default=datetime.now, nullable=False
+    )
+    markdownContent: Optional[str] = Column(Text, nullable=True)
+    tableOfContents: Optional[str] = Column(Text, nullable=True)
+    # Computed Data
+    updatedAt: datetime = Column(
+        DateTime, default=datetime.now, nullable=False
+    )

@@ -131,15 +131,15 @@ class TestChunkRegistration:
         doc_chunks_key = resume_tracker._doc_chunks_key(document_id)
         registered_chunks = resume_tracker.redis_client.smembers(doc_chunks_key)
 
-        expected_chunk_ids = {chunk.id for chunk in sample_chunks}
+        expected_chunk_ids = {chunk.documentKey for chunk in sample_chunks}
         assert registered_chunks == expected_chunk_ids
 
         # Verify individual chunk data
         for chunk in sample_chunks:
-            chunk_key = resume_tracker._chunk_key(chunk.id)
+            chunk_key = resume_tracker._chunk_key(chunk.documentKey)
             chunk_data = resume_tracker.redis_client.hgetall(chunk_key)
 
-            assert chunk_data["chunk_id"] == chunk.id
+            assert chunk_data["chunk_id"] == chunk.documentKey
             assert chunk_data["document_id"] == document_id
             assert chunk_data["entity_extraction_completed"] == "false"
             assert chunk_data["relation_extraction_completed"] == "false"
@@ -202,7 +202,7 @@ class TestEntityExtraction:
 
         # Verify started timestamp is set
         for chunk in sample_chunks:
-            chunk_key = resume_tracker._chunk_key(chunk.id)
+            chunk_key = resume_tracker._chunk_key(chunk.documentKey)
             chunk_data = resume_tracker.redis_client.hgetall(chunk_key)
             assert "entity_extraction_started_at" in chunk_data
 
@@ -216,17 +216,17 @@ class TestEntityExtraction:
 
         # Verify completion status
         for chunk in sample_chunks:
-            chunk_key = resume_tracker._chunk_key(chunk.id)
+            chunk_key = resume_tracker._chunk_key(chunk.documentKey)
             chunk_data = resume_tracker.redis_client.hgetall(chunk_key)
 
             assert chunk_data["entity_extraction_completed"] == "true"
             assert "entity_extraction_completed_at" in chunk_data
-            assert chunk_data["entity_count"] == str(entity_counts[chunk.id])
+            assert chunk_data["entity_count"] == str(entity_counts[chunk.documentKey])
 
         # Verify chunks are added to completed set
         entity_completed_key = resume_tracker._doc_entity_completed_key(document_id)
         completed_chunks = resume_tracker.redis_client.smembers(entity_completed_key)
-        expected_chunk_ids = {chunk.id for chunk in sample_chunks}
+        expected_chunk_ids = {chunk.documentKey for chunk in sample_chunks}
         assert completed_chunks == expected_chunk_ids
 
 
@@ -285,12 +285,12 @@ class TestRelationExtraction:
 
         # Verify completion status
         for chunk in sample_chunks:
-            chunk_key = resume_tracker._chunk_key(chunk.id)
+            chunk_key = resume_tracker._chunk_key(chunk.documentKey)
             chunk_data = resume_tracker.redis_client.hgetall(chunk_key)
 
             assert chunk_data["relation_extraction_completed"] == "true"
             assert "relation_extraction_completed_at" in chunk_data
-            assert chunk_data["relation_count"] == str(relation_counts[chunk.id])
+            assert chunk_data["relation_count"] == str(relation_counts[chunk.documentKey])
 
 
 class TestDocumentCompletion:
@@ -489,7 +489,7 @@ async def test_full_processing_workflow(redis_client, sample_chunks):
     assert len(pending_entities) == len(sample_chunks)
 
     tracker.mark_entity_extraction_started(pending_entities)
-    entity_counts = {chunk.id: i + 1 for i, chunk in enumerate(pending_entities)}
+    entity_counts = {chunk.documentKey: i + 1 for i, chunk in enumerate(pending_entities)}
     tracker.mark_entity_extraction_completed(pending_entities, entity_counts)
 
     # Step 3: Process relation extraction
@@ -497,7 +497,7 @@ async def test_full_processing_workflow(redis_client, sample_chunks):
     assert len(pending_relations) == len(sample_chunks)
 
     tracker.mark_relation_extraction_started(pending_relations)
-    relation_counts = {chunk.id: i + 1 for i, chunk in enumerate(pending_relations)}
+    relation_counts = {chunk.documentKey: i + 1 for i, chunk in enumerate(pending_relations)}
     tracker.mark_relation_extraction_completed(pending_relations, relation_counts)
 
     # Step 4: Verify completion and cleanup
