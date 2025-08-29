@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set
 
@@ -329,12 +330,12 @@ class VDBManager:
 
 async def get_chunk_info(
     chunk_ids: list[str],
-    vdb_path: str = "kb/hirag.db",
-    vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
+    vdb_path: str = os.getenv("POSTGRES_URL_NO_SSL_DEV") or "kb/hirag.db",
+    vdb_type: Literal["lancedb", "pgvector"] = "pgvector",
     knowledge_base_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
-) -> Optional[list[Dict[str, Any]]]:
-    """Get a list of chunk records from vector database by its ids.
+) -> Optional[list[list[Dict[str, Any]]]]:
+    """Get a list of chunk records with its headers from vector database by its ids.
 
     Note: the chunk identifier is stored in the `document_key` column of the
     `chunks` table for LanceDB, and `documentKey` column for PostgreSQL.
@@ -347,32 +348,14 @@ async def get_chunk_info(
         workspace_id: The id of the workspace that the chunk is from (optional)
 
     Returns:
-        A list of dicts of the chunk rows if found, otherwise None.
+        A list of list of dicts of the chunk rows with its headers if found, otherwise None.
     """
     if not chunk_ids:
         return []
 
-    results = []
+    results: list[list[Dict[str, Any]]] = []
     if vdb_type == "lancedb":
-        try:
-            async with VDBManager(vdb_path) as vdb:
-                table = await vdb._get_table("chunks")
-
-                key_pred = f"`documentKey` IN ({', '.join(map(repr, chunk_ids))})"
-                scope_clauses = []
-                if workspace_id:
-                    scope_clauses.append(f"`workspaceId` = {repr(workspace_id)}")
-                if knowledge_base_id:
-                    scope_clauses.append(
-                        f"`knowledgeBaseId` = {repr(knowledge_base_id)}"
-                    )
-                predicate = " AND ".join([key_pred] + scope_clauses)
-
-                results = await table.query().where(predicate).to_list()
-                return results
-        except Exception as e:
-            logger.error(f"Failed to get chunk info for ids={chunk_ids}: {e}")
-            return results
+        raise NotImplementedError("Lancedb is not supported yet")
 
     elif vdb_type == "pgvector":
         try:
@@ -384,7 +367,7 @@ async def get_chunk_info(
                 vector_type="halfvec",
             )
 
-            results = await asyncio.gather(
+            base_chunks = await asyncio.gather(
                 *[
                     vdb.query_by_keys(
                         key_value=[chunk_id],
@@ -397,6 +380,57 @@ async def get_chunk_info(
                 ]
             )
 
+            base_rows = [row for sub in base_chunks for row in (sub or [])]
+            base_map = {
+                r.get("documentKey"): r
+                for r in base_rows
+                if isinstance(r, dict) and r.get("documentKey")
+            }
+
+            all_header_ids: set[str] = set()
+            for row in base_rows:
+                headers = row.get("headers") or []
+                if isinstance(headers, list):
+                    all_header_ids.update(h for h in headers if isinstance(h, str))
+
+            dedup_header_ids = list(all_header_ids)
+
+            header_rows: list[dict] = []
+            if dedup_header_ids:
+                header_groups = await asyncio.gather(
+                    *[
+                        vdb.query_by_keys(
+                            key_value=[hid],
+                            workspace_id=workspace_id or "",
+                            knowledge_base_id=knowledge_base_id or "",
+                            table_name="Chunks",
+                            key_column="documentKey",
+                        )
+                        for hid in dedup_header_ids
+                    ]
+                )
+                header_rows = [row for sub in header_groups for row in (sub or [])]
+
+            header_map = {
+                r.get("documentKey"): r
+                for r in header_rows
+                if isinstance(r, dict) and r.get("documentKey")
+            }
+
+            # Assemble per input chunk: [chunk, *headers...]
+            for cid in chunk_ids:
+                lst: list[Dict[str, Any]] = []
+                base = base_map.get(cid)
+                if base:
+                    lst.append(base)
+                    headers = base.get("headers") or []
+                    if isinstance(headers, list):
+                        for hid in headers:
+                            hrow = header_map.get(hid)
+                            if hrow:
+                                lst.append(hrow)
+                results.append(lst)
+
             await vdb.clean_up()
             return results
 
@@ -408,8 +442,8 @@ async def get_chunk_info(
 async def get_chunk_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
-    vdb_path: str = "kb/hirag.db",
-    vdb_type: Literal["lancedb", "pgvector"] = "lancedb",
+    vdb_path: str = os.getenv("POSTGRES_URL_NO_SSL_DEV") or "kb/hirag.db",
+    vdb_type: Literal["lancedb", "pgvector"] = "pgvector",
 ) -> list[dict[str, Any]]:
     """Get chunk info by scope (knowledgeBaseId and workspaceId).
 
