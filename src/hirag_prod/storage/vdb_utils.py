@@ -367,50 +367,30 @@ async def get_chunk_info(
                 vector_type="halfvec",
             )
 
-            base_chunks = await asyncio.gather(
-                *[
-                    vdb.query_by_keys(
-                        key_value=[chunk_id],
-                        workspace_id=workspace_id or "",
-                        knowledge_base_id=knowledge_base_id or "",
-                        table_name="Chunks",
-                        key_column="documentKey",
-                    )
-                    for chunk_id in chunk_ids
-                ]
+            base_chunks = await vdb.query_by_keys(
+                key_value=chunk_ids,
+                workspace_id=workspace_id or "",
+                knowledge_base_id=knowledge_base_id or "",
+                table_name="Chunks",
+                key_column="documentKey",
             )
 
-            base_rows = [row for sub in base_chunks for row in (sub or [])]
-            base_map = {
-                r.get("documentKey"): r
-                for r in base_rows
-                if isinstance(r, dict) and r.get("documentKey")
-            }
-
             all_header_ids: set[str] = set()
-            for row in base_rows:
-                headers = row.get("headers") or []
+            for chunk_row in base_chunks:
+                headers = chunk_row.get("headers") or []
                 if isinstance(headers, list):
                     all_header_ids.update(h for h in headers if isinstance(h, str))
 
             dedup_header_ids = list(all_header_ids)
-
             header_rows: list[dict] = []
             if dedup_header_ids:
-                header_groups = await asyncio.gather(
-                    *[
-                        vdb.query_by_keys(
-                            key_value=[hid],
-                            workspace_id=workspace_id or "",
-                            knowledge_base_id=knowledge_base_id or "",
-                            table_name="Chunks",
-                            key_column="documentKey",
-                        )
-                        for hid in dedup_header_ids
-                    ]
+                header_rows = await vdb.query_by_keys(
+                    key_value=dedup_header_ids,
+                    workspace_id=workspace_id or "",
+                    knowledge_base_id=knowledge_base_id or "",
+                    table_name="Chunks",
+                    key_column="documentKey",
                 )
-                header_rows = [row for sub in header_groups for row in (sub or [])]
-
             header_map = {
                 r.get("documentKey"): r
                 for r in header_rows
@@ -418,17 +398,16 @@ async def get_chunk_info(
             }
 
             # Assemble per input chunk: [chunk, *headers...]
-            for cid in chunk_ids:
+            for chunk_row in base_chunks:
                 lst: list[Dict[str, Any]] = []
-                base = base_map.get(cid)
-                if base:
-                    lst.append(base)
-                    headers = base.get("headers") or []
-                    if isinstance(headers, list):
-                        for hid in headers:
-                            hrow = header_map.get(hid)
-                            if hrow:
-                                lst.append(hrow)
+                lst.append(chunk_row)
+                headers = chunk_row.get("headers") or []
+                if isinstance(headers, list):
+                    for hid in headers:
+                        hrow = header_map.get(hid)
+                        if hrow:
+                            lst.append(hrow)
+
                 results.append(lst)
 
             await vdb.clean_up()
