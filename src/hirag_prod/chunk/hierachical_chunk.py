@@ -29,7 +29,7 @@ class DotsChunk:
     text: str
     category: str
     page_no: int
-    bbox: List[List[float]]
+    bbox: List[float]
     headings: List[int]  # Hierarchical context
     caption: Optional[str] = None
     children: Optional[List[int]] = None
@@ -213,11 +213,8 @@ class DotsHierarchicalChunker:
             # Get current heading hierarchy as list of heading texts
             heading_ids = _get_headers_and_register()
 
-            bbox_list = [bbox]
-
             if caption_block:
                 # If caption is found, add it to the bbox list
-                bbox_list.append(caption_block.get("bbox", []))
                 caption = caption_block.get("text", None)
             else:
                 caption = None
@@ -227,7 +224,7 @@ class DotsHierarchicalChunker:
                 text=text,
                 category=category,
                 page_no=page_no,
-                bbox=bbox_list,
+                bbox=bbox,
                 headings=heading_ids,
                 caption=caption,
             )
@@ -251,7 +248,7 @@ class DotsHierarchicalChunker:
                 text=header_info["text"],
                 category=category,
                 page_no=header_info["page_no"],
-                bbox=[header_info["bbox"]],
+                bbox=header_info["bbox"],
                 headings=header_info["headers"],
                 caption=None,
                 children=header_info["children"],

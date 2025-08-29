@@ -355,7 +355,7 @@ class StorageManager:
         content = getattr(file_metadata, "markdown_content", file.page_content)
         obtained_props = {
             # File Data
-            "id": "file-" + compute_mdhash_id(content=content),
+            "id": "doc-" + compute_mdhash_id(content=content),
             "pageContent": content,
             # FileMetadata
             "fileName": getattr(file_metadata, "filename", None),

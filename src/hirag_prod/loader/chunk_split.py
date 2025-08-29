@@ -190,12 +190,10 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             ]
         ):
             bbox = [
-                [
-                    docling_chunk_meta["x_0"],
-                    docling_chunk_meta["y_0"],
-                    docling_chunk_meta["x_1"],
-                    docling_chunk_meta["y_1"],
-                ]
+                docling_chunk_meta["x_0"],
+                docling_chunk_meta["y_0"],
+                docling_chunk_meta["x_1"],
+                docling_chunk_meta["y_1"],
             ]
 
         metadata = ChunkMetadata(
@@ -266,13 +264,10 @@ def _dots_category_to_chunk_type(category: str) -> ChunkType:
     return category_mapping.get(category, ChunkType.UNKNOWN)
 
 
-def _transform_bbox_dims(bboxes: List[List[float]], height) -> List[List[float]]:
+def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
     # The dim from dots is from top left, transform to bottom left
-    transformed = []
-    for bbox in bboxes:
-        x_0, y_0, x_1, y_1 = bbox
-        transformed.append([x_0, height - y_1, x_1, height - y_0])
-    return transformed
+    x_0, y_0, x_1, y_1 = bbox
+    return [x_0, height - y_1, x_1, height - y_0]
 
 
 def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
@@ -356,10 +351,10 @@ def chunk_dots_document(
         page_width = page_size.get("width", None)
         page_height = page_size.get("height", None)
 
-        bboxes = dots_chunk.bbox
+        bbox = dots_chunk.bbox
 
         if left_bottom_origin and page_height is not None:
-            bboxes = _transform_bbox_dims(bboxes, page_height)
+            bbox_trans = _transform_bbox_dims(bbox, page_height)
 
         metadata = ChunkMetadata(
             chunk_idx=tmp_chunk_idx,
@@ -369,7 +364,7 @@ def chunk_dots_document(
             page_image_url=None,
             page_width=page_width,
             page_height=page_height,
-            bbox=bboxes,
+            bbox=bbox_trans,
             caption=dots_chunk.caption,
             # Terms using temporary idx, would be filled later after chunks created
             headers=None,

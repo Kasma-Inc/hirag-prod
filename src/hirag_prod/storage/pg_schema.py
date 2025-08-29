@@ -48,9 +48,7 @@ def create_chunks_model(use_halfvec: bool, dim: int):
             ARRAY(String), nullable=True
         )
         caption: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-        bbox: Mapped[Optional[List[List[float]]]] = mapped_column(
-            ARRAY(Float), nullable=True
-        )
+        bbox: Mapped[Optional[List[float]]] = mapped_column(ARRAY(Float), nullable=True)
         # Computed Data
         vector: Mapped[List[float]] = mapped_column(vec_col_type, nullable=False)
         updatedAt: Mapped[datetime] = mapped_column(

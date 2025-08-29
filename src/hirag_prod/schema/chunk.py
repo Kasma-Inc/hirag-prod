@@ -18,9 +18,7 @@ class ChunkMetadata(FileMetadata):
     headers: Optional[List[str]]  # The header's chunk's id of the chunk
     children: Optional[List[str]]  # The children's chunk's id of the chunk
     caption: Optional[str]  # The caption of the chunk
-    bbox: Optional[
-        List[List[float]]
-    ]  # The bounding box of the chunk, may contain multiple boxes
+    bbox: Optional[List[float]]  # The bounding box of the chunk
 
 
 class Chunk(Document, BaseModel):

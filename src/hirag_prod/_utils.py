@@ -588,6 +588,47 @@ def download_oss_file(
         return False
 
 
+def exists_oss_file(bucket_name: str, oss_file_path: str) -> bool:
+    """
+    Check if a file exists in an Aliyun OSS bucket.
+
+    Args:
+        bucket_name (str): The name of the OSS bucket.
+        oss_file_path (str): The path of the file in the OSS bucket.
+
+    Returns:
+        bool: True if the file exists, False otherwise.
+    """
+    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_ID is not set")
+    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
+        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
+    if os.getenv("OSS_ENDPOINT", None) is None:
+        raise ValueError("OSS_ENDPOINT is not set")
+    endpoint = os.getenv("OSS_ENDPOINT")
+    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
+    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        endpoint_url=endpoint,
+        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
+    )
+
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=oss_file_path)
+        print(f"✅ File exists in OSS: {oss_file_path}")
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "404":
+            print(f"❌ File does not exist in OSS: {oss_file_path}")
+            return False
+        logger.error(e)
+        return False
+
+
 def list_oss_files(prefix: str = None) -> bool:
     """
     List files in an Aliyun OSS bucket.

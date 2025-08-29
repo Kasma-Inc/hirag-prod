@@ -12,7 +12,12 @@ from urllib.parse import urlparse
 
 import requests
 
-from hirag_prod._utils import download_oss_file, download_s3_file, exists_s3_file
+from hirag_prod._utils import (
+    download_oss_file,
+    download_s3_file,
+    exists_oss_file,
+    exists_s3_file,
+)
 
 # TODO: Fix dots_ocr/ dir DNE problem, now using docling's as temp solution
 OUTPUT_DIR_PREFIX = "docling_cloud/output"
@@ -134,9 +139,18 @@ class DotsOCRClient:
             self.logger.info(f"Request files: {files}")
 
             # verify that input s3 path exists
-            if not exists_s3_file(file_path):
-                self.logger.error(f"Input S3 path does not exist: {input_file_path}")
-                return None
+            if parsed_url.scheme == "s3":
+                if not exists_s3_file(file_path):
+                    self.logger.error(
+                        f"Input S3 path does not exist: {input_file_path}"
+                    )
+                    return None
+            elif parsed_url.scheme == "oss":
+                if not exists_oss_file(bucket_name, file_path):
+                    self.logger.error(
+                        f"Input OSS path does not exist: {input_file_path}"
+                    )
+                    return None
 
             response = requests.post(
                 self.api_url, headers=headers, files=files, timeout=self.timeout

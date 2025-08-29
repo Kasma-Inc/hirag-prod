@@ -17,7 +17,7 @@ GRAPH_DB_PATH = "kb/hirag.gpickle"
 
 
 def get_test(id: str):
-    if id == "wiki_subcorpus":
+    if id == "wiki_subcorpus" or id == "1":
         document_path = f"benchmark/2wiki/2wiki_subcorpus.txt"
         content_type = "text/plain"
         document_meta = {
@@ -27,12 +27,24 @@ def get_test(id: str):
             "private": False,
         }
         return document_path, content_type, document_meta
-    elif id == "small_pdf":
+    elif id == "s3: small_pdf" or id == "2":
         document_path = f"s3://monkeyocr/test/input/test_pdf/small.pdf"
         content_type = "application/pdf"
         document_meta = {
             "type": "pdf",
             "filename": "small.pdf",
+            "uri": document_path,
+            "private": False,
+        }
+        return document_path, content_type, document_meta
+    elif id == "oss: U.S.Health" or id == "3":
+        document_path = (
+            f"oss://graxy-dev/ofnil/tmp/test/Guide-to-U.S.-Healthcare-System.pdf"
+        )
+        content_type = "application/pdf"
+        document_meta = {
+            "type": "pdf",
+            "filename": "Guide-to-U.S.-Healthcare-System.pdf",
             "uri": document_path,
             "private": False,
         }
@@ -46,7 +58,7 @@ async def index():
 
     await index.set_language("en")  # en | cn
 
-    document_path, content_type, document_meta = get_test("small_pdf")
+    document_path, content_type, document_meta = get_test("3")
 
     await index.insert_to_kb(
         document_path=document_path,

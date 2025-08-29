@@ -68,6 +68,8 @@ class BaseLoader(ABC):
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
         processed_doc = self.loader_dots_ocr.convert(document_path)
 
+        assert processed_doc is not None, "Failed to receive parsed document."
+
         json_doc = processed_doc.get("json", None)
         md_doc_raw = processed_doc.get("md", None)
         # md_nohf_doc_raw = processed_doc.get("md_nohf", None)
