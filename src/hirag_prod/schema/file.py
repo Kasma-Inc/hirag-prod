@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 
 from hirag_prod.schema.base import Base
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, Column
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Column, JSON
 
 class File(Base):
     __tablename__ = "Files"
@@ -24,8 +24,12 @@ class File(Base):
         DateTime, default=datetime.now, nullable=False
     )
     markdownContent: Optional[str] = Column(Text, nullable=True)
-    tableOfContents: Optional[str] = Column(Text, nullable=True)
+    tableOfContents: Optional[list] = Column(JSON, nullable=True)
     # Computed Data
     updatedAt: datetime = Column(
         DateTime, default=datetime.now, nullable=False
     )
+
+    def __iter__(self):
+        for column in self.__table__.columns:
+            yield column.name, getattr(self, column.name)

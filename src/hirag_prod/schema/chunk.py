@@ -32,6 +32,7 @@ class Chunk(Base):
     workspaceId: str = Column(String, nullable=False)
     type: Optional[str] = Column(String, nullable=True)
     pageNumber: Optional[int] = Column(Integer, nullable=True)
+    uploadedAt: Optional[datetime] = Column(DateTime, nullable=True)
     # From ChunkMetadata
     documentId: str = Column(String, nullable=False)
     chunkIdx: Optional[int] = Column(Integer, nullable=True)
@@ -48,6 +49,10 @@ class Chunk(Base):
     updatedAt: datetime = Column(
         DateTime, default=datetime.now, nullable=False
     )
+
+    def __iter__(self):
+        for column in self.__table__.columns:
+            yield column.name, getattr(self, column.name)
 
 def file_to_chunk(file: File, documentKey: str, text: str, documentId: str, chunkIdx) -> Chunk:
     return Chunk(

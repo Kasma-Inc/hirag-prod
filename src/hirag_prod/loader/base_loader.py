@@ -82,6 +82,7 @@ class BaseLoader(ABC):
             uploadedAt=document_meta.get("uploadedAt", ""),
             knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
             workspaceId=document_meta.get("workspaceId", ""),
+            markdownContent=md_doc_raw,
         )
 
         return json_doc, md_doc
@@ -114,6 +115,7 @@ class BaseLoader(ABC):
             uploadedAt=document_meta.get("uploadedAt"),
             knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
             workspaceId=document_meta.get("workspaceId", ""),
+            markdownContent=md_str,
         )
         return docling_doc, doc_md
 
@@ -133,6 +135,7 @@ class BaseLoader(ABC):
         assert document_meta.get("private") is not None, "private is required"
         langchain_docs = self.loader_langchain(document_path, **loader_args).load()
         doc_langchain = File(
+            # Langchain Doc text stored in page_content
             documentKey=compute_mdhash_id(langchain_docs[0].page_content, prefix="doc-"),
             text=langchain_docs[0].page_content,
             type=document_meta.get("type", "pdf"),  # Default to pdf
@@ -142,5 +145,6 @@ class BaseLoader(ABC):
             uploadedAt=document_meta.get("uploadedAt"),
             knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
             workspaceId=document_meta.get("workspaceId", ""),
+            markdownContent=langchain_docs[0].page_content,
         )
         return doc_langchain

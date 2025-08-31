@@ -199,15 +199,15 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             ]
 
         chunk_obj = Chunk(
-            id=compute_mdhash_id(chunk.text, prefix="chunk-"),
-            page_content=chunk.text,
-            chunk_idx=idx,
-            document_id=doc_md.documentKey,
-            chunk_type=chunk_type.value,
-            page_number=page_number,
-            page_image_url=None,
-            page_width=float(page_width) if page_width is not None else None,
-            page_height=float(page_height) if page_height is not None else None,
+            documentKey=compute_mdhash_id(chunk.text, prefix="chunk-"),
+            text=chunk.text,
+            chunkIdx=idx,
+            documentId=doc_md.documentKey,
+            chunkType=chunk_type.value,
+            pageNumber=page_number,
+            pageImageUrl=None,
+            pageWidth=float(page_width) if page_width is not None else None,
+            pageHeight=float(page_height) if page_height is not None else None,
             bbox=bbox,
             caption=None,
             # TODO: If using docling in the future, may need to do indexing for headers
@@ -279,7 +279,7 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         chunk_to_index[chunk.documentKey] = idx
 
     def _is_header(chunk: Chunk) -> bool:
-        return chunk.chunk_type in [
+        return chunk.chunkType in [
             ChunkType.TITLE.value,
             ChunkType.SECTION_HEADER.value,
         ]
@@ -310,7 +310,7 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         term = _extract_term(chunk)
         if term:
             ToC.append(term)
-
+    breakpoint()
     return ToC
 
 
@@ -364,14 +364,14 @@ def chunk_dots_document(
 
         chunk_obj = Chunk(
             documentKey=chunk_id,
-            page_content=content,
-            chunk_idx=tmp_chunk_idx,
-            document_id=md_doc.documentKey,
-            chunk_type=chunk_type.value,
-            page_number=dots_chunk.page_no,
-            page_image_url=None,
-            page_width=page_width,
-            page_height=page_height,
+            text=content,
+            chunkIdx=tmp_chunk_idx,
+            documentId=md_doc.documentKey,
+            chunkType=chunk_type.value,
+            pageNumber=dots_chunk.page_no,
+            pageImageUrl=None,
+            pageWidth=page_width,
+            pageHeight=page_height,
             bbox=bboxes,
             caption=dots_chunk.caption,
             # Terms using temporary idx, would be filled later after chunks created
@@ -431,7 +431,7 @@ def chunk_langchain_document(
         keep_separator=keep_separator,
         is_separator_regex=False,
     )
-    chunk_texts = text_splitter.split_text(langchain_doc.page_content)
+    chunk_texts = text_splitter.split_text(langchain_doc.text)
 
     chunks = []
     for idx, chunk in enumerate(chunk_texts):
@@ -444,7 +444,7 @@ def chunk_langchain_document(
             # Inherit file metadata from doc_md
             type=langchain_doc.type,
             fileName=langchain_doc.fileName,
-            page_number=langchain_doc.pageNumber,
+            pageNumber=langchain_doc.pageNumber,
             uri=langchain_doc.uri,
             private=langchain_doc.private,
             uploadedAt=langchain_doc.uploadedAt,

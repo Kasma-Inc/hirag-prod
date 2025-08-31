@@ -11,13 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from hirag_prod._utils import EmbeddingFunc
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.pg_schema import Base as PGBase
-from hirag_prod.storage.pg_schema import (
-    create_chunks_model,
-    create_file_model,
-    create_triplets_model,
-)
 from hirag_prod.storage.pg_utils import DatabaseClient
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
+from hirag_prod.schema import Chunk, File, Triplets
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +36,7 @@ class PGVector(BaseVDB):
         engine: SQLAlchemy async engine for database operations.
         vector_type (str): Type of vector storage ('vector' or 'halfvec').
         models (dict): Cache of SQLAlchemy table models.
-        factories (dict): Mapping of table names to model factory functions.
+        tables (dict): Mapping of table names to model classes.
     """
 
     def __init__(
@@ -58,10 +54,10 @@ class PGVector(BaseVDB):
         )  # SQLAlchemy async engine for db operations
         self.vector_type = vector_type
         self.models = {}  # cache of models for each table
-        self.factories = {
-            "Chunks": create_chunks_model,
-            "Files": create_file_model,
-            "Triplets": create_triplets_model,
+        self.tables = {
+            "Chunks": Chunk,
+            "Files": File,
+            "Triplets": Triplets,
         }  # mapping of table names to model creation functions
 
     def _to_list(self, embedding):
@@ -73,10 +69,9 @@ class PGVector(BaseVDB):
         if model:
             return model
         dim = int(os.getenv("EMBEDDING_DIMENSION"))
-        factory = self.factories.get(table_name)
-        if not factory:
-            raise ValueError(f"No factory found for table {table_name}")
-        model = factory(use_halfvec=(self.vector_type == "halfvec"), dim=dim)
+        model = self.tables.get(table_name)
+        if not model:
+            raise ValueError(f"No table found for table {table_name}")
         self.models[table_name] = model
         return model
 
@@ -152,7 +147,7 @@ class PGVector(BaseVDB):
 
     async def upsert_file(
         self,
-        properties_list: List[dict],
+        file: File,
         table_name: str = "Files",
         mode: Literal["append", "overwrite"] = "append",
     ):
@@ -161,15 +156,12 @@ class PGVector(BaseVDB):
         start = time.perf_counter()
         async with AsyncSession(self.engine, expire_on_commit=False) as session:
             now = datetime.now()
-            rows = []
-            for props in properties_list:
-                row = dict(props or {})
-                row["updatedAt"] = now
-                rows.append(row)
+            row = dict(file)
+            row["updatedAt"] = now
 
             table = model.__table__
             pk_cols = [c.name for c in table.primary_key.columns]
-            ins = insert(table).values(rows)
+            ins = insert(table).values(row)
             stmt = ins.on_conflict_do_nothing(
                 index_elements=[table.c[name] for name in pk_cols]
             )
@@ -178,9 +170,9 @@ class PGVector(BaseVDB):
             await session.commit()
             elapsed = time.perf_counter() - start
             logger.info(
-                f"[upsert_texts] Upserted {len(rows)} into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                f"[upsert_texts] Upserted file information into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
             )
-            return rows
+            return row
 
     async def query(
         self,

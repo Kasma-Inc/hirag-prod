@@ -30,8 +30,8 @@ class FixTokenChunk(BaseChunk):
                 file=document,
                 documentKey=compute_mdhash_id(chunk, prefix="chunk-"),
                 text=chunk,
-                chunk_idx=chunk_idx,
-                document_id=document_id,
+                chunkIdx=chunk_idx,
+                documentId=document_id,
             )
             for chunk_idx, chunk in enumerate(chunks)
         ]

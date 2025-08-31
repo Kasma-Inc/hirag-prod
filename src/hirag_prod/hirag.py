@@ -327,7 +327,7 @@ class StorageManager:
         if not file:
             return
         await self.vdb.upsert_file(
-            properties_list=[file],
+            file=file,
             mode="append",
         )
 
@@ -565,7 +565,7 @@ class DocumentProcessor:
                     )
 
             # Store file information after chunking but before processing chunks
-            await self.storage.upsert_file_to_vdb(file, document_meta)
+            await self.storage.upsert_file_to_vdb(file)
 
             # Process chunks
             await self._process_chunks(chunks, workspace_id, knowledge_base_id)
@@ -656,6 +656,8 @@ class DocumentProcessor:
                         if isinstance(json_doc, list):
                             # Chunk the Dots OCR document
                             chunks = chunk_dots_document(json_doc, generated_md)
+                            if generated_md:
+                                generated_md.tableOfContents = get_ToC_from_chunks(chunks)
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
                             chunks = chunk_docling_document(json_doc, generated_md)
@@ -667,7 +669,6 @@ class DocumentProcessor:
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )
-
                 return chunks, generated_md
 
             except Exception as e:

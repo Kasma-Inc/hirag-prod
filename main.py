@@ -57,17 +57,17 @@ async def index():
         loader_type="dots_ocr",
     )
 
-    ret = await index.query(
-        "Machine Learning Detection Methods?",
-        summary=True,
-        workspace_id="test_workspace",
-        knowledge_base_id="test_pg",
-    )
+    # ret = await index.query(
+    #     "Machine Learning Detection Methods?",
+    #     summary=True,
+    #     workspace_id="test_workspace",
+    #     knowledge_base_id="test_pg",
+    # )
 
-    print("———————————————————— Chunks ————————————————————\n")
-    print(ret["chunks"])
-    print("\n\n———————————————————— Summary ————————————————————\n")
-    print(ret["summary"])
+    # print("———————————————————— Chunks ————————————————————\n")
+    # print(ret["chunks"])
+    # print("\n\n———————————————————— Summary ————————————————————\n")
+    # print(ret["summary"])
 
 
 if __name__ == "__main__":
