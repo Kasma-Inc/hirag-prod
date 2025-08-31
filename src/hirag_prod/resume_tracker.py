@@ -295,7 +295,9 @@ class ResumeTracker:
             document_id, workspace_id, knowledge_base_id
         )
         for chunk in chunks:
-            chunk_key = self._chunk_key(chunk.documentKey, workspace_id, knowledge_base_id)
+            chunk_key = self._chunk_key(
+                chunk.documentKey, workspace_id, knowledge_base_id
+            )
             chunk_data = {
                 "chunk_id": chunk.documentKey,
                 "document_id": document_id,

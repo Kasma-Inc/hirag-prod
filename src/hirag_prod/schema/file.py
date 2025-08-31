@@ -1,8 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
+
 from hirag_prod.schema.base import Base
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, Column, JSON
+
 
 class File(Base):
     __tablename__ = "Files"
@@ -13,22 +15,16 @@ class File(Base):
     # FileMetadata
     fileName: str = Column(String, nullable=False)
     uri: Optional[str] = Column(String, nullable=True)
-    private: Optional[bool] = Column(
-        Boolean, default=False, nullable=True
-    )
+    private: Optional[bool] = Column(Boolean, default=False, nullable=True)
     knowledgeBaseId: str = Column(String, nullable=False)
     workspaceId: str = Column(String, nullable=False)
     type: Optional[str] = Column(String, nullable=True)
     pageNumber: Optional[int] = Column(Integer, nullable=True)
-    uploadedAt: datetime = Column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    uploadedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
     markdownContent: Optional[str] = Column(Text, nullable=True)
     tableOfContents: Optional[list] = Column(JSON, nullable=True)
     # Computed Data
-    updatedAt: datetime = Column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
 
     def __iter__(self):
         for column in self.__table__.columns:

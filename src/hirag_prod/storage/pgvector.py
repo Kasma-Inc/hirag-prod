@@ -9,11 +9,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from hirag_prod._utils import EmbeddingFunc
+from hirag_prod.schema import Chunk, File, Triplets
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.pg_schema import Base as PGBase
 from hirag_prod.storage.pg_utils import DatabaseClient
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
-from hirag_prod.schema import Chunk, File, Triplets
 
 logger = logging.getLogger(__name__)
 

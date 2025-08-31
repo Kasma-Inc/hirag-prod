@@ -290,7 +290,9 @@ class TestRelationExtraction:
 
             assert chunk_data["relation_extraction_completed"] == "true"
             assert "relation_extraction_completed_at" in chunk_data
-            assert chunk_data["relation_count"] == str(relation_counts[chunk.documentKey])
+            assert chunk_data["relation_count"] == str(
+                relation_counts[chunk.documentKey]
+            )
 
 
 class TestDocumentCompletion:
@@ -489,7 +491,9 @@ async def test_full_processing_workflow(redis_client, sample_chunks):
     assert len(pending_entities) == len(sample_chunks)
 
     tracker.mark_entity_extraction_started(pending_entities)
-    entity_counts = {chunk.documentKey: i + 1 for i, chunk in enumerate(pending_entities)}
+    entity_counts = {
+        chunk.documentKey: i + 1 for i, chunk in enumerate(pending_entities)
+    }
     tracker.mark_entity_extraction_completed(pending_entities, entity_counts)
 
     # Step 3: Process relation extraction
@@ -497,7 +501,9 @@ async def test_full_processing_workflow(redis_client, sample_chunks):
     assert len(pending_relations) == len(sample_chunks)
 
     tracker.mark_relation_extraction_started(pending_relations)
-    relation_counts = {chunk.documentKey: i + 1 for i, chunk in enumerate(pending_relations)}
+    relation_counts = {
+        chunk.documentKey: i + 1 for i, chunk in enumerate(pending_relations)
+    }
     tracker.mark_relation_extraction_completed(pending_relations, relation_counts)
 
     # Step 4: Verify completion and cleanup

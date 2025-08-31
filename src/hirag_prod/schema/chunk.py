@@ -1,13 +1,14 @@
+import os
 from datetime import datetime
 from typing import List, Optional
+
+import dotenv
 from pgvector.sqlalchemy import HALFVEC, Vector
+from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
+from sqlalchemy.types import ARRAY
 
 from hirag_prod.schema.base import Base
 from hirag_prod.schema.file import File
-from sqlalchemy import Boolean, DateTime, Float, Integer, String, Text, Column
-from sqlalchemy.types import ARRAY
-import dotenv
-import os
 
 # read halfvec and dim from env
 dotenv.load_dotenv()
@@ -16,13 +17,12 @@ use_halfvec = bool(os.getenv("USE_HALF_VEC", True))
 
 vec_type = HALFVEC(dim) if use_halfvec else Vector(dim)
 
+
 class Chunk(Base):
     __tablename__ = "Chunks"
 
     # Chunk Data
-    documentKey: str = Column(
-        String, primary_key=True, nullable=False
-    )
+    documentKey: str = Column(String, primary_key=True, nullable=False)
     text: str = Column(Text, nullable=False)
     # From FileMetadata
     fileName: str = Column(String, nullable=False)
@@ -46,15 +46,16 @@ class Chunk(Base):
     bbox: Optional[List[float]] = Column(ARRAY(Float), nullable=True)
     # Computed Data
     vector: List[float] = Column(vec_type, nullable=False)
-    updatedAt: datetime = Column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
 
     def __iter__(self):
         for column in self.__table__.columns:
             yield column.name, getattr(self, column.name)
 
-def file_to_chunk(file: File, documentKey: str, text: str, documentId: str, chunkIdx) -> Chunk:
+
+def file_to_chunk(
+    file: File, documentKey: str, text: str, documentId: str, chunkIdx
+) -> Chunk:
     return Chunk(
         # Given
         documentKey=documentKey,

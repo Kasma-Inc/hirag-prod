@@ -136,7 +136,9 @@ class BaseLoader(ABC):
         langchain_docs = self.loader_langchain(document_path, **loader_args).load()
         doc_langchain = File(
             # Langchain Doc text stored in page_content
-            documentKey=compute_mdhash_id(langchain_docs[0].page_content, prefix="doc-"),
+            documentKey=compute_mdhash_id(
+                langchain_docs[0].page_content, prefix="doc-"
+            ),
             text=langchain_docs[0].page_content,
             type=document_meta.get("type", "pdf"),  # Default to pdf
             fileName=document_meta.get("fileName", ""),

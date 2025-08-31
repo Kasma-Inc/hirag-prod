@@ -321,9 +321,7 @@ class StorageManager:
         return components[0] + "".join(word.capitalize() for word in components[1:])
 
     @retry_async(max_retries=DEFAULT_MAX_RETRIES, delay=DEFAULT_RETRY_DELAY)
-    async def upsert_file_to_vdb(
-        self, file: File
-    ) -> None:
+    async def upsert_file_to_vdb(self, file: File) -> None:
         if not file:
             return
         await self.vdb.upsert_file(
@@ -657,7 +655,9 @@ class DocumentProcessor:
                             # Chunk the Dots OCR document
                             chunks = chunk_dots_document(json_doc, generated_md)
                             if generated_md:
-                                generated_md.tableOfContents = get_ToC_from_chunks(chunks)
+                                generated_md.tableOfContents = get_ToC_from_chunks(
+                                    chunks
+                                )
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
                             chunks = chunk_docling_document(json_doc, generated_md)
@@ -717,7 +717,9 @@ class DocumentProcessor:
             existing_chunk_ids = await self.storage.get_existing_chunks(
                 uri, workspace_id, knowledge_base_id
             )
-            return [chunk for chunk in chunks if chunk.documentKey not in existing_chunk_ids]
+            return [
+                chunk for chunk in chunks if chunk.documentKey not in existing_chunk_ids
+            ]
 
         return chunks
 

@@ -122,9 +122,7 @@ class VanillaKG(BaseKG):
         try:
             start_time = time.time()
 
-            entity_prompt = self.entity_extract_prompt.format(
-                input_text=chunk.text
-            )
+            entity_prompt = self.entity_extract_prompt.format(input_text=chunk.text)
 
             entity_result = await self.extract_func(
                 model=self.llm_model_name,
@@ -147,8 +145,12 @@ class VanillaKG(BaseKG):
             return entities
 
         except Exception as e:
-            logging.exception(f"[Entity] Extraction failed for chunk {chunk.documentKey}")
-            warnings.warn(f"Entity extraction failed for chunk {chunk.documentKey}: {e}")
+            logging.exception(
+                f"[Entity] Extraction failed for chunk {chunk.documentKey}"
+            )
+            warnings.warn(
+                f"Entity extraction failed for chunk {chunk.documentKey}: {e}"
+            )
             return []
 
     async def _parse_entities_from_result(
@@ -238,8 +240,12 @@ class VanillaKG(BaseKG):
             return relations
 
         except Exception as e:
-            logging.exception(f"[Relation] Extraction failed for chunk {chunk.documentKey}")
-            warnings.warn(f"Relation extraction failed for chunk {chunk.documentKey}: {e}")
+            logging.exception(
+                f"[Relation] Extraction failed for chunk {chunk.documentKey}"
+            )
+            warnings.warn(
+                f"Relation extraction failed for chunk {chunk.documentKey}: {e}"
+            )
             return []
 
     async def _parse_relations_from_result(
@@ -402,6 +408,8 @@ class VanillaKG(BaseKG):
             return entities, relations
 
         except Exception as e:
-            logging.exception(f"[SingleChunk] Failed to process chunk {chunk.documentKey}")
+            logging.exception(
+                f"[SingleChunk] Failed to process chunk {chunk.documentKey}"
+            )
             warnings.warn(f"Chunk processing failed for {chunk.documentKey}: {e}")
             return [], []
