@@ -310,7 +310,6 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         term = _extract_term(chunk)
         if term:
             ToC.append(term)
-    breakpoint()
     return ToC
 
 
