@@ -307,6 +307,7 @@ def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
             ToC.append(term)
     return ToC
 
+
 def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
     id2chunk = {c.documentKey: c for c in chunks}
     tree = get_toc_from_chunks(chunks)
@@ -323,17 +324,24 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
         bbox = c.bbox or [0, 0, 0, 0]
 
         breakpoint()
-        blocks.append({
-            "type": c.chunkType,
-            "hierarchyLevel": level,
-            "id": c.documentKey,
-            "sourceBoundingBox": {"x0": bbox[0], "y0": bbox[1], "x1": bbox[2], "y1": bbox[3]},
-            "markdown": c.text or "",
-            "pageIndex": c.pageNumber or 0,
-            "fileUrl": c.uri or "",
-        })
+        blocks.append(
+            {
+                "type": c.chunkType,
+                "hierarchyLevel": level,
+                "id": c.documentKey,
+                "sourceBoundingBox": {
+                    "x0": bbox[0],
+                    "y0": bbox[1],
+                    "x1": bbox[2],
+                    "y1": bbox[3],
+                },
+                "markdown": c.text or "",
+                "pageIndex": c.pageNumber or 0,
+                "fileUrl": c.uri or "",
+            }
+        )
 
-        for child in (node.get("children") or []):
+        for child in node.get("children") or []:
             visit(child, level + 1)
 
     breakpoint()
@@ -350,7 +358,8 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
             "blocks": blocks,
         },
     }
-        
+
+
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,

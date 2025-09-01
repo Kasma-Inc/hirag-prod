@@ -1,14 +1,12 @@
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 import dotenv
 from pgvector.sqlalchemy import HALFVEC, Vector
-from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
-from sqlalchemy.types import ARRAY
+from sqlalchemy import Column, DateTime, String, Text
 
 from hirag_prod.schema.base import Base
-from hirag_prod.schema.file import File
 
 # read halfvec and dim from env
 dotenv.load_dotenv()
