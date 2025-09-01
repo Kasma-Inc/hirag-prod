@@ -323,7 +323,6 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
 
         bbox = c.bbox or [0, 0, 0, 0]
 
-        breakpoint()
         blocks.append(
             {
                 "type": c.chunkType,
@@ -344,7 +343,6 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
         for child in node.get("children") or []:
             visit(child, level + 1)
 
-    breakpoint()
     for root in tree:
         visit(root, 0)
 
