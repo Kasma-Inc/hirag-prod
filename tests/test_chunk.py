@@ -6,7 +6,7 @@ from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
-    get_ToC_from_chunks,
+    get_toc_from_chunks,
 )
 
 
@@ -129,7 +129,7 @@ def test_chunk_dots_document():
     assert chunks[0].chunkType is not None
 
     print(f"[dots] total chunks: {len(chunks)}")
-    toc = get_ToC_from_chunks(chunks)
+    toc = get_toc_from_chunks(chunks)
     print(f"[dots] ToC: {json.dumps(toc, indent=2)}")
     # for c in chunks[:3]:
     #     print("[dots]", _brief(c))

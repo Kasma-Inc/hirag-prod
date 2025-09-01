@@ -266,7 +266,7 @@ def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
     return [x_0, height - y_1, x_1, height - y_0]
 
 
-def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
+def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
     ToC = []
     vis_chunks = set()
     chunk_to_index = {}
@@ -307,7 +307,50 @@ def get_ToC_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
             ToC.append(term)
     return ToC
 
+def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
+    id2chunk = {c.documentKey: c for c in chunks}
+    tree = get_toc_from_chunks(chunks)
+    blocks: List[Dict[str, Any]] = []
 
+    def visit(node: Dict[str, Any], level: int) -> None:
+        cid = node.get("chunk_id")
+        if not cid:
+            return
+        c = id2chunk.get(cid)
+        if not c:
+            return
+
+        bbox = c.bbox or [0, 0, 0, 0]
+
+        breakpoint()
+        blocks.append({
+            "type": c.chunkType,
+            "hierarchyLevel": level,
+            "id": c.documentKey,
+            "sourceBoundingBox": {"x0": bbox[0], "y0": bbox[1], "x1": bbox[2], "y1": bbox[3]},
+            "markdown": c.text or "",
+            "pageIndex": c.pageNumber or 0,
+            "fileUrl": c.uri or "",
+        })
+
+        for child in (node.get("children") or []):
+            visit(child, level + 1)
+
+    breakpoint()
+    for root in tree:
+        visit(root, 0)
+
+    content = "\n".join(b.get("markdown", "") for b in blocks if b.get("markdown"))
+
+    return {
+        "fileName": file.fileName or "",
+        "markdownDocument": (file.text or ""),
+        "hierarchy": {
+            "content": content,
+            "blocks": blocks,
+        },
+    }
+        
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,

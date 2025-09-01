@@ -21,7 +21,6 @@ class File(Base):
     type: Optional[str] = Column(String, nullable=True)
     pageNumber: Optional[int] = Column(Integer, nullable=True)
     uploadedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
-    markdownContent: Optional[str] = Column(Text, nullable=True)
     tableOfContents: Optional[list] = Column(JSON, nullable=True)
     # Computed Data
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)

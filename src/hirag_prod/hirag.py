@@ -31,7 +31,7 @@ from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
-    get_ToC_from_chunks,
+    build_rich_toc,
 )
 from hirag_prod.parser import (
     DictParser,
@@ -649,8 +649,8 @@ class DocumentProcessor:
                             # Chunk the Dots OCR document
                             chunks = chunk_dots_document(json_doc, generated_md)
                             if generated_md:
-                                generated_md.tableOfContents = get_ToC_from_chunks(
-                                    chunks
+                                generated_md.tableOfContents = build_rich_toc(
+                                    chunks, generated_md
                                 )
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
