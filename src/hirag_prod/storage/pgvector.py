@@ -39,9 +39,16 @@ class PGVector(BaseVDB):
         strategy_provider (RetrievalStrategyProvider): Handles result ranking.
         engine: SQLAlchemy async engine for database operations.
         vector_type (str): Type of vector storage ('vector' or 'halfvec').
-        models (dict): Cache of SQLAlchemy table models.
-        factories (dict): Mapping of table names to model factory functions.
     """
+
+    # class-level shared caches to avoid redefining tables across instances
+    _models = {}
+    _factories = {
+        "Chunks": create_chunks_model,
+        "Files": create_file_model,
+        "Triplets": create_triplets_model,
+    }  # mapping of table names to model creation functions
+    _model_config = None  # (vector_type, dim)
 
     def __init__(
         self,
@@ -57,27 +64,40 @@ class PGVector(BaseVDB):
             db_client.create_db_engine()
         )  # SQLAlchemy async engine for db operations
         self.vector_type = vector_type
-        self.models = {}  # cache of models for each table
-        self.factories = {
-            "Chunks": create_chunks_model,
-            "Files": create_file_model,
-            "Triplets": create_triplets_model,
-        }  # mapping of table names to model creation functions
 
     def _to_list(self, embedding):
         return embedding.tolist() if hasattr(embedding, "tolist") else list(embedding)
 
     # retrieves or creates a SQLAlchemy model for the specified table
     def get_model(self, table_name: str):
-        model = self.models.get(table_name)
+        cls = self.__class__
+        model = cls._models.get(table_name)
         if model:
             return model
-        dim = int(os.getenv("EMBEDDING_DIMENSION"))
-        factory = self.factories.get(table_name)
+
+        # resolve desired config from request
+        requested_dim = int(os.getenv("EMBEDDING_DIMENSION"))
+        requested_vector_type = self.vector_type
+
+        # enforce single class-wide config
+        if cls._model_config is None:
+            cls._model_config = (requested_vector_type, requested_dim)
+        else:
+            vector_type, dim = cls._model_config
+            if (vector_type, dim) != (requested_vector_type, requested_dim):
+                raise ValueError(
+                    f"PGVector models already initialized with vector_type={vector_type}, dim={dim}; "
+                    f"requested vector_type={requested_vector_type}, dim={requested_dim} for table '{table_name}' "
+                    "cannot be used."
+                )
+        factory = cls._factories.get(table_name)
         if not factory:
             raise ValueError(f"No factory found for table {table_name}")
-        model = factory(use_halfvec=(self.vector_type == "halfvec"), dim=dim)
-        self.models[table_name] = model
+        model = factory(
+            use_halfvec=(requested_vector_type == "halfvec"),
+            dim=requested_dim,
+        )
+        cls._models[table_name] = model
         return model
 
     # create a PGVector instance
