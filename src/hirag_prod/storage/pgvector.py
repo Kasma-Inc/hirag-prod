@@ -117,7 +117,20 @@ class PGVector(BaseVDB):
             now = datetime.now()
             rows = []
             for props, emb in zip(properties_list, embs):
+                chunk_type = getattr(props, "chunkType", None)
+                if chunk_type is None and isinstance(props, dict):
+                    chunk_type = props.get("chunkType")
+
                 vec = self._to_list(emb)
+
+                if isinstance(chunk_type, str) and chunk_type.lower() in [
+                    "title",
+                    "section_header",
+                    "page_header",
+                    "page_footer",
+                ]:
+                    vec = [0] * len(vec)
+
                 row = dict(props or {})
                 row["vector"] = vec
                 row["updatedAt"] = now

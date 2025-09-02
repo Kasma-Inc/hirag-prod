@@ -166,6 +166,11 @@ class NetworkXGDB(BaseGDB):
                 if knowledge_base_id is not None:
                     self.graph.nodes[node_id]["knowledge_base_id"] = knowledge_base_id
 
+                if is_chunk(node_id):
+                    chunk_type = props.get("chunkType")
+                    if chunk_type is not None:
+                        self.graph.nodes[node_id]["chunkType"] = chunk_type
+
                 if not is_chunk(node_id):
                     if name_hint:
                         self.graph.nodes[node_id]["entity_name"] = name_hint
@@ -317,11 +322,14 @@ class NetworkXGDB(BaseGDB):
             G, alpha=alpha, personalization=personalization, weight="weight"
         )
 
-        # Filter to chunk nodes only (by id prefix)
+        exclude_types = ["title", "section_header", "page_header", "page_footer"]
+
+        # Filter to specific chunk nodes (by id prefix and chunkType)
         chunk_scores = [
             (node, score)
             for node, score in pr.items()
             if str(node).startswith("chunk-")
+            and str(G.nodes[node].get("chunkType", "")).lower() not in exclude_types
         ]
         chunk_scores.sort(key=lambda x: x[1], reverse=True)
         return chunk_scores[:topk]

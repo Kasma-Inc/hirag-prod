@@ -98,6 +98,7 @@ class VanillaKG(BaseKG):
                         "file_name": chunk.fileName,
                         "workspace_id": chunk.workspaceId,
                         "knowledge_base_id": chunk.knowledgeBaseId,
+                        "chunkType": chunk.chunkType,
                     },
                 )
             )

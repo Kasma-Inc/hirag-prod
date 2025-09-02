@@ -306,7 +306,19 @@ class StorageManager:
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return
-        texts_to_embed = [c.text for c in chunks]
+        id_to_text = {c.documentKey: c.text for c in chunks}
+        texts_to_embed: List[str] = []
+        for c in chunks:
+            raw_text = c.text or ""
+            ct = getattr(c, "chunkType", None)
+            if isinstance(ct, str) and ct.lower() in ("text", "table", "list"):
+                header_ids = getattr(c, "headers", None) or []
+                if header_ids:
+                    header_texts = [id_to_text.get(hid, "") for hid in header_ids]
+                    header_texts = [t for t in header_texts if t]
+                    if header_texts:
+                        raw_text = "\n".join(header_texts + [raw_text])
+            texts_to_embed.append(raw_text)
         await self.vdb.upsert_texts(
             texts_to_embed=texts_to_embed,
             properties_list=chunks,
@@ -915,6 +927,7 @@ class QueryService:
                 "private",
                 "updatedAt",
                 "documentKey",
+                "chunkType",
             ]
         rows = await self.storage.query_by_keys(
             chunk_ids=chunk_ids,
@@ -1467,8 +1480,19 @@ class HiRAG:
                 logger.warning("No reference sentences found in summary")
                 return summary
 
+            # Filter but preserve positions to avoid misalignment with placeholders
+            non_empty_indices = [
+                i
+                for i, s in enumerate(ref_sentences)
+                if isinstance(s, str) and s.strip()
+            ]
+            if not non_empty_indices:
+                logger.warning("No valid reference sentences after filtering")
+                return summary
+            non_empty_sentences = [ref_sentences[i] for i in non_empty_indices]
+
             sentence_embeddings = await self.embedding_service.create_embeddings(
-                texts=ref_sentences
+                texts=non_empty_sentences
             )
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 workspace_id=workspace_id,
@@ -1476,23 +1500,19 @@ class HiRAG:
                 chunk_ids=chunk_ids,
             )
 
-            for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
-                # If the sentence is empty, continue
+            embed_idx = 0
+            for sentence in ref_sentences:
+                # If the sentence is empty, keep a placeholder and continue
                 if not sentence.strip():
                     result.append("")
                     continue
 
+                sentence_embedding = sentence_embeddings[embed_idx]
+                embed_idx += 1
+
                 similar_chunks = await self.calculate_similarity(
                     sentence_embedding, chunk_embeddings
                 )
-
-                if DEBUG:
-                    print(
-                        "\n\n\nSimilar Chunks for Sentence:",
-                        sentence,
-                        "\n",
-                        similar_chunks,
-                    )
 
                 # Sort by similarity
                 reference_list = similar_chunks
@@ -1535,14 +1555,6 @@ class HiRAG:
                 )
 
                 # Append the document keys to the result
-                if DEBUG:
-                    print(
-                        "\n\n\nFiltered References for Sentence:",
-                        sentence,
-                        "\n",
-                        filtered_references,
-                    )
-
                 if len(filtered_references) == 1:
                     result.append([filtered_references[0]["documentKey"]])
                 else:
