@@ -261,9 +261,9 @@ def _dots_category_to_chunk_type(category: str) -> ChunkType:
 
 
 def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
-    # The dim from dots is from top left, transform to bottom left
+    # The dim from dots is from top left, transfer to dim bottom left but keep same order of dims that new y0 > new y1
     x_0, y_0, x_1, y_1 = bbox
-    return [x_0, height - y_1, x_1, height - y_0]
+    return [x_0, height - y_0, x_1, height - y_1]
 
 
 def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
