@@ -23,6 +23,7 @@ class Triplets(Base):
     target: str = Column(String, nullable=False)
     description: str = Column(Text, primary_key=True, nullable=False)
     fileName: str = Column(String, nullable=False)
+    documentId: str = Column(String, nullable=False)
     knowledgeBaseId: str = Column(String, nullable=False)
     workspaceId: str = Column(String, nullable=False)
     vector: List[float] = Column(vec_type, nullable=False)

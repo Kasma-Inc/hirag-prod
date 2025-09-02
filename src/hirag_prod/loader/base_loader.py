@@ -37,7 +37,9 @@ class BaseLoader(ABC):
         docling_doc: DoclingDocument = self.loader_docling_cloud.convert(document_path)
         md_str: str = docling_doc.export_to_markdown()
         doc_md = File(
-            documentKey=compute_mdhash_id(md_str, prefix="doc-"),
+            documentKey=document_meta.get(
+                "documentKey", compute_mdhash_id(md_str, prefix="doc-")
+            ),
             text=md_str,
             type=document_meta.get("type", "pdf"),  # Default to pdf
             fileName=document_meta.get("fileName", ""),
@@ -74,7 +76,9 @@ class BaseLoader(ABC):
 
         # Convert md to File
         md_doc = File(
-            documentKey=compute_mdhash_id(md_doc_raw, prefix="doc-"),
+            documentKey=document_meta.get(
+                "documentKey", compute_mdhash_id(md_doc_raw, prefix="doc-")
+            ),
             text=md_doc_raw,
             type=document_meta.get("type", "pdf"),  # Default to pdf
             pageNumber=len(json_doc),
@@ -107,7 +111,9 @@ class BaseLoader(ABC):
         ).document
         md_str: str = docling_doc.export_to_markdown()
         doc_md = File(
-            documentKey=compute_mdhash_id(md_str, prefix="doc-"),
+            documentKey=document_meta.get(
+                "documentKey", compute_mdhash_id(md_str, prefix="doc-")
+            ),
             text=md_str,
             type=document_meta.get("type", "pdf"),  # Default to pdf
             fileName=document_meta.get("fileName", ""),
@@ -136,8 +142,9 @@ class BaseLoader(ABC):
         langchain_docs = self.loader_langchain(document_path, **loader_args).load()
         doc_langchain = File(
             # Langchain Doc text stored in page_content
-            documentKey=compute_mdhash_id(
-                langchain_docs[0].page_content, prefix="doc-"
+            documentKey=document_meta.get(
+                "documentKey",
+                compute_mdhash_id(langchain_docs[0].page_content, prefix="doc-"),
             ),
             text=langchain_docs[0].page_content,
             type=document_meta.get("type", "pdf"),  # Default to pdf

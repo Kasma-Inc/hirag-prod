@@ -1,9 +1,9 @@
 import logging
 import time
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,6 +137,27 @@ class PGVector(BaseVDB):
                 f"[upsert_texts] Upserted {len(rows)} into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
             )
             return rows
+
+    async def clean_table(
+        self,
+        table_name: str,
+        where: Dict[str, Any],
+    ):
+        # Clean all rows matching the where criteria
+        # where {"key": "value"}
+        model = self.get_model(table_name)
+
+        start = time.perf_counter()
+        async with AsyncSession(self.engine, expire_on_commit=False) as session:
+            stmt = delete(model).where(
+                *[getattr(model, k) == v for k, v in where.items()]
+            )
+            await session.execute(stmt)
+            await session.commit()
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"[clean_table] Cleaned table '{table_name}', elapsed={elapsed:.3f}s"
+            )
 
     async def upsert_file(
         self,
