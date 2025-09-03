@@ -13,6 +13,6 @@ __all__ = [
     "Triplets",
     "file_to_chunk",
     "Entity",
-    "",
+    "Relation",
     "LoaderType",
 ]
