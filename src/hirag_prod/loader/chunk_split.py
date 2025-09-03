@@ -298,14 +298,18 @@ def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
     def _extract_term(chunk: Chunk) -> Dict[str, Any]:
         if not _is_header(chunk):
             return None
+        
         term = {
             "title": chunk.text,
             "chunk_id": chunk.documentKey,
         }
+        
         # Go through children
         valid_children = []
         for child_id in chunk.children:
             child_idx = chunk_to_index.get(child_id)
+            if child_id in vis_chunks:
+                continue
             vis_chunks.add(child_id)
             extracted_child = _extract_term(chunks[child_idx])
             if extracted_child:
@@ -363,7 +367,7 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
         visit(root, 0)
 
     content = "\n".join(b.get("markdown", "") for b in blocks if b.get("markdown"))
-
+    breakpoint()
     return {
         "fileName": file.fileName or "",
         "markdownDocument": (file.text or ""),

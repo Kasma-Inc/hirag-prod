@@ -108,8 +108,14 @@ class DocumentProcessor:
                 "workspaceId": workspace_id,
                 "knowledgeBaseId": knowledge_base_id,
             }
-
-            await self.storage.clean_vdb_table(where=where_dict)
+            await self.storage.clean_vdb_document(where=where_dict)
+            
+            where_dict = {
+                "documentKey": document_id,
+                "workspaceId": workspace_id,
+                "knowledgeBaseId": knowledge_base_id,
+            }
+            await self.storage.clean_vdb_file(where=where_dict)
 
         return self.metrics.metrics
 
