@@ -18,5 +18,6 @@ tests/output/
 .env
 
 # Temporary files & logs
+files/
 logs/
 tmp/

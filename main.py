@@ -47,6 +47,17 @@ def get_test(id: str):
         }
         query = "What is the structure of the U.S. healthcare system?"
         return document_path, content_type, document_meta, query
+    elif id == "md" or id == "4":
+        document_path = f"s3://monkeyocr/test/input/test_md/Ideal holiday itinerary.md"
+        content_type = "text/markdown"
+        document_meta = {
+            "type": "md",
+            "fileName": "Ideal holiday itinerary.md",
+            "uri": document_path,
+            "private": False,
+        }
+        query = "What are the focuses of the holiday plan?"
+        return document_path, content_type, document_meta, query
 
 
 async def index():
@@ -54,7 +65,7 @@ async def index():
 
     await index.set_language("en")  # en | cn
 
-    document_path, content_type, document_meta, query = get_test("2")
+    document_path, content_type, document_meta, query = get_test("4")
 
     await index.insert_to_kb(
         document_path=document_path,
