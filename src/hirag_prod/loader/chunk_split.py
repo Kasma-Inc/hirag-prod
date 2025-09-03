@@ -371,7 +371,7 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
         visit(root, 0)
 
     content = "\n".join(b.get("markdown", "") for b in blocks if b.get("markdown"))
-    breakpoint()
+
     return {
         "fileName": file.fileName or "",
         "markdownDocument": (file.text or ""),
