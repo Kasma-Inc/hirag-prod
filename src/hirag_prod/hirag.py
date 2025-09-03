@@ -274,6 +274,10 @@ class DocumentProcessor:
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document
                             chunks = chunk_docling_document(json_doc, generated_md)
+                            if generated_md:
+                                generated_md.tableOfContents = build_rich_toc(
+                                    chunks, generated_md
+                                )
                         else:
                             raise DocumentProcessingError(
                                 "Invalid document format returned by loader"
@@ -870,6 +874,12 @@ class HiRAG:
 
             except Exception as e:
                 logger.warning(f"Failed to initialize external job {job_id}: {e}")
+
+        print(await self._processor.resume_tracker.is_document_already_completed(
+            document_id, workspace_id, knowledge_base_id
+        ))
+
+        # breakpoint()
 
         if await self._processor.resume_tracker.is_document_already_completed(
             document_id, workspace_id, knowledge_base_id

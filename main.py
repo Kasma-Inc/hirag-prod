@@ -65,7 +65,7 @@ async def index():
 
     await index.set_language("en")  # en | cn
 
-    document_path, content_type, document_meta, query = get_test("4")
+    document_path, content_type, document_meta, query = get_test("1")
 
     await index.insert_to_kb(
         document_path=document_path,
@@ -77,17 +77,17 @@ async def index():
         # overwrite=True,
     )
 
-    ret = await index.query(
-        query=query,
-        summary=True,
-        workspace_id="test_workspace",
-        knowledge_base_id="test_pg",
-    )
+    # ret = await index.query(
+    #     query=query,
+    #     summary=True,
+    #     workspace_id="test_workspace",
+    #     knowledge_base_id="test_pg",
+    # )
 
-    print("———————————————————— Chunks ————————————————————\n")
-    print(ret["chunks"])
-    print("\n\n———————————————————— Summary ————————————————————\n")
-    print(ret["summary"])
+    # print("———————————————————— Chunks ————————————————————\n")
+    # print(ret["chunks"])
+    # print("\n\n———————————————————— Summary ————————————————————\n")
+    # print(ret["summary"])
 
 
 if __name__ == "__main__":
