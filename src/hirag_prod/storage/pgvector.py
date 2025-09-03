@@ -134,7 +134,7 @@ class PGVector(BaseVDB):
         model = self.get_model(table_name)
 
         start = time.perf_counter()
-        async with AsyncSession(self.engine, expire_on_commit=False) as session:
+        async with get_db_session_maker()() as session:
             stmt = delete(model).where(
                 *[getattr(model, k) == v for k, v in where.items()]
             )

@@ -66,17 +66,17 @@ async def index():
         overwrite=True,
     )
 
-    # ret = await index.query(
-    #     query=query,
-    #     summary=True,
-    #     workspace_id="test_workspace",
-    #     knowledge_base_id="test_pg",
-    # )
+    ret = await index.query(
+        query=query,
+        summary=True,
+        workspace_id="test_workspace",
+        knowledge_base_id="test_pg",
+    )
 
-    # print("———————————————————— Chunks ————————————————————\n")
-    # print(ret["chunks"])
-    # print("\n\n———————————————————— Summary ————————————————————\n")
-    # print(ret["summary"])
+    print("———————————————————— Chunks ————————————————————\n")
+    print(ret["chunks"])
+    print("\n\n———————————————————— Summary ————————————————————\n")
+    print(ret["summary"])
 
 
 if __name__ == "__main__":

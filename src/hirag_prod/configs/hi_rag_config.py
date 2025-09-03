@@ -9,7 +9,7 @@ class HiRAGConfig(BaseSettings):
     # Database configuration
     vector_db_path: str = "kb/hirag.db"
     graph_db_path: str = "kb/hirag.gpickle"
-    vdb_type: Literal["lancedb", "pgvector"] = "lancedb"
+    vdb_type: Literal["lancedb", "pgvector"] = "pgvector"
     gdb_type: Literal["networkx", "neo4j"] = (
         "networkx"  # TODO: neo4j not implemented yet
     )
