@@ -109,7 +109,7 @@ class DocumentProcessor:
                 "knowledgeBaseId": knowledge_base_id,
             }
             await self.storage.clean_vdb_document(where=where_dict)
-            
+
             where_dict = {
                 "documentKey": document_id,
                 "workspaceId": workspace_id,

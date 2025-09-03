@@ -47,7 +47,7 @@ class ResumeTracker:
         """Decode byte keys and values in a dictionary if they are bytes."""
         if not data:
             return {}
-        
+
         result = {}
         for k, v in data.items():
             # Handle keys
@@ -55,29 +55,29 @@ class ResumeTracker:
                 key = k.decode()
             else:
                 key = str(k)
-            
+
             # Handle values
             if isinstance(v, bytes):
                 value = v.decode()
             else:
                 value = str(v) if v is not None else ""
-            
+
             result[key] = value
-        
+
         return result
 
     def _decode_set(self, data: set) -> set:
         """Decode byte values in a set if they are bytes."""
         if not data:
             return set()
-        
+
         result = set()
         for item in data:
             if isinstance(item, bytes):
                 result.add(item.decode())
             else:
                 result.add(str(item) if item is not None else "")
-        
+
         return result
 
     def _safe_int(self, value, default: int = 0) -> int:
@@ -88,7 +88,12 @@ class ResumeTracker:
             if isinstance(value, (int, float)):
                 return int(value)
             if isinstance(value, str):
-                return int(value) if value.isdigit() or (value.startswith('-') and value[1:].isdigit()) else default
+                return (
+                    int(value)
+                    if value.isdigit()
+                    or (value.startswith("-") and value[1:].isdigit())
+                    else default
+                )
             return default
         except (ValueError, TypeError):
             return default

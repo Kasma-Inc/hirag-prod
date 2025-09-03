@@ -171,7 +171,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
     # Convert to Chunk objects
     chunks = []
     chunk_id_mapping = {}
-    
+
     for _, chunk in enumerate(doc_chunks):
         chunk_type = determine_docling_chunk_type(chunk)
         docling_chunk_meta = _extract_docling_chunk_meta(chunk)
@@ -215,7 +215,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             bbox=bbox,
             caption=None,
             # TODO: If using docling in the future, may need to do indexing for headers
-            headers=docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else [],
+            headers=(
+                docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else []
+            ),
             # inherit file metadata
             type=doc_md.type,
             fileName=doc_md.fileName,
@@ -224,7 +226,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             uploadedAt=doc_md.uploadedAt,
             knowledgeBaseId=doc_md.knowledgeBaseId,
             workspaceId=doc_md.workspaceId,
-            children=docling_chunk_meta["children"] if docling_chunk_meta["children"] else [],
+            children=(
+                docling_chunk_meta["children"] if docling_chunk_meta["children"] else []
+            ),
         )
 
         chunks.append(chunk_obj)
@@ -298,12 +302,12 @@ def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
     def _extract_term(chunk: Chunk) -> Dict[str, Any]:
         if not _is_header(chunk):
             return None
-        
+
         term = {
             "title": chunk.text,
             "chunk_id": chunk.documentKey,
         }
-        
+
         # Go through children
         valid_children = []
         for child_id in chunk.children:

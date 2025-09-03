@@ -47,7 +47,7 @@ class StorageManager:
     async def clean_vdb_document(self, where: Dict[str, Any]) -> None:
         await self.vdb.clean_table(table_name="Chunks", where=where)
         await self.vdb.clean_table(table_name="Triplets", where=where)
-        
+
     @retry_async()
     async def clean_vdb_file(self, where: Dict[str, Any]) -> None:
         await self.vdb.clean_table(table_name="Files", where=where)
