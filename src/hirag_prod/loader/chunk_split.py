@@ -778,6 +778,7 @@ def chunk_langchain_document(
     
     original_text = langchain_doc.text
     id2pos = {}
+    print("Original text length:", len(original_text))
     
     search_start = 0
     for idx, chunk_text in enumerate(chunk_texts):
@@ -785,12 +786,13 @@ def chunk_langchain_document(
         start_pos = original_text.find(chunk_text, search_start)
         
         if start_pos == -1:
-            start_pos = search_start
+            id2pos[idx] = None
+            continue  # Skip if not found
             
         end_pos = start_pos + len(chunk_text)
 
         id2pos[idx] = (start_pos, end_pos)
-        search_start = start_pos + len(chunk_text)
+        search_start = start_pos + len(chunk_text) - chunk_overlap  # Move search start forward
 
     for idx, chunk in enumerate(chunk_texts):
         bbox = id2pos.get(idx, None)
