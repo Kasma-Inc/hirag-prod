@@ -251,7 +251,7 @@ class DocumentProcessor:
                     chunks = chunk_langchain_document(generated_md)
                 else:
                     if loader_type == "docling_cloud" or loader_type == "docling":
-                        docling_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path,
                             content_type,
@@ -259,7 +259,7 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type=loader_type,
                         )
-                        chunks = chunk_docling_document(docling_doc, generated_md)
+                        chunks = chunk_docling_document(json_doc, generated_md)
                     elif loader_type == "dots_ocr":
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
@@ -269,26 +269,27 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type="dots_ocr",
                         )
-                        # Validate instance, as it may fall back to docling if cloud service unavailable
-                        if isinstance(json_doc, list):
-                            # Chunk the Dots OCR document
-                            chunks = chunk_dots_document(json_doc, generated_md)
-                            if generated_md:
-                                generated_md.tableOfContents = build_rich_toc(
-                                    chunks, generated_md
-                                )
-                        elif isinstance(json_doc, DoclingDocument):
-                            # Chunk the Docling document
-                            chunks = chunk_docling_document(json_doc, generated_md)
-                            if generated_md:
-                                generated_md.tableOfContents = build_rich_toc(
-                                    chunks, generated_md
-                                )
-                        else:
-                            raise DocumentProcessingError(
-                                "Invalid document format returned by loader"
+
+                    # Validate instance, as it may fall back to docling if cloud service unavailable
+                    if isinstance(json_doc, list):
+                        # Chunk the Dots OCR document
+                        chunks = chunk_dots_document(json_doc, generated_md)
+                        if generated_md:
+                            generated_md.tableOfContents = build_rich_toc(
+                                chunks, generated_md
                             )
-                        # Add markdown and table of contents to the first chunk if possible
+                    elif isinstance(json_doc, DoclingDocument):
+                        # Chunk the Docling document
+                        chunks = chunk_docling_document(json_doc, generated_md)
+                        if generated_md:
+                            generated_md.tableOfContents = build_rich_toc(
+                                chunks, generated_md
+                            )
+                    else:
+                        raise DocumentProcessingError(
+                            "Invalid document format returned by loader"
+                        )
+
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )

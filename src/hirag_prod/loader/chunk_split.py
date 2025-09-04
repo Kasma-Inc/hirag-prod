@@ -316,14 +316,15 @@ def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
 
         # Go through children
         valid_children = []
-        for child_id in chunk.children:
-            child_idx = chunk_to_index.get(child_id)
-            if child_id in vis_chunks:
-                continue
-            vis_chunks.add(child_id)
-            extracted_child = _extract_term(chunks[child_idx])
-            if extracted_child:
-                valid_children.append(extracted_child)
+        if chunk.children:
+            for child_id in chunk.children:
+                child_idx = chunk_to_index.get(child_id)
+                if child_id in vis_chunks:
+                    continue
+                vis_chunks.add(child_id)
+                extracted_child = _extract_term(chunks[child_idx])
+                if extracted_child:
+                    valid_children.append(extracted_child)
 
         term["children"] = valid_children
         return term
@@ -335,6 +336,7 @@ def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
         term = _extract_term(chunk)
         if term:
             ToC.append(term)
+
     return ToC
 
 
@@ -370,7 +372,7 @@ def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
             }
         )
 
-        for child in node.get("children") or []:
+        for child in node.get("children", []):
             visit(child, level + 1)
 
     for root in tree:
