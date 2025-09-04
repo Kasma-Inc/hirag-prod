@@ -376,6 +376,53 @@ async def get_chunk_info(
             return []
 
 
+async def get_table_info_by_scope(
+    table_name: str,
+    knowledge_base_id: str,
+    workspace_id: str,
+) -> list[dict[str, Any]]:
+    """Get table info by scope (knowledgeBaseId and workspaceId).
+
+    Args:
+        table_name: The name of the table to get info for
+        knowledge_base_id: The id of the knowledge base that the table is from
+        workspace_id: The id of the workspace that the table is from
+
+    Returns:
+        A list of dicts of the table rows if found, otherwise an empty list.
+    """
+    if not knowledge_base_id or not workspace_id:
+        raise ValueError("knowledge_base_id and workspace_id are required")
+
+    results: list[dict[str, Any]] = []
+
+    if get_hi_rag_config().vdb_type == "lancedb":
+        raise NotImplementedError("Lancedb is not supported yet")
+
+    elif get_hi_rag_config().vdb_type == "pgvector":
+        try:
+            vdb = PGVector.create(
+                embedding_func=None,
+                strategy_provider=RetrievalStrategyProvider(),
+                vector_type="halfvec",
+            )
+            results = await vdb.query_by_keys(
+                key_value=[],
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                table_name=table_name,
+                key_column="documentKey",
+                columns_to_select=None,
+                limit=None,
+            )
+            return results
+        except Exception as e:
+            logger.error(
+                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}: {e}"
+            )
+            return results
+
+
 async def get_chunk_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
@@ -389,48 +436,23 @@ async def get_chunk_info_by_scope(
     Returns:
         A list of dicts of the chunk rows if found, otherwise an empty list.
     """
-    if not knowledge_base_id or not workspace_id:
-        raise ValueError("knowledge_base_id and workspace_id are required")
+    return await get_table_info_by_scope(
+        table_name="Chunks",
+        knowledge_base_id=knowledge_base_id,
+        workspace_id=workspace_id,
+    )
 
-    results: list[dict[str, Any]] = []
 
-    if get_hi_rag_config().vdb_type == "lancedb":
-        try:
-            async with VDBManager(get_hi_rag_config().vdb_path) as vdb:
-                table = await vdb._get_table("chunks")
-                predicate = (
-                    f"`workspaceId` = {repr(workspace_id)} AND "
-                    f"`knowledgeBaseId` = {repr(knowledge_base_id)}"
-                )
-                return await table.query().where(predicate).to_list()
-        except Exception as e:
-            logger.error(
-                f"Failed to get chunk info by scope (lancedb) kb={knowledge_base_id}, ws={workspace_id}: {e}"
-            )
-            return results
-
-    elif get_hi_rag_config().vdb_type == "pgvector":
-        try:
-            vdb = PGVector.create(
-                embedding_func=None,
-                strategy_provider=RetrievalStrategyProvider(),
-                vector_type="halfvec",
-            )
-            results = await vdb.query_by_keys(
-                key_value=[],
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                table_name="Chunks",
-                key_column="documentKey",
-                columns_to_select=None,
-                limit=None,
-            )
-            return results
-        except Exception as e:
-            logger.error(
-                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}: {e}"
-            )
-            return results
+async def get_item_info_by_scope(
+    knowledge_base_id: str,
+    workspace_id: str,
+) -> list[dict[str, Any]]:
+    """Get item info by scope (knowledgeBaseId and workspaceId)."""
+    return await get_table_info_by_scope(
+        table_name="Items",
+        knowledge_base_id=knowledge_base_id,
+        workspace_id=workspace_id,
+    )
 
 
 async def main():
