@@ -235,7 +235,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[str],
-    ) -> (List[Chunk], File): # type: ignore 
+    ) -> (List[Chunk], File):  # type: ignore
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
@@ -272,7 +272,7 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type="dots_ocr",
                         )
-                       
+
                     # Validate instance, as it may fall back to docling if cloud service unavailable
                     if isinstance(json_doc, list):
                         # Chunk the Dots OCR document
@@ -297,7 +297,7 @@ class DocumentProcessor:
                     else:
                         raise DocumentProcessingError(
                             "Invalid document format returned by loader"
-                          )
+                        )
 
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
@@ -633,7 +633,7 @@ class HiRAG:
             )
         else:
             sentence_embeddings = []
-            
+
         chunk_embeddings = await self._query_service.query_chunk_embeddings(
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
@@ -737,7 +737,7 @@ class HiRAG:
             if not ref_sentences:
                 logger.warning("No reference sentences found in summary")
                 return summary
-            
+
             # Create mapping between non-empty sentences and their indices
             non_empty_sentences = []
             sentence_index_map = {}
@@ -753,7 +753,7 @@ class HiRAG:
                 )
             else:
                 sentence_embeddings = []
-            
+
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,

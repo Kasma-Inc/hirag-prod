@@ -1,10 +1,12 @@
-from typing import List
 import logging
 import time
+from typing import List
+
 import nltk
 from nltk.tokenize import sent_tokenize
 
 logger = logging.getLogger("HiRAG")
+
 
 class ReferenceParser:
     """
@@ -15,9 +17,9 @@ class ReferenceParser:
         logger.info("🔧 Initializing ReferenceParser...")
         logger.info("📥 Downloading NLTK data (this may take a moment on first run)...")
         start_time = time.perf_counter()
-        
-        nltk.download('punkt_tab', quiet=True)
-        
+
+        nltk.download("punkt_tab", quiet=True)
+
         total_time = time.perf_counter() - start_time
         logger.info(f"✅ NLTK data download completed in {total_time:.3f}s")
 
@@ -33,14 +35,14 @@ class ReferenceParser:
 
         references = []
         remaining_text = text
-        
+
         while reference_placeholder in remaining_text:
             # Find the position of the next placeholder
             placeholder_pos = remaining_text.find(reference_placeholder)
-            
+
             # Extract text up to and including the placeholder
             text_up_to_placeholder = remaining_text[:placeholder_pos]
-            
+
             # Use NLTK to tokenize sentences in this portion
             if text_up_to_placeholder.strip():
                 sentences = sent_tokenize(text_up_to_placeholder)
@@ -50,7 +52,7 @@ class ReferenceParser:
                     # Only add if not empty after stripping
                     if last_sentence and len(last_sentence) > omit_length:
                         references.append(last_sentence)
-                    
+
                     # All errors fall back to appending empty string, and handled later
                     else:
                         references.append("")
@@ -58,10 +60,12 @@ class ReferenceParser:
                     references.append("")
             else:
                 references.append("")
-            
+
             # Move past this placeholder for next iteration
-            remaining_text = remaining_text[placeholder_pos + len(reference_placeholder):]
-        
+            remaining_text = remaining_text[
+                placeholder_pos + len(reference_placeholder) :
+            ]
+
         return references
 
     async def fill_placeholders(
