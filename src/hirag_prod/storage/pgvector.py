@@ -112,16 +112,51 @@ class PGVector(BaseVDB):
 
             table = model.__table__
             pk_cols = [c.name for c in table.primary_key.columns]
-            ins = insert(table).values(rows)
-            stmt = ins.on_conflict_do_nothing(
-                index_elements=[table.c[name] for name in pk_cols]
-            )
 
-            await session.execute(stmt)
+            if not rows:
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    f"[upsert_texts] No rows to upsert into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                )
+                return rows
+
+            try:
+                cols_per_row = len(rows[0])
+            except Exception:
+                cols_per_row = None
+
+            if not cols_per_row:
+                all_keys = set()
+                for r in rows:
+                    all_keys.update(r.keys())
+                cols_per_row = max(1, len(all_keys))
+
+            # Compute a safe batch size based on parameter budget to avoid exceeding
+            # PostgreSQL's 65535 bind parameter limit for a single statement.
+            # We conservatively cap at 60000 total parameters per statement.
+            param_budget = 60000
+            max_batch_size = max(1, param_budget // cols_per_row)
+
+            total = len(rows)
+            processed = 0
+            for i in range(0, total, max_batch_size):
+                batch = rows[i : i + max_batch_size]
+                ins = insert(table).values(batch)
+                stmt = ins.on_conflict_do_nothing(
+                    index_elements=[table.c[name] for name in pk_cols]
+                )
+                await session.execute(stmt)
+                processed += len(batch)
+
             await session.commit()
             elapsed = time.perf_counter() - start
             logger.info(
-                f"[upsert_texts] Upserted {len(rows)} into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                "[upsert_texts] Upserted %d into '%s' in batches (batch_size<=%d), mode=%s, elapsed=%.3fs",
+                len(rows),
+                table_name,
+                max_batch_size,
+                mode,
+                elapsed,
             )
             return rows
 
