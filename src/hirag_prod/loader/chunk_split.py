@@ -216,7 +216,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             caption=None,
             # TODO: If using docling in the future, may need to do indexing for headers
             headers=(
-                docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else []
+                docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else None
             ),
             # inherit file metadata
             type=doc_md.type,
@@ -227,7 +227,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             knowledgeBaseId=doc_md.knowledgeBaseId,
             workspaceId=doc_md.workspaceId,
             children=(
-                docling_chunk_meta["children"] if docling_chunk_meta["children"] else []
+                docling_chunk_meta["children"]
+                if docling_chunk_meta["children"]
+                else None
             ),
         )
 
@@ -236,10 +238,14 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     # Translate all chunk IDs to their document keys
     for chunk in chunks:
-        # headers:
-        chunk.headers = [chunk_id_mapping.get(header_id) for header_id in chunk.headers]
-        # children:
-        chunk.children = [chunk_id_mapping.get(child_id) for child_id in chunk.children]
+        if chunk.headers:
+            chunk.headers = [
+                chunk_id_mapping.get(header_id) for header_id in chunk.headers
+            ]
+        if chunk.children:
+            chunk.children = [
+                chunk_id_mapping.get(child_id) for child_id in chunk.children
+            ]
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
