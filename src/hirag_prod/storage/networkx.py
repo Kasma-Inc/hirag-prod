@@ -277,8 +277,8 @@ class NetworkXGDB(BaseGDB):
             List of tuples (chunk_id, score) sorted by descending score.
         """
 
-        topk = (topk or get_hi_rag_config().default_query_top_k,)
-        alpha = (alpha or get_hi_rag_config().default_pagerank_damping,)
+        topk = topk or get_hi_rag_config().default_query_top_k
+        alpha = alpha or get_hi_rag_config().default_pagerank_damping
 
         if topk <= 0:
             return []

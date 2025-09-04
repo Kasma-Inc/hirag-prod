@@ -332,7 +332,7 @@ async def get_chunk_info(
     chunk_ids: list[str],
     knowledge_base_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
-) -> Optional[list[list[Dict[str, Any]]]]:
+) -> Optional[list[Dict[str, Any]]]:
     """Get a list of chunk records with its headers from vector database by its ids.
 
     Note: the chunk identifier is stored in the `document_key` column of the
@@ -349,7 +349,6 @@ async def get_chunk_info(
     if not chunk_ids:
         return []
 
-    results: list[list[Dict[str, Any]]] = []
     if get_hi_rag_config().vdb_type == "lancedb":
         raise NotImplementedError("Lancedb is not supported yet")
 
@@ -370,47 +369,11 @@ async def get_chunk_info(
                 key_column="documentKey",
             )
 
-            all_header_ids: set[str] = set()
-            for chunk_row in base_chunks:
-                headers = chunk_row.get("headers") or []
-                if isinstance(headers, list):
-                    all_header_ids.update(h for h in headers if isinstance(h, str))
-
-            dedup_header_ids = list(all_header_ids)
-            header_rows: list[dict] = []
-            if dedup_header_ids:
-                header_rows = await vdb.query_by_keys(
-                    key_value=dedup_header_ids,
-                    workspace_id=workspace_id or "",
-                    knowledge_base_id=knowledge_base_id or "",
-                    table_name="Chunks",
-                    key_column="documentKey",
-                )
-            header_map = {
-                r.get("documentKey"): r
-                for r in header_rows
-                if isinstance(r, dict) and r.get("documentKey")
-            }
-
-            # Assemble per input chunk: [chunk, *headers...]
-            for chunk_row in base_chunks:
-                lst: list[Dict[str, Any]] = []
-                lst.append(chunk_row)
-                headers = chunk_row.get("headers") or []
-                if isinstance(headers, list):
-                    for hid in headers:
-                        hrow = header_map.get(hid)
-                        if hrow:
-                            lst.append(hrow)
-
-                results.append(lst)
-
-            await vdb.clean_up()
-            return results
+            return base_chunks
 
         except Exception as e:
             logger.error(f"Failed to get chunks info for ids={chunk_ids}: {e}")
-            return results
+            return []
 
 
 async def get_chunk_info_by_scope(

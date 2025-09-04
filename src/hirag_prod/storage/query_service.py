@@ -128,13 +128,14 @@ class QueryService:
         - If no facts, fall back to DPR order (query rerank order)
         """
 
-        topk = (topk or get_hi_rag_config().default_query_top_k,)
-        topn = (topn or get_hi_rag_config().default_query_top_n,)
-        link_top_k = (link_top_k or get_hi_rag_config().default_link_top_k,)
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+        link_top_k = link_top_k or get_hi_rag_config().default_link_top_k
         passage_node_weight = (
-            passage_node_weight or get_hi_rag_config().default_passage_node_weight,
+            passage_node_weight or get_hi_rag_config().default_passage_node_weight
         )
-        damping = (damping or get_hi_rag_config().default_pagerank_damping,)
+
+        damping = damping or get_hi_rag_config().default_pagerank_damping
 
         # Path 1: chunk recall (rerank happens in VDB query)
         chunk_recall = await self.recall_chunks(
