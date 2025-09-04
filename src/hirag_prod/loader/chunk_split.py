@@ -350,7 +350,7 @@ def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
         valid_children = []
         if item.children:
             for child_id in item.children:
-                child_idx = chunk_to_index.get(child_id)
+                child_idx = item_to_index.get(child_id)
                 if child_id in vis_items:
                     continue
                 vis_items.add(child_id)

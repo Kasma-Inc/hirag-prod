@@ -235,7 +235,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[str],
-    ) -> (List[Chunk], File):
+    ) -> (List[Chunk], File): # type: ignore 
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
