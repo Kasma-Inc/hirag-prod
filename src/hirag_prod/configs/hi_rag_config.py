@@ -38,8 +38,8 @@ class HiRAGConfig(BaseSettings):
     default_query_top_k: int = 10
     default_query_top_n: int = 5
     default_link_top_k: int = 30
-    default_passage_node_weight: float = 1.0
-    default_pagerank_damping: float = 0.85
+    default_passage_node_weight: float = 0.6
+    default_pagerank_damping: float = 0.5
 
     class Config:
         alias_generator = lambda x: x.upper()

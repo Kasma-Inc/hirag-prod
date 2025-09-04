@@ -140,7 +140,10 @@ def load_document(
     # TODO: Add async support for concurrent document loading
     if content_type == "text/plain":
         loader_type = "langchain"
-    else:
+    elif content_type == "text/markdown":  # Prefer local modified docling for markdown
+        loader_type = "docling"
+
+    if loader_type in ["docling_cloud", "dots_ocr"]:
         cloud_check = False
         if loader_type == "docling_cloud":
             cloud_check = check_docling_cloud_health()

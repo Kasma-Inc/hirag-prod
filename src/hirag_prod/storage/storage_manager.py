@@ -10,6 +10,7 @@ from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import (
     Chunk,
     File,
+    Item,
     Relation,
 )
 from hirag_prod.storage import (
@@ -44,9 +45,14 @@ class StorageManager:
             raise StorageError(f"Failed to initialize VDB: {e}")
 
     @retry_async()
-    async def clean_vdb_table(self, where: Dict[str, Any]) -> None:
+    async def clean_vdb_document(self, where: Dict[str, Any]) -> None:
         await self.vdb.clean_table(table_name="Chunks", where=where)
         await self.vdb.clean_table(table_name="Triplets", where=where)
+        await self.vdb.clean_table(table_name="Items", where=where)
+
+    @retry_async()
+    async def clean_vdb_file(self, where: Dict[str, Any]) -> None:
+        await self.vdb.clean_table(table_name="Files", where=where)
 
     @retry_async()
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
@@ -57,6 +63,18 @@ class StorageManager:
             texts_to_embed=texts_to_embed,
             properties_list=chunks,
             table_name="Chunks",
+            mode="append",
+        )
+
+    @retry_async()
+    async def upsert_items_to_vdb(self, items: List[Item]) -> None:
+        if not items:
+            return
+        texts_to_embed = [c.text for c in items]
+        await self.vdb.upsert_texts(
+            texts_to_embed=texts_to_embed,
+            properties_list=items,
+            table_name="Items",
             mode="append",
         )
 

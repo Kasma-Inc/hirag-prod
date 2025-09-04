@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from hirag_prod._utils import compute_mdhash_id
+
 
 class DotsChunkType(Enum):
     """Chunk types for Dots OCR documents."""
@@ -257,3 +259,185 @@ class DotsHierarchicalChunker:
             parsed_chunks[header_idx] = chunk
 
         return parsed_chunks
+
+
+@dataclass
+class DotsDenseChunk:
+    """Dense/recursive chunk schema aligned to this module's style."""
+
+    chunk_idx: int = None
+    text: str = None
+    category: str = "text"
+    bbox: List[List[float]] = None
+    headings: List[int] = None
+    caption: Optional[str] = None
+    children: Optional[List[int]] = None
+    pages_span: List[int] = None
+    anchor_key: Optional[str] = None
+
+
+class DotsRecursiveChunker:
+    """Recursive chunker for Dots OCR JSON documents (dense aggregation)."""
+
+    def _iter_layout_items(
+        self, document: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        pages = sorted(document, key=lambda p: int(p.get("page_no", 0)))
+        ordered: List[Dict[str, Any]] = []
+        for page in pages:
+            page_no = int(page.get("page_no", 0))
+            items: List[Dict[str, Any]] = page.get("full_layout_info", []) or []
+            items_sorted = sorted(
+                items,
+                key=lambda it: (
+                    float(it.get("bbox", [0, 0, 0, 0])[1]),
+                    float(it.get("bbox", [0, 0, 0, 0])[0]),
+                ),
+            )
+            for raw in items_sorted:
+                ordered.append(
+                    {
+                        "page_no": page_no,
+                        "bbox": list(map(float, raw.get("bbox", [0, 0, 0, 0]))),
+                        "category": raw.get("category", ""),
+                        "text": (raw.get("text", "") or "").strip(),
+                    }
+                )
+        return ordered
+
+    def _is_header(self, category: str) -> bool:
+        return category in {
+            DotsChunkType.TITLE.value,
+            DotsChunkType.SECTION_HEADER.value,
+        }
+
+    def _is_textual(self, category: str) -> bool:
+        return category in {DotsChunkType.TEXT.value, DotsChunkType.LIST_ITEM.value}
+
+    def _is_table(self, category: str) -> bool:
+        return category == DotsChunkType.TABLE.value
+
+    def _build_chunk(
+        self,
+        idx: int,
+        category: str,
+        items: List[Dict[str, Any]],
+        anchor_key: Optional[str],
+    ) -> DotsDenseChunk:
+        page_boxes: Dict[int, List[List[float]]] = {}
+        for it in items:
+            page_boxes.setdefault(int(it["page_no"]), []).append(
+                list(map(float, it["bbox"]))
+            )
+
+        pages_span = sorted(page_boxes.keys())
+        bbox: List[List[float]] = []
+        for p in pages_span:
+            boxes = page_boxes[p]
+            x0 = min(b[0] for b in boxes)
+            y0 = min(b[1] for b in boxes)
+            x1 = max(b[2] for b in boxes)
+            y1 = max(b[3] for b in boxes)
+            bbox.append([x0, y0, x1, y1])
+
+        if category == DotsChunkType.TEXT.value:
+            content = "\n".join(
+                it["text"]
+                for it in items
+                if it["text"] and self._is_textual(it["category"])
+            )
+        elif category == DotsChunkType.TABLE.value:
+            content = items[0]["text"] if items else ""
+        else:
+            content = "\n".join(
+                it["text"]
+                for it in items
+                if it["text"] and self._is_textual(it["category"])
+            )
+
+        return DotsDenseChunk(
+            chunk_idx=idx,
+            text=content,
+            category=category,
+            bbox=bbox,
+            pages_span=pages_span,
+            anchor_key=anchor_key,
+        )
+
+    def chunk(self, document: List[Dict[str, Any]]) -> List[DotsDenseChunk]:
+        chunks: List[DotsDenseChunk] = []
+        next_idx = 1
+
+        header_items: List[Dict[str, Any]] = []
+        text_items: List[Dict[str, Any]] = []
+
+        def first_non_empty_text(items: List[Dict[str, Any]]) -> Optional[str]:
+            for it in items:
+                if it.get("text"):
+                    return it["text"]
+            return None
+
+        def flush_text():
+            nonlocal next_idx, text_items, header_items
+            if text_items:
+                anchor_text = first_non_empty_text(text_items)
+                anchor_key = (
+                    compute_mdhash_id(anchor_text, prefix="chunk-")
+                    if anchor_text
+                    else None
+                )
+                all_items = list(header_items) + list(text_items)
+                chunks.append(
+                    self._build_chunk(
+                        next_idx, DotsChunkType.TEXT.value, all_items, anchor_key
+                    )
+                )
+                next_idx += 1
+                text_items = []
+                header_items = []
+
+        for it in self._iter_layout_items(document):
+            cat = it["category"]
+
+            if self._is_header(cat):
+                header_items.append(it)
+                if text_items:
+                    flush_text()
+                continue
+
+            elif self._is_table(cat):
+                flush_text()
+                anchor_text = it.get("text") or ""
+                anchor_key = (
+                    compute_mdhash_id(anchor_text, prefix="chunk-")
+                    if anchor_text
+                    else None
+                )
+                chunks.append(
+                    self._build_chunk(
+                        next_idx, DotsChunkType.TABLE.value, [it], anchor_key
+                    )
+                )
+                next_idx += 1
+                continue
+
+            elif self._is_textual(cat):
+                text_items.append(it)
+                continue
+
+            else:
+                text_items.append(it)
+
+        if text_items:
+            anchor_text = first_non_empty_text(text_items)
+            anchor_key = (
+                compute_mdhash_id(anchor_text, prefix="chunk-") if anchor_text else None
+            )
+            all_items = list(header_items) + list(text_items)
+            chunks.append(
+                self._build_chunk(
+                    next_idx, DotsChunkType.TEXT.value, all_items, anchor_key
+                )
+            )
+
+        return chunks

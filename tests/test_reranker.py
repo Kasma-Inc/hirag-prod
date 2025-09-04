@@ -2,90 +2,184 @@ import os
 
 import pytest
 from dotenv import load_dotenv
-from lancedb.rerankers import VoyageAIReranker
 
-from hirag_prod._llm import EmbeddingService
-from hirag_prod.reranker import LocalReranker
-from hirag_prod.storage.lancedb import LanceDB
-from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
+from hirag_prod.reranker import ApiReranker, LocalReranker, create_reranker
 
 load_dotenv(override=True)
 
 
 @pytest.mark.asyncio
-async def test_reranker():
-    strategy_provider = RetrievalStrategyProvider()
-    lance_db = await LanceDB.create(
-        embedding_func=EmbeddingService().create_embeddings,
-        db_url="kb/test.db",
-        strategy_provider=strategy_provider,
-    )
+async def test_api_reranker_integration():
+    """Test ApiReranker with real VoyageAI API"""
+    if not os.getenv("VOYAGE_API_KEY"):
+        pytest.skip("VOYAGE_API_KEY not set")
 
-    with open(os.path.join(os.path.dirname(__file__), "test_files/test.txt"), "r") as f:
-        test_to_embed = f.read()
+    reranker = create_reranker("api")
 
-    await lance_db.upsert_text(
-        text_to_embed=test_to_embed,
-        properties={
-            "text": test_to_embed,
-            "document_key": "test",
-            "filename": "test.txt",
-            "private": True,
-        },
-        table_name="test",
-        mode="overwrite",
-    )
+    test_items = [
+        {"text": "Machine learning algorithms for data analysis", "id": 1},
+        {"text": "Deep learning neural networks and transformers", "id": 2},
+        {"text": "Natural language processing techniques", "id": 3},
+        {"text": "Computer vision and image recognition", "id": 4},
+        {"text": "Statistical analysis and data mining techniques", "id": 5},
+        {"text": "Artificial intelligence and neural network architectures", "id": 6},
+        {"text": "Pattern recognition and feature extraction", "id": 7},
+        {"text": "Reinforcement learning and decision trees", "id": 8},
+    ]
 
-    async_table = await lance_db.upsert_text(
-        text_to_embed="Repeat, Hello, world!",
-        properties={
-            "text": "Repeat, Hello, world!",
-            "document_key": "test_append",
-            "filename": "in_memory_test",
-            "private": True,
-        },
-        table_name="test",
-        mode="append",
-    )
+    query = "deep learning neural networks"
+    result = await reranker.rerank(query, test_items, topn=5)
 
-    topk = 2
-    topn = 1
+    assert len(result) <= 5
+    assert len(result) >= 3
+    assert all("score" in item for item in result)
+    assert all("text" in item for item in result)
+    assert all("id" in item for item in result)
 
-    recall_query = await lance_db.query(
-        query="tell me about bitcoin",
-        table=async_table,
-        topk=topk,
-        topn=topn,
-    )
+    # Results should be sorted by score (highest first)
+    scores = [item["score"] for item in result]
+    assert scores == sorted(scores, reverse=True)
 
-    # Verify results
-    assert recall_query is not None
-    assert len(recall_query) == topn
+    print(f"✅ API Reranker test passed: {len(result)} items reranked")
+    print(f"Top result: {result[0]['text']} (score: {result[0]['score']})")
 
-    for result in recall_query:
-        assert "text" in result.keys()
-        assert result["text"] is not None
-        assert "_relevance_score" in result.keys()
-        assert result["_relevance_score"] is not None
+
+def test_local_reranker_validation():
+    old_base_url = os.environ.get("RERANKER_MODEL_BASE_URL")
+    old_auth_token = os.environ.get("RERANKER_MODEL_Authorization")
+
+    try:
+        if "RERANKER_MODEL_BASE_URL" in os.environ:
+            del os.environ["RERANKER_MODEL_BASE_URL"]
+        if "RERANKER_MODEL_Authorization" in os.environ:
+            del os.environ["RERANKER_MODEL_Authorization"]
+
+        with pytest.raises(ValueError, match="RERANKER_MODEL_BASE_URL"):
+            create_reranker("local")
+
+        os.environ["RERANKER_MODEL_BASE_URL"] = "http://localhost:8000"
+        with pytest.raises(ValueError, match="RERANKER_MODEL_Authorization"):
+            create_reranker("local")
+
+        os.environ["RERANKER_MODEL_Authorization"] = "test_token"
+        reranker = create_reranker("local")
+        assert reranker.base_url == "http://localhost:8000"
+        assert reranker.auth_token == "test_token"
+
+    finally:
+        if old_base_url is not None:
+            os.environ["RERANKER_MODEL_BASE_URL"] = old_base_url
+        if old_auth_token is not None:
+            os.environ["RERANKER_MODEL_Authorization"] = old_auth_token
 
 
 @pytest.mark.asyncio
-async def test_reranker_initialization():
-    """Test that reranker initializes correctly based on environment"""
-    reranker_type = os.getenv("RERANKER_TYPE", "api")
+async def test_reranker_factory():
+    if os.getenv("VOYAGE_API_KEY"):
+        api_reranker = create_reranker("api")
+        assert isinstance(api_reranker, ApiReranker)
 
-    if reranker_type == "local":
+    old_vars = {}
+    for var in ["RERANKER_MODEL_BASE_URL", "RERANKER_MODEL_Authorization"]:
+        old_vars[var] = os.environ.get(var)
+        os.environ[var] = "test_value"
 
-        reranker = LocalReranker()
-        assert reranker.base_url
-        assert reranker.auth_token
-        assert reranker.model_name
+    try:
+        local_reranker = create_reranker("local")
+        assert isinstance(local_reranker, LocalReranker)
+    finally:
+        for var, value in old_vars.items():
+            if value is not None:
+                os.environ[var] = value
+            elif var in os.environ:
+                del os.environ[var]
 
-    else:
-        reranker = VoyageAIReranker(
-            api_key=os.getenv("VOYAGE_API_KEY"),
-            model_name=os.getenv("API_RERANKER_MODEL", "rerank-2"),
-            return_score="relevance",
-        )
-        assert reranker.api_key
-        assert reranker.model_name
+    with pytest.raises(ValueError, match="Unsupported reranker type"):
+        create_reranker("invalid")
+
+
+@pytest.mark.asyncio
+async def test_local_reranker_integration():
+    base_url = os.getenv("RERANKER_MODEL_BASE_URL")
+    auth_token = os.getenv("RERANKER_MODEL_Authorization")
+
+    if not base_url or not auth_token:
+        pytest.skip("Local reranker environment variables not set")
+
+    reranker = create_reranker("local")
+
+    test_items = [
+        {"text": "Machine learning algorithms for predictive analytics", "id": 1},
+        {
+            "text": "Deep learning neural networks with transformer architecture",
+            "id": 2,
+        },
+        {"text": "Natural language processing and text understanding", "id": 3},
+        {"text": "Computer vision for image classification tasks", "id": 4},
+        {"text": "Statistical analysis for data science applications", "id": 5},
+        {"text": "Artificial intelligence and machine learning frameworks", "id": 6},
+    ]
+
+    query = "deep learning neural networks"
+
+    result = await reranker.rerank(query, test_items, topn=4)
+
+    assert len(result) <= 4
+    assert len(result) >= 2
+    assert all("score" in item for item in result)
+    assert all("text" in item for item in result)
+    assert all("id" in item for item in result)
+
+    scores = [item["score"] for item in result]
+    assert scores == sorted(scores, reverse=True)
+
+    print(f"✅ Local Reranker test passed: {len(result)} items reranked")
+    print(f"Top result: {result[0]['text']} (score: {result[0]['score']})")
+
+
+@pytest.mark.asyncio
+async def test_empty_and_edge_cases():
+    if not os.getenv("VOYAGE_API_KEY"):
+        pytest.skip("VOYAGE_API_KEY not set")
+
+    reranker = create_reranker("api")
+
+    result = await reranker.rerank("test query", [], 5)
+    assert result == []
+
+    test_items = [{"text": "test", "id": 1}]
+    result = await reranker.rerank("test", test_items, 0)
+    assert result == []
+
+    test_items_large = [
+        {"text": "Python programming language", "id": 1},
+        {"text": "JavaScript web development", "id": 2},
+        {"text": "Java enterprise applications", "id": 3},
+        {"text": "C++ systems programming", "id": 4},
+        {"text": "Go microservices development", "id": 5},
+    ]
+    result = await reranker.rerank("Python programming", test_items_large, 10)
+    assert len(result) <= len(test_items_large)
+    assert len(result) >= 3
+
+    print("✅ Edge cases test passed")
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def run_tests():
+        if os.getenv("VOYAGE_API_KEY"):
+            print("Running API reranker integration test...")
+            await test_api_reranker_integration()
+
+            print("Running edge cases test...")
+            await test_empty_and_edge_cases()
+
+        print("Running validation tests...")
+        test_local_reranker_validation()
+        await test_reranker_factory()
+
+        print("All tests completed!")
+
+    asyncio.run(run_tests())

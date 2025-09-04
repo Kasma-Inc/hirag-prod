@@ -41,6 +41,7 @@ dependencies = [
     "umap-learn==0.5.6",
     "xxhash==3.5.0",
     "docling==2.41.0",
+    "docling-core",
     "voyageai==0.3.2",
     "pdfdeal==1.0.2",
     "redis==6.2.0",
@@ -52,6 +53,9 @@ dependencies = [
     "pgvector==0.4.1",
     "boto3-stubs==1.40.21",
 ]
+
+[tool.uv.sources]
+docling-core = { git = "https://github.com/Zachary260325/docling-core.git" }
 
 [project.scripts]
 mcp-hirag-tool = "hirag_prod.server:main"

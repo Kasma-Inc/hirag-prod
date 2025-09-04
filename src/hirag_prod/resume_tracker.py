@@ -43,6 +43,61 @@ class ResumeTracker:
 
     # ============================== Helper Functions ==============================
 
+    def _decode_dict(self, data: dict) -> dict:
+        """Decode byte keys and values in a dictionary if they are bytes."""
+        if not data:
+            return {}
+
+        result = {}
+        for k, v in data.items():
+            # Handle keys
+            if isinstance(k, bytes):
+                key = k.decode()
+            else:
+                key = str(k)
+
+            # Handle values
+            if isinstance(v, bytes):
+                value = v.decode()
+            else:
+                value = str(v) if v is not None else ""
+
+            result[key] = value
+
+        return result
+
+    def _decode_set(self, data: set) -> set:
+        """Decode byte values in a set if they are bytes."""
+        if not data:
+            return set()
+
+        result = set()
+        for item in data:
+            if isinstance(item, bytes):
+                result.add(item.decode())
+            else:
+                result.add(str(item) if item is not None else "")
+
+        return result
+
+    def _safe_int(self, value, default: int = 0) -> int:
+        """Safely convert a value to int, returning default if conversion fails."""
+        if value is None:
+            return default
+        try:
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str):
+                return (
+                    int(value)
+                    if value.isdigit()
+                    or (value.startswith("-") and value[1:].isdigit())
+                    else default
+                )
+            return default
+        except (ValueError, TypeError):
+            return default
+
     def _scope_prefix(self, workspace_id: str, knowledge_base_id: str) -> str:
         return f"{get_envs().REDIS_KEY_PREFIX}:ws:{workspace_id}:kb:{knowledge_base_id}"
 
@@ -87,6 +142,7 @@ class ResumeTracker:
         completion_data = await self.redis_client.hgetall(completion_key)
         if not completion_data:
             return False
+        completion_data = self._decode_dict(completion_data)
         is_completed = completion_data.get("pipeline_completed", "false") == "true"
         if is_completed:
             logger.info(
@@ -176,7 +232,7 @@ class ResumeTracker:
         if document_id is not None:
             mapping["document_id"] = document_id
         if total_chunks is not None:
-            mapping["total_chunks"] = str(int(total_chunks))
+            mapping["total_chunks"] = str(self._safe_int(total_chunks))
         await self.redis_client.hset(key, mapping=mapping)
         await self._persist_job_status(job_id, JobStatus.PROCESSING.value, mapping)
 
@@ -193,11 +249,11 @@ class ResumeTracker:
         now = datetime.now().isoformat()
         mapping: Dict[str, str] = {"updated_at": now}
         if processed_chunks is not None:
-            mapping["processed_chunks"] = str(int(processed_chunks))
+            mapping["processed_chunks"] = str(self._safe_int(processed_chunks))
         if total_entities is not None:
-            mapping["total_entities"] = str(int(total_entities))
+            mapping["total_entities"] = str(self._safe_int(total_entities))
         if total_relations is not None:
-            mapping["total_relations"] = str(int(total_relations))
+            mapping["total_relations"] = str(self._safe_int(total_relations))
         await self.redis_client.hset(key, mapping=mapping)
         await self._persist_job_status(job_id, "progress", mapping)
 
@@ -350,7 +406,8 @@ class ResumeTracker:
             doc_chunks_key = self._doc_chunks_key(
                 document_id, workspace_id, knowledge_base_id
             )
-            chunk_ids = await self.redis_client.smembers(doc_chunks_key)
+            chunk_ids_raw = await self.redis_client.smembers(doc_chunks_key)
+            chunk_ids = self._decode_set(chunk_ids_raw)
 
             pipeline = self.redis_client.pipeline()
             for chunk_id in chunk_ids:
@@ -381,6 +438,7 @@ class ResumeTracker:
         """Return simple doc processing stats (chunk-session only, no entity/relation)."""
         doc_info_key = self._doc_info_key(document_id, workspace_id, knowledge_base_id)
         doc_info = await self.redis_client.hgetall(doc_info_key)
+        doc_info = self._decode_dict(doc_info)
 
         if not doc_info:
             # May have been completed in a previous session
@@ -388,6 +446,7 @@ class ResumeTracker:
                 document_id, workspace_id, knowledge_base_id
             )
             completion_data = await self.redis_client.hgetall(completion_key)
+            completion_data = self._decode_dict(completion_data)
             if completion_data:
                 return {
                     "document_id": document_id,
@@ -397,7 +456,7 @@ class ResumeTracker:
                 }
             return {"error": "Document not found"}
 
-        total_chunks = int(doc_info.get("total_chunks", 0))
+        total_chunks = self._safe_int(doc_info.get("total_chunks", 0))
         return {
             "document_id": document_id,
             "total_chunks": total_chunks,

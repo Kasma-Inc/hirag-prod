@@ -36,6 +36,7 @@ from hirag_prod.loader.chunk_split import (
     build_rich_toc,
     chunk_docling_document,
     chunk_dots_document,
+    chunk_dots_document_recursive,
     chunk_langchain_document,
 )
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
@@ -49,6 +50,7 @@ from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import (
     Chunk,
     File,
+    Item,
     LoaderType,
 )
 from hirag_prod.storage import (
@@ -108,8 +110,14 @@ class DocumentProcessor:
                 "workspaceId": workspace_id,
                 "knowledgeBaseId": knowledge_base_id,
             }
+            await self.storage.clean_vdb_document(where=where_dict)
 
-            await self.storage.clean_vdb_table(where=where_dict)
+            where_dict = {
+                "documentKey": document_id,
+                "workspaceId": workspace_id,
+                "knowledgeBaseId": knowledge_base_id,
+            }
+            await self.storage.clean_vdb_file(where=where_dict)
 
         return self.metrics.metrics
 
@@ -130,7 +138,7 @@ class DocumentProcessor:
 
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
-            chunks, file = await self._load_and_chunk_document(
+            chunks, file, items = await self._load_and_chunk_document(
                 document_path,
                 content_type,
                 document_meta,
@@ -180,7 +188,7 @@ class DocumentProcessor:
             await self.storage.upsert_file_to_vdb(file)
 
             # Process chunks
-            await self._process_chunks(chunks, workspace_id, knowledge_base_id)
+            await self._process_chunks(chunks, items, workspace_id, knowledge_base_id)
             # Update job progress for processed chunks
             if self.resume_tracker and job_id:
                 try:
@@ -227,11 +235,12 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[str],
-    ) -> (List[Chunk], File):  # type: ignore
+    ) -> (List[Chunk], File): # type: ignore 
         """Load and chunk document"""
         # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None
+            items = None
             try:
                 if content_type == "text/plain":
                     _, generated_md = await asyncio.to_thread(
@@ -245,7 +254,7 @@ class DocumentProcessor:
                     chunks = chunk_langchain_document(generated_md)
                 else:
                     if loader_type == "docling_cloud" or loader_type == "docling":
-                        docling_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path,
                             content_type,
@@ -253,7 +262,7 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type=loader_type,
                         )
-                        chunks = chunk_docling_document(docling_doc, generated_md)
+                        chunks = chunk_docling_document(json_doc, generated_md)
                     elif loader_type == "dots_ocr":
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
@@ -263,26 +272,37 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type="dots_ocr",
                         )
-                        # Validate instance, as it may fall back to docling if cloud service unavailable
-                        if isinstance(json_doc, list):
-                            # Chunk the Dots OCR document
-                            chunks = chunk_dots_document(json_doc, generated_md)
-                            if generated_md:
-                                generated_md.tableOfContents = build_rich_toc(
-                                    chunks, generated_md
-                                )
-                        elif isinstance(json_doc, DoclingDocument):
-                            # Chunk the Docling document
-                            chunks = chunk_docling_document(json_doc, generated_md)
-                        else:
-                            raise DocumentProcessingError(
-                                "Invalid document format returned by loader"
+                       
+                    # Validate instance, as it may fall back to docling if cloud service unavailable
+                    if isinstance(json_doc, list):
+                        # Chunk the Dots OCR document
+                        items = chunk_dots_document(
+                            json_doc=json_doc, md_doc=generated_md
+                        )
+                        chunks = chunk_dots_document_recursive(
+                            json_doc=json_doc, md_doc=generated_md, items=items
+                        )
+                        if generated_md:
+                            generated_md.tableOfContents = build_rich_toc(
+                                items, generated_md
                             )
-                        # Add markdown and table of contents to the first chunk if possible
+                    elif isinstance(json_doc, DoclingDocument):
+                        # Chunk the Docling document
+                        chunks = chunk_docling_document(json_doc, generated_md)
+                        # TODO: get items from docling's chunking
+                        if generated_md:
+                            generated_md.tableOfContents = build_rich_toc(
+                                chunks, generated_md
+                            )
+                    else:
+                        raise DocumentProcessingError(
+                            "Invalid document format returned by loader"
+                          )
+
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"
                 )
-                return chunks, generated_md
+                return chunks, generated_md, items
 
             except Exception as e:
                 raise DocumentProcessingError(
@@ -292,6 +312,7 @@ class DocumentProcessor:
     async def _process_chunks(
         self,
         chunks: List[Chunk],
+        items: List[Item],
         workspace_id: str,
         knowledge_base_id: str,
     ) -> None:
@@ -311,8 +332,13 @@ class DocumentProcessor:
             # Batch storage
             await self.storage.upsert_chunks_to_vdb(pending_chunks)
             self.metrics.metrics.processed_chunks += len(pending_chunks)
+            await self.storage.upsert_items_to_vdb(items)
 
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
+            if items:
+                logger.info(f"✅ Processed {len(items)} items")
+            else:
+                logger.info("⚠️ No items to process")
 
     async def _get_pending_chunks(
         self,

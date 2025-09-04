@@ -6,9 +6,10 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.chunk import DotsHierarchicalChunker
+from hirag_prod.chunk import DotsHierarchicalChunker, DotsRecursiveChunker
 from hirag_prod.schema.chunk import Chunk
 from hirag_prod.schema.file import File
+from hirag_prod.schema.item import Item
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -74,12 +75,14 @@ LABEL_TO_CHUNK_TYPE = {
 # ======================== docling chunker ========================
 def _extract_docling_chunk_meta(chunk) -> dict:
     """Extract page number and merged bbox from a Docling chunk."""
+    chunk_idx = chunk.meta.chunk_idx
     min_l = float("inf")
     max_r = float("-inf")
     max_t = float("-inf")
     min_b = float("inf")
     page_no = None
     headers = chunk.meta.headings
+    children = chunk.meta.children
 
     for item in chunk.meta.doc_items or []:
         for prov in item.prov or []:
@@ -97,12 +100,14 @@ def _extract_docling_chunk_meta(chunk) -> dict:
 
     has_bbox = min_l != float("inf")
     return {
+        "chunk_idx": chunk_idx,
         "page_number": int(page_no) if page_no else None,
         "x_0": float(min_l) if has_bbox else None,
         "y_0": float(max_t) if has_bbox else None,
         "x_1": float(max_r) if has_bbox else None,
         "y_1": float(min_b) if has_bbox else None,
         "headers": headers if headers else None,
+        "children": children if children else None,
     }
 
 
@@ -166,7 +171,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     # Convert to Chunk objects
     chunks = []
-    for idx, chunk in enumerate(doc_chunks):
+    chunk_id_mapping = {}
+
+    for _, chunk in enumerate(doc_chunks):
         chunk_type = determine_docling_chunk_type(chunk)
         docling_chunk_meta = _extract_docling_chunk_meta(chunk)
 
@@ -199,7 +206,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
         chunk_obj = Chunk(
             documentKey=compute_mdhash_id(chunk.text, prefix="chunk-"),
             text=chunk.text,
-            chunkIdx=idx,
+            chunkIdx=docling_chunk_meta["chunk_idx"],
             documentId=doc_md.documentKey,
             chunkType=chunk_type.value,
             pageNumber=page_number,
@@ -209,7 +216,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             bbox=bbox,
             caption=None,
             # TODO: If using docling in the future, may need to do indexing for headers
-            headers=docling_chunk_meta["headers"],
+            headers=(
+                docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else None
+            ),
             # inherit file metadata
             type=doc_md.type,
             fileName=doc_md.fileName,
@@ -218,10 +227,28 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
             uploadedAt=doc_md.uploadedAt,
             knowledgeBaseId=doc_md.knowledgeBaseId,
             workspaceId=doc_md.workspaceId,
-            children=None,
+            children=(
+                docling_chunk_meta["children"]
+                if docling_chunk_meta["children"]
+                else None
+            ),
         )
 
         chunks.append(chunk_obj)
+        chunk_id_mapping[chunk_obj.chunkIdx] = chunk_obj.documentKey
+
+    # Translate all chunk IDs to their document keys
+    for chunk in chunks:
+        if chunk.headers:
+            chunk.headers = [
+                chunk_id_mapping.get(header_id) for header_id in chunk.headers
+            ]
+        if chunk.children:
+            chunk.children = [
+                chunk_id_mapping.get(child_id) for child_id in chunk.children
+            ]
+
+    chunks.sort(key=lambda c: c.chunkIdx)
 
     return chunks
 
@@ -266,81 +293,118 @@ def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
     return [x_0, height - y_0, x_1, height - y_1]
 
 
-def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
-    ToC = []
-    vis_chunks = set()
-    chunk_to_index = {}
-    for idx, chunk in enumerate(chunks):
-        chunk_to_index[chunk.documentKey] = idx
+def _collect_dots_page_dimensions(
+    json_doc: List[Dict[str, Any]],
+) -> Dict[int, Dict[str, Any]]:
+    page_dimensions: Dict[int, Dict[str, Any]] = {}
+    for page in json_doc:
+        page_no = page.get("page_no")
+        if page_no is not None:
+            page_dimensions[page_no] = {
+                "width": page.get("width"),
+                "height": page.get("height"),
+            }
+    return page_dimensions
 
-    def _is_header(chunk: Chunk) -> bool:
-        return chunk.chunkType in [
+
+def _transform_bbox_dims_list(
+    bboxes: Optional[List[List[float]]],
+    pages: Optional[List[int]],
+    page_dimensions: Dict[int, Dict[str, Any]],
+) -> Optional[List[List[float]]]:
+    if not bboxes or not pages:
+        return bboxes
+    out: List[List[float]] = []
+    for bb, pn in zip(bboxes, pages):
+        ph = (page_dimensions.get(pn) or {}).get("height")
+        if ph is None:
+            out.append(bb)
+        else:
+            out.append(_transform_bbox_dims(bb, ph))
+    return out
+
+
+def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
+    ToC = []
+    vis_items = set()
+    item_to_index = {}
+    for idx, item in enumerate(items):
+        item_to_index[item.documentKey] = idx
+
+    def _is_header(item: Item) -> bool:
+        return item.chunkType in [
             ChunkType.TITLE.value,
             ChunkType.SECTION_HEADER.value,
         ]
 
-    def _extract_term(chunk: Chunk) -> Dict[str, Any]:
-        if not _is_header(chunk):
+    def _extract_term(item: Item) -> Dict[str, Any]:
+        if not _is_header(item):
             return None
+
         term = {
-            "title": chunk.text,
-            "chunk_id": chunk.documentKey,
+            "title": item.text,
+            "chunk_id": item.documentKey,
         }
+
         # Go through children
         valid_children = []
-        for child_id in chunk.children:
-            child_idx = chunk_to_index.get(child_id)
-            vis_chunks.add(child_id)
-            extracted_child = _extract_term(chunks[child_idx])
-            if extracted_child:
-                valid_children.append(extracted_child)
+        if item.children:
+            for child_id in item.children:
+                child_idx = item_to_index.get(child_id)
+                if child_id in vis_items:
+                    continue
+                vis_items.add(child_id)
+                extracted_child = _extract_term(items[child_idx])
+                if extracted_child:
+                    valid_children.append(extracted_child)
 
         term["children"] = valid_children
         return term
 
-    for chunk in chunks:
-        if chunk.documentKey in vis_chunks:
+    for item in items:
+        if item.documentKey in vis_items:
             continue
-        vis_chunks.add(chunk.documentKey)
-        term = _extract_term(chunk)
+        vis_items.add(item.documentKey)
+        term = _extract_term(item)
         if term:
             ToC.append(term)
+
     return ToC
 
 
-def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
-    id2chunk = {c.documentKey: c for c in chunks}
-    tree = get_toc_from_chunks(chunks)
+def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
+    id2item = {i.documentKey: i for i in items}
+    tree = get_toc_from_items(items)
     blocks: List[Dict[str, Any]] = []
 
     def visit(node: Dict[str, Any], level: int) -> None:
-        cid = node.get("chunk_id")
-        if not cid:
+        iid = node.get("chunk_id")
+        if not iid:
             return
-        c = id2chunk.get(cid)
-        if not c:
+        i = id2item.get(iid)
+        if not i:
             return
 
-        bbox = c.bbox or [0, 0, 0, 0]
+        bbox = i.bbox or [0, 0, 0, 0]
 
         blocks.append(
             {
-                "type": c.chunkType,
+                "type": i.chunkType,
                 "hierarchyLevel": level,
-                "id": c.documentKey,
+                "id": i.documentKey,
                 "sourceBoundingBox": {
                     "x0": bbox[0],
                     "y0": bbox[1],
                     "x1": bbox[2],
                     "y1": bbox[3],
                 },
-                "markdown": c.text or "",
-                "pageIndex": c.pageNumber or 0,
-                "fileUrl": c.uri or "",
+                "markdown": i.text or "",
+                "pageIndex": i.pageNumber or 0,
+                "fileUrl": i.uri or "",
             }
         )
 
-        for child in node.get("children") or []:
+        for child in node.get("children", []):
             visit(child, level + 1)
 
     for root in tree:
@@ -362,7 +426,7 @@ def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
     left_bottom_origin: bool = True,
-) -> List[Chunk]:
+) -> List[Item]:
     """
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
@@ -406,7 +470,7 @@ def chunk_dots_document(
 
         chunk_id = compute_mdhash_id(content, prefix="chunk-")
 
-        chunk_obj = Chunk(
+        chunk_obj = Item(
             documentKey=chunk_id,
             text=content,
             chunkIdx=tmp_chunk_idx,
@@ -452,6 +516,111 @@ def chunk_dots_document(
             child_ids = [chunk_id_mapping[c] for c in raw_children]
             chunk.children = child_ids
 
+    return chunks
+
+
+def _fetch_header_texts_from_items(
+    anchor_key: str, items: Optional[List[Item]]
+) -> tuple[list[str], dict[str, str]]:
+    """
+    Get headers and their texts for the given anchor from items in memory.
+    Returns (headers, {header_id: text}); returns ([], {}) if not found.
+    """
+    if not anchor_key or not items:
+        return [], {}
+
+    id2item = {it.documentKey: it for it in items if getattr(it, "documentKey", None)}
+    anchor = id2item.get(anchor_key)
+    if not anchor or not anchor.headers:
+        return [], {}
+
+    headers: List[str] = [h for h in anchor.headers if h in id2item]
+    texts = {h: id2item[h].text for h in headers}
+    return headers, texts
+
+
+def chunk_dots_document_recursive(
+    json_doc: List[Dict[str, Any]],
+    md_doc: File,
+    left_bottom_origin: bool = True,
+    items: Optional[List[Item]] = None,
+) -> List[Chunk]:
+    """
+    Split a dots document into chunks using DotsRecursiveChunker and return a list of Chunk objects.
+    This produces aggregated chunks that may span multiple pages, with pageNumber and bbox aligned by page.
+    """
+    chunker = DotsRecursiveChunker()
+    dense_chunks = chunker.chunk(json_doc)
+
+    page_dimensions = _collect_dots_page_dimensions(json_doc)
+
+    header_cache: Dict[str, tuple[list[str], dict[str, str]]] = {}
+
+    chunks: List[Chunk] = []
+    for dchunk in dense_chunks:
+        chunk_type = _dots_category_to_chunk_type(dchunk.category)
+
+        pages = dchunk.pages_span or []
+        bbox_list = dchunk.bbox or []
+
+        tbbox_list = bbox_list
+        if left_bottom_origin:
+            tbbox_list = _transform_bbox_dims_list(bbox_list, pages, page_dimensions)
+
+        page_width = None
+        page_height = None
+        if pages:
+            first_page_dim = page_dimensions.get(pages[0], {})
+            page_width = first_page_dim.get("width", None)
+            page_height = first_page_dim.get("height", None)
+
+        # Get header texts from anchor_key and prepend them
+        final_text = dchunk.text or ""
+        headers_list: Optional[List[str]] = None
+        anchor_key = getattr(dchunk, "anchor_key", None)
+        if anchor_key:
+            if anchor_key not in header_cache:
+                header_cache[anchor_key] = _fetch_header_texts_from_items(
+                    anchor_key, items
+                )
+            hdrs, hdr_texts = header_cache[anchor_key]
+            if hdrs:
+                headers_list = hdrs
+                ordered_header_texts = [
+                    hdr_texts.get(h, "") for h in hdrs if hdr_texts.get(h)
+                ]
+                if ordered_header_texts:
+                    final_text = (
+                        "\n".join(ordered_header_texts + [final_text])
+                        if final_text
+                        else "\n".join(ordered_header_texts)
+                    )
+
+        chunk_obj = Chunk(
+            documentKey=compute_mdhash_id(final_text, prefix="chunk-"),
+            text=final_text,
+            chunkIdx=dchunk.chunk_idx,
+            documentId=md_doc.documentKey,
+            chunkType=chunk_type.value,
+            pageNumber=pages if pages else None,
+            pageImageUrl=None,
+            pageWidth=page_width,
+            pageHeight=page_height,
+            bbox=tbbox_list if tbbox_list else None,
+            caption=dchunk.caption,
+            headers=headers_list,
+            children=None,
+            type=md_doc.type,
+            fileName=md_doc.fileName,
+            uri=md_doc.uri,
+            private=md_doc.private,
+            uploadedAt=md_doc.uploadedAt,
+            knowledgeBaseId=md_doc.knowledgeBaseId,
+            workspaceId=md_doc.workspaceId,
+        )
+        chunks.append(chunk_obj)
+
+    chunks.sort(key=lambda c: c.chunkIdx)
     return chunks
 
 
