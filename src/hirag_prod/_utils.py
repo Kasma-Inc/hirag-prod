@@ -7,7 +7,6 @@ import os
 import re
 from functools import wraps
 from hashlib import md5
-from pathlib import Path
 from typing import (
     Any,
     Awaitable,
@@ -19,47 +18,47 @@ from typing import (
     TypeAlias,
     TypeVar,
 )
-from urllib.parse import urlparse
 
-import boto3
 import numpy as np
 import tiktoken
-from botocore.config import Config
-from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
 
 from hirag_prod.configs.functions import get_hi_rag_config
-from hirag_prod.schema import LoaderType
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
-S3_DOWNLOAD_DIR = "/chatbot/files/s3"
-OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
 load_dotenv("/chatbot/.env")
 
 
 def retry_async(
-    max_retries: int = get_hi_rag_config().max_retries,
-    delay: float = get_hi_rag_config().retry_delay,
+    max_retries: Optional[int] = None,
+    delay: Optional[float] = None,
 ):
     """Async retry decorator"""
 
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
+            _max_retries = (
+                max_retries
+                if max_retries is not None
+                else get_hi_rag_config().max_retries
+            )
+            _delay = delay if delay is not None else get_hi_rag_config().retry_delay
+
             last_exception = None
-            for attempt in range(max_retries):
+            for attempt in range(_max_retries):
                 try:
                     return await func(*args, **kwargs)
                 except Exception as e:
                     last_exception = e
-                    if attempt == max_retries - 1:
+                    if attempt == _max_retries - 1:
                         break
                     logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}, retrying in {delay}s"
+                        f"Attempt {attempt + 1} failed: {e}, retrying in {_delay}s"
                     )
-                    await asyncio.sleep(delay)
+                    await asyncio.sleep(_delay)
             raise last_exception
 
         return wrapper
@@ -275,15 +274,6 @@ def clean_str(input: Any) -> str:
     return result
 
 
-def validate_document_path(document_path: str) -> None:
-    """Validate input parameters"""
-    if not document_path or not isinstance(document_path, str):
-        raise ValueError("document_path must be a non-empty string")
-
-    if not Path(document_path).exists():
-        raise FileNotFoundError(f"Document not found: {document_path}")
-
-
 # Utils types -----------------------------------------------------------------------
 AsyncEmbeddingFunction: TypeAlias = Callable[[list[str]], Awaitable[np.ndarray]]
 
@@ -371,287 +361,3 @@ async def _limited_gather_with_factory(
             progress_bar.close()
 
     return results
-
-
-# ========================================================================
-# Amazon S3 utils
-# ========================================================================
-
-
-# Upload files to s3
-def upload_file_to_s3(input_file_path: str, s3_file_path: str) -> bool:
-    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    if os.getenv("AWS_BUCKET_NAME", None) is None:
-        raise ValueError("AWS_BUCKET_NAME is not set")
-    s3_client = boto3.client("s3")
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    try:
-        s3_client.upload_file(input_file_path, aws_bucket_name, s3_file_path)
-        print(f"✅ Successfully uploaded {input_file_path} to {s3_file_path}")
-    except ClientError as e:
-        logger.error(e)
-        return False
-    return True
-
-
-def exists_s3_file(s3_file_path: str) -> bool:
-    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    if os.getenv("AWS_BUCKET_NAME", None) is None:
-        raise ValueError("AWS_BUCKET_NAME is not set")
-    s3_client = boto3.client("s3")
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    try:
-        s3_client.head_object(Bucket=aws_bucket_name, Key=s3_file_path)
-        return True
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "404":
-            return False
-        logger.error(e)
-        return False
-
-
-# List files in s3
-def list_s3_files(prefix: str = None) -> bool:
-    """
-    List files in an Amazon S3 bucket.
-
-    Args:
-        prefix (str): The prefix of the files to list.
-
-    Returns:
-        bool: True if the file list was successfully printed, False otherwise.
-    """
-    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    if os.getenv("AWS_BUCKET_NAME", None) is None:
-        raise ValueError("AWS_BUCKET_NAME is not set")
-    s3_client = boto3.client("s3")
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-
-    try:
-        if prefix is None:
-            response = s3_client.list_objects_v2(Bucket=aws_bucket_name)
-        else:
-            response = s3_client.list_objects_v2(Bucket=aws_bucket_name, Prefix=prefix)
-
-        if "Contents" in response:
-            print(f"========== S3 File List ({prefix}) ==========")
-            for idx, item in enumerate(response["Contents"]):
-                print(f"{idx+1}. {item['Key']}")
-            print(f"========== End of S3 File List ({prefix}) ==========")
-            return True
-        else:
-            print(f"No files found in {prefix}")
-            return False
-    except ClientError as e:
-        logger.error(e)
-        return False
-
-
-# Download files from s3
-def download_s3_file(
-    bucket_name: str, s3_file_path: str, download_file_path: str
-) -> bool:
-    """
-    Download a file from an Amazon S3 bucket to a local path.
-
-    Args:
-        obj_name (str): The name of the object to download.
-        local_path (str): The path to save the downloaded file.
-
-    Returns:
-        bool: True if the file was downloaded successfully, False otherwise.
-    """
-    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("AWS_ACCESS_KEY_ID is not set")
-
-    s3_client = boto3.client("s3")
-
-    try:
-        s3_client.download_file(bucket_name, s3_file_path, download_file_path)
-        print(f"✅ Successfully downloaded {s3_file_path} to {download_file_path}")
-        return True
-    except ClientError as e:
-        logger.error(e)
-        return False
-
-
-def delete_s3_file(bucket_name: str, s3_file_path: str) -> bool:
-    if os.getenv("AWS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("AWS_ACCESS_KEY_ID is not set")
-    if os.getenv("AWS_BUCKET_NAME", None) is None:
-        raise ValueError("AWS_BUCKET_NAME is not set")
-    s3_client = boto3.client("s3")
-    aws_bucket_name = os.getenv("AWS_BUCKET_NAME")
-    try:
-        s3_client.delete_object(Bucket=aws_bucket_name, Key=s3_file_path)
-        print(f"✅ Successfully deleted {s3_file_path} from {bucket_name}")
-        return True
-    except ClientError as e:
-        logger.error(e)
-        return False
-
-
-# ========================================================================
-# Aliyun OSS utils
-# ========================================================================
-def download_oss_file(
-    bucket_name: str, oss_file_path: str, download_file_path: str
-) -> bool:
-    """
-    Download a file from an Aliyun OSS bucket to a local path.
-    """
-    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_ID is not set")
-    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
-    if os.getenv("OSS_ENDPOINT", None) is None:
-        raise ValueError("OSS_ENDPOINT is not set")
-    endpoint = os.getenv("OSS_ENDPOINT")
-    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
-
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=access_key_id,
-        aws_secret_access_key=secret_access_key,
-        endpoint_url=endpoint,
-        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
-    )
-
-    try:
-        s3_client.download_file(bucket_name, oss_file_path, download_file_path)
-        print(f"✅ Successfully downloaded {oss_file_path} to {download_file_path}")
-        return True
-    except ClientError as e:
-        logger.error(e)
-        return False
-
-
-def exists_oss_file(bucket_name: str, oss_file_path: str) -> bool:
-    """
-    Check if a file exists in an Aliyun OSS bucket.
-
-    Args:
-        bucket_name (str): The name of the OSS bucket.
-        oss_file_path (str): The path of the file in the OSS bucket.
-
-    Returns:
-        bool: True if the file exists, False otherwise.
-    """
-    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_ID is not set")
-    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
-    if os.getenv("OSS_ENDPOINT", None) is None:
-        raise ValueError("OSS_ENDPOINT is not set")
-    endpoint = os.getenv("OSS_ENDPOINT")
-    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
-
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=access_key_id,
-        aws_secret_access_key=secret_access_key,
-        endpoint_url=endpoint,
-        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
-    )
-
-    try:
-        s3_client.head_object(Bucket=bucket_name, Key=oss_file_path)
-        print(f"✅ File exists in OSS: {oss_file_path}")
-        return True
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "404":
-            print(f"❌ File does not exist in OSS: {oss_file_path}")
-            return False
-        logger.error(e)
-        return False
-
-
-def list_oss_files(prefix: str = None) -> bool:
-    """
-    List files in an Aliyun OSS bucket.
-    """
-    if os.getenv("OSS_ACCESS_KEY_ID", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_ID is not set")
-    if os.getenv("OSS_ACCESS_KEY_SECRET", None) is None:
-        raise ValueError("OSS_ACCESS_KEY_SECRET is not set")
-    if os.getenv("OSS_ENDPOINT", None) is None:
-        raise ValueError("OSS_ENDPOINT is not set")
-    endpoint = os.getenv("OSS_ENDPOINT")
-    access_key_id = os.getenv("OSS_ACCESS_KEY_ID")
-    secret_access_key = os.getenv("OSS_ACCESS_KEY_SECRET")
-    bucket_name = os.getenv("OSS_BUCKET_NAME")
-    s3_client = boto3.client(
-        "s3",
-        aws_access_key_id=access_key_id,
-        aws_secret_access_key=secret_access_key,
-        endpoint_url=endpoint,
-        config=Config(s3={"addressing_style": "virtual"}, signature_version="v4"),
-    )
-    try:
-        if prefix is None:
-            response = s3_client.list_objects_v2(Bucket=bucket_name)
-        else:
-            response = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-
-        if "Contents" in response:
-            print(f"========== OSS File List ({prefix}) ==========")
-            for idx, item in enumerate(response["Contents"]):
-                print(f"{idx+1}. {item['Key']}")
-            print(f"========== End of OSS File List ({prefix}) ==========")
-            return True
-        else:
-            print(f"No files found in {prefix}")
-    except ClientError as e:
-        logger.error(e)
-        return False
-
-
-# ========================================================================
-# File path router
-# ========================================================================
-def route_file_path(loader_type: LoaderType, url_path: str) -> str:
-    """
-    Parse a url path to a located file path
-    """
-    if loader_type == "docling_cloud" or loader_type == "dots_ocr":
-        return url_path
-
-    local_file_path = None
-    parsed_url = urlparse(url_path)
-    if parsed_url.scheme == "file":
-        local_file_path = parsed_url.path
-        return local_file_path
-
-    bucket_name = parsed_url.netloc
-    file_path = parsed_url.path.lstrip("/")
-    file_name = os.path.basename(file_path)
-
-    if parsed_url.scheme == "s3":
-        local_file_path = os.path.join(S3_DOWNLOAD_DIR, file_name)
-        os.makedirs(S3_DOWNLOAD_DIR, exist_ok=True)
-        flag = download_s3_file(bucket_name, file_path, local_file_path)
-        if not flag:
-            raise ValueError(f"Failed to download {file_path} from {bucket_name}")
-        return local_file_path
-    elif parsed_url.scheme == "oss":
-        local_file_path = os.path.join(OSS_DOWNLOAD_DIR, file_name)
-        os.makedirs(OSS_DOWNLOAD_DIR, exist_ok=True)
-        flag = download_oss_file(bucket_name, file_path, local_file_path)
-        if not flag:
-            raise ValueError(f"Failed to download {file_path} from {bucket_name}")
-        return local_file_path
-    else:
-        raise ValueError(f"Unsupported scheme: '{parsed_url.scheme}'")
-
-
-if __name__ == "__main__":
-    print("========== LIST S3 FILES ==========")
-    list_s3_files()
-    print("===================================")
-    print("========== LIST OSS FILES ==========")
-    list_oss_files()

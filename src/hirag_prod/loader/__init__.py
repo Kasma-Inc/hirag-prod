@@ -4,7 +4,6 @@ from typing import Any, Optional, Tuple
 
 import requests
 
-from hirag_prod._utils import route_file_path, validate_document_path
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
@@ -13,6 +12,7 @@ from hirag_prod.loader.md_loader import MdLoader
 from hirag_prod.loader.pdf_loader import PDFLoader
 from hirag_prod.loader.ppt_loader import PowerPointLoader
 from hirag_prod.loader.txt_loader import TxtLoader
+from hirag_prod.loader.utils import route_file_path, validate_document_path
 from hirag_prod.loader.word_loader import WordLoader
 from hirag_prod.schema import File, LoaderType
 

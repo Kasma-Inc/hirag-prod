@@ -1,6 +1,8 @@
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional, Union
 
+from hirag_prod.configs.cloud_storage_config import AWSConfig, OSSConfig
 from hirag_prod.configs.config_manager import ConfigManager
+from hirag_prod.configs.document_loader_config import DoclingCloudConfig, DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
@@ -25,6 +27,24 @@ def get_embedding_config() -> EmbeddingConfig:
 
 def get_llm_config() -> LLMConfig:
     return ConfigManager().llm_config
+
+
+def get_document_converter_config(
+    converter_type: Literal["dots_ocr", "docling_cloud"],
+) -> Union[DotsOCRConfig, DoclingCloudConfig]:
+    if converter_type == "dots_ocr":
+        return ConfigManager().dots_ocr_config
+    else:
+        return ConfigManager().docling_cloud_config
+
+
+def get_cloud_storage_config(
+    storage_type: Literal["s3", "oss"],
+) -> Union[AWSConfig, OSSConfig]:
+    if storage_type == "s3":
+        return ConfigManager().aws_config
+    else:
+        return ConfigManager().oss_config
 
 
 def get_envs() -> Envs:

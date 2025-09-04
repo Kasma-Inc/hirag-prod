@@ -1061,7 +1061,7 @@ class HiRAG:
         query: str,
         workspace_id: str,
         knowledge_base_id: str,
-        topk: int = get_hi_rag_config().default_query_top_k,
+        topk: Optional[int] = None,
         pool_size: int = 500,
     ) -> Dict[str, Any]:
         """Dense Passage Retrieval-style recall using current embeddings and stored vectors.
@@ -1134,7 +1134,9 @@ class HiRAG:
             norm_scores = np.zeros_like(scores)
 
         # Step 4: sort and select top-k
-        order = np.argsort(-norm_scores)[: max(0, topk)]
+        order = np.argsort(-norm_scores)[
+            : max(0, topk or get_hi_rag_config().default_query_top_k)
+        ]
         top_ids = [filtered_ids[i] for i in order]
         top_scores = [float(norm_scores[i]) for i in order]
         top_rows = await self._query_service.get_chunks_by_ids(

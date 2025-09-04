@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
-from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.schema import Entity, Relation
 
 
@@ -24,8 +23,8 @@ class BaseGDB(ABC):
         workspace_id: str,
         knowledge_base_id: str,
         reset_weights: Dict[str, float],
-        topk: int = get_hi_rag_config().default_query_top_k,
-        alpha: float = get_hi_rag_config().default_pagerank_damping,
+        topk: Optional[int] = None,
+        alpha: Optional[float] = None,
     ) -> List[Tuple[str, float]]:
         raise NotImplementedError
 

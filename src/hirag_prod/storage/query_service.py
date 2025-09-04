@@ -114,11 +114,11 @@ class QueryService:
         query: str,
         workspace_id: str,
         knowledge_base_id: str,
-        topk: Optional[int] = get_hi_rag_config().default_query_top_k,
-        topn: Optional[int] = get_hi_rag_config().default_query_top_n,
-        link_top_k: int = get_hi_rag_config().default_link_top_k,
-        passage_node_weight: float = get_hi_rag_config().default_passage_node_weight,
-        damping: Optional[float] = get_hi_rag_config().default_pagerank_damping,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
+        link_top_k: Optional[int] = None,
+        passage_node_weight: Optional[float] = None,
+        damping: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Two-path retrieval + PageRank fusion.
 
@@ -127,6 +127,15 @@ class QueryService:
         - Build reset = phrase_weights + passage_weights and run Personalized PageRank
         - If no facts, fall back to DPR order (query rerank order)
         """
+
+        topk = (topk or get_hi_rag_config().default_query_top_k,)
+        topn = (topn or get_hi_rag_config().default_query_top_n,)
+        link_top_k = (link_top_k or get_hi_rag_config().default_link_top_k,)
+        passage_node_weight = (
+            passage_node_weight or get_hi_rag_config().default_passage_node_weight,
+        )
+        damping = (damping or get_hi_rag_config().default_pagerank_damping,)
+
         # Path 1: chunk recall (rerank happens in VDB query)
         chunk_recall = await self.recall_chunks(
             query,

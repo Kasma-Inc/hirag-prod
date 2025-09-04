@@ -263,8 +263,8 @@ class NetworkXGDB(BaseGDB):
         workspace_id: str,
         knowledge_base_id: str,
         reset_weights: Dict[str, float],
-        topk: int = get_hi_rag_config().default_query_top_k,
-        alpha: float = get_hi_rag_config().default_pagerank_damping,
+        topk: Optional[int] = None,
+        alpha: Optional[float] = None,
     ) -> List[tuple[str, float]]:
         """Compute personalized PageRank with a provided reset/personalization vector.
 
@@ -276,6 +276,10 @@ class NetworkXGDB(BaseGDB):
         Returns:
             List of tuples (chunk_id, score) sorted by descending score.
         """
+
+        topk = (topk or get_hi_rag_config().default_query_top_k,)
+        alpha = (alpha or get_hi_rag_config().default_pagerank_damping,)
+
         if topk <= 0:
             return []
 

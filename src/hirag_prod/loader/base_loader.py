@@ -7,8 +7,7 @@ from docling_core.types.doc import DoclingDocument
 from langchain_core.document_loaders import BaseLoader as LangchainBaseLoader
 
 from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.loader.docling_cloud import DoclingCloudClient
-from hirag_prod.loader.dots_ocr import DotsOCRClient
+from hirag_prod.loader import document_converter
 from hirag_prod.schema import File
 
 
@@ -16,9 +15,7 @@ class BaseLoader(ABC):
     """Base class for all loaders"""
 
     loader_docling: Type[DocumentConverter]
-    loader_docling_cloud: Type[DoclingCloudClient]
     loader_langchain: Type[LangchainBaseLoader]
-    loader_dots_ocr: Type[DotsOCRClient]
 
     def load_docling_cloud(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
@@ -34,7 +31,9 @@ class BaseLoader(ABC):
             File: the loaded document
         """
         assert document_meta.get("private") is not None, "private is required"
-        docling_doc: DoclingDocument = self.loader_docling_cloud.convert(document_path)
+        docling_doc: DoclingDocument = document_converter.convert(
+            "docling_cloud", document_path
+        )
         md_str: str = docling_doc.export_to_markdown()
         doc_md = File(
             documentKey=document_meta.get(
@@ -66,7 +65,7 @@ class BaseLoader(ABC):
         """
         assert document_meta.get("private") is not None, "private is required"
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
-        processed_doc = self.loader_dots_ocr.convert(document_path)
+        processed_doc = document_converter.convert("dots_ocr", document_path)
 
         assert processed_doc is not None, "Failed to receive parsed document."
 

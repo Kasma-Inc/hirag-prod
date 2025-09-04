@@ -116,16 +116,16 @@ class StorageManager:
         workspace_id: str,
         knowledge_base_id: str,
         rerank: bool = False,
-        topk: int = get_hi_rag_config().default_query_top_k,
-        topn: int = get_hi_rag_config().default_query_top_n,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Chunks",
-            topk=topk,
-            topn=topn,
+            topk=topk or get_hi_rag_config().default_query_top_k,
+            topn=topn or get_hi_rag_config().default_query_top_n,
             columns_to_select=[
                 "text",
                 "uri",
@@ -144,16 +144,16 @@ class StorageManager:
         workspace_id: str,
         knowledge_base_id: str,
         rerank: bool = False,
-        topk: int = get_hi_rag_config().default_query_top_k,
-        topn: int = get_hi_rag_config().default_query_top_n,
+        topk: int = None,
+        topn: int = None,
     ) -> List[Dict[str, Any]]:
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Triplets",
-            topk=topk,
-            topn=topn,
+            topk=topk if topk else get_hi_rag_config().default_query_top_k,
+            topn=topn if topn else get_hi_rag_config().default_query_top_n,
             columns_to_select=["source", "target", "description", "fileName"],
             rerank=rerank,
         )

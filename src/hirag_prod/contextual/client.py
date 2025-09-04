@@ -1,11 +1,11 @@
 import asyncio
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from hirag_prod.configs.functions import get_envs
 from hirag_prod.storage.pg_utils import queryContextResult, saveContextResult
 
 
@@ -29,7 +29,7 @@ class ContextualClient:
         Args:
             api_key: Your Contextual AI API key. If not provided, will look for CONTEXTUAL_API_KEY environment variable.
         """
-        self.api_key = api_key or os.getenv("CONTEXTUAL_API_KEY")
+        self.api_key = api_key or get_envs().CONTEXTUAL_API_KEY
         if not self.api_key:
             raise ValueError(
                 "API key must be provided either as an argument or through the CONTEXTUAL_API_KEY environment variable."

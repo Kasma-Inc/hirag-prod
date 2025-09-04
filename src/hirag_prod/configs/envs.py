@@ -32,6 +32,8 @@ class Envs(BaseSettings):
     LOCAL_LLM_BASE_URL: Optional[str] = None
     LOCAL_LLM_API_KEY: Optional[str] = None
 
+    CONTEXTUAL_API_KEY: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

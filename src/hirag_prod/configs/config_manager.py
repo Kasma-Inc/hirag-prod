@@ -1,6 +1,8 @@
 import threading
 from typing import Dict, List, Optional
 
+from hirag_prod.configs.cloud_storage_config import AWSConfig, OSSConfig
+from hirag_prod.configs.document_loader_config import DoclingCloudConfig, DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
@@ -18,7 +20,7 @@ class ConfigManager:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, config_dict: Optional[Dict] = None):
+    def __init__(self, config_dict: Optional[Dict] = None) -> None:
         if getattr(self, "_created", False):
             return
 
@@ -28,6 +30,10 @@ class ConfigManager:
             **self.envs.model_dump()
         )
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
+        self._docling_cloud_config: Optional[DoclingCloudConfig] = None
+        self._dots_ocr_config: Optional[DotsOCRConfig] = None
+        self._aws_config: Optional[AWSConfig] = None
+        self._oss_config: Optional[OSSConfig] = None
 
         self.supported_languages: List[str] = ["en", "cn-s", "cn-t"]
         self.language: str = (
@@ -72,3 +78,31 @@ class ConfigManager:
             )
 
         self._created: bool = True
+
+    @property
+    def docling_cloud_config(self) -> DoclingCloudConfig:
+        """Getter for docling_cloud_config"""
+        if not self._docling_cloud_config:
+            self._docling_cloud_config = DoclingCloudConfig(**self.envs.model_dump())
+        return self._docling_cloud_config
+
+    @property
+    def dots_ocr_config(self) -> DotsOCRConfig:
+        """Getter for dots_ocr_config"""
+        if not self._dots_ocr_config:
+            self._dots_ocr_config = DotsOCRConfig(**self.envs.model_dump())
+        return self._dots_ocr_config
+
+    @property
+    def aws_config(self) -> AWSConfig:
+        """Getter for aws_config"""
+        if not self._aws_config:
+            self._aws_config = AWSConfig(**self.envs.model_dump())
+        return self._aws_config
+
+    @property
+    def oss_config(self) -> OSSConfig:
+        """Getter for oss_config"""
+        if not self._oss_config:
+            self._oss_config = OSSConfig(**self.envs.model_dump())
+        return self._oss_config

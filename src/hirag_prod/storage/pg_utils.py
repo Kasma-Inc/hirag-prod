@@ -21,10 +21,14 @@ load_dotenv("/chatbot/.env")
 async def get_table_schema(
     session: AsyncSession,
     *,
-    table_name: Optional[str] = get_envs().POSTGRES_TABLE_NAME,
-    schema: Optional[str] = get_envs().POSTGRES_SCHEMA,
+    table_name: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Return column-level schema for a table."""
+
+    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
+    schema = schema or get_envs().POSTGRES_SCHEMA
+
     query = text(
         f"""
         SELECT
@@ -60,11 +64,15 @@ async def update_job_status(
     status: str,
     *,
     updated_at: Optional[datetime] = None,
-    table_name: Optional[str] = get_envs().POSTGRES_TABLE_NAME,
-    schema: Optional[str] = get_envs().POSTGRES_SCHEMA,
+    table_name: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> int:
     """Update job status and updatedAt by primary key jobId."""
     # Format the datetime parameter if provided
+
+    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
+    schema = schema or get_envs().POSTGRES_SCHEMA
+
     updated_at_value = updated_at if updated_at is not None else datetime.now()
 
     query = text(
@@ -87,13 +95,16 @@ async def insert_job(
     status: str = "pending",
     *,
     updated_at: Optional[datetime] = None,
-    table_name: Optional[str] = get_envs().POSTGRES_TABLE_NAME,
-    schema: Optional[str] = get_envs().POSTGRES_SCHEMA,
+    table_name: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> int:
     """Insert a job row with keys (jobId, workspaceId, status, updatedAt).
 
     Returns number of affected rows (1 on success).
     """
+
+    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
+    schema = (schema or get_envs().POSTGRES_SCHEMA,)
 
     # Format the datetime parameter if provided
     updated_at_value = updated_at if updated_at is not None else datetime.now()
@@ -113,10 +124,13 @@ async def delete_job(
     session: AsyncSession,
     job_id: str,
     *,
-    table_name: Optional[str] = get_envs().POSTGRES_TABLE_NAME,
-    schema: Optional[str] = get_envs().POSTGRES_SCHEMA,
+    table_name: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> int:
     """Delete a job row by primary key jobId. Returns affected row count."""
+
+    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
+    schema = (schema or get_envs().POSTGRES_SCHEMA,)
 
     query = text(
         f"""
@@ -134,8 +148,8 @@ async def get_all_records(
     session: AsyncSession,
     *,
     limit: Optional[int] = None,
-    table_name: Optional[str] = get_envs().POSTGRES_TABLE_NAME,
-    schema: Optional[str] = get_envs().POSTGRES_SCHEMA,
+    table_name: Optional[str] = None,
+    schema: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Return all rows from the target table.
 
@@ -143,6 +157,9 @@ async def get_all_records(
     - Defaults to env `POSTGRES_SCHEMA` or `public` when `schema` is None.
     - Optional `limit` to cap returned rows for safety.
     """
+
+    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
+    schema = (schema or get_envs().POSTGRES_SCHEMA,)
 
     query = text(
         f'SELECT * FROM "{schema}"."{table_name}" {f"LIMIT {limit}" if isinstance(limit, int) and (limit > 0) else ""}'
