@@ -1,5 +1,10 @@
 from typing import List
+import logging
+import time
+import nltk
+from nltk.tokenize import sent_tokenize
 
+logger = logging.getLogger("HiRAG")
 
 class ReferenceParser:
     """
@@ -7,41 +12,57 @@ class ReferenceParser:
     """
 
     def __init__(self):
-        pass
+        logger.info("🔧 Initializing ReferenceParser...")
+        logger.info("📥 Downloading NLTK data (this may take a moment on first run)...")
+        start_time = time.perf_counter()
+        
+        nltk.download('punkt_tab', quiet=True)
+        
+        total_time = time.perf_counter() - start_time
+        logger.info(f"✅ NLTK data download completed in {total_time:.3f}s")
 
     async def parse_references(
-        self, text: str, reference_placeholder: str
+        self, text: str, reference_placeholder: str, omit_length: int = 5
     ) -> List[str]:
         """
-        Parse references from the given text.
+        Parse references from the given text using NLTK sentence tokenization.
+        Returns the sentence containing each reference placeholder, with empty sentences discarded.
         """
         if not text:
             return []
 
-        # separate the text by period, newline, tab, question mark, exclamation mark, or semicolon
-        potential_separators = [".", "\n", "\t", "?", "!", ";"]
-        parts = []
-        start = 0
-
-        # for each place holder end, find the sentence before it
-        while True:
-            end = text.find(reference_placeholder, start)
-            if end == -1:
-                break
-
-            # Find the last potential separator before the end
-            last_separator = max(
-                text.rfind(sep, start, end) for sep in potential_separators
-            )
-
-            if last_separator == -1 or last_separator < start:
-                parts.append(text[start:end].strip())
+        references = []
+        remaining_text = text
+        
+        while reference_placeholder in remaining_text:
+            # Find the position of the next placeholder
+            placeholder_pos = remaining_text.find(reference_placeholder)
+            
+            # Extract text up to and including the placeholder
+            text_up_to_placeholder = remaining_text[:placeholder_pos]
+            
+            # Use NLTK to tokenize sentences in this portion
+            if text_up_to_placeholder.strip():
+                sentences = sent_tokenize(text_up_to_placeholder)
+                if sentences:
+                    # Get the last sentence (the one containing the reference)
+                    last_sentence = sentences[-1].strip()
+                    # Only add if not empty after stripping
+                    if last_sentence and len(last_sentence) > omit_length:
+                        references.append(last_sentence)
+                    
+                    # All errors fall back to appending empty string, and handled later
+                    else:
+                        references.append("")
+                else:
+                    references.append("")
             else:
-                parts.append(text[last_separator + 1 : end].strip())
-
-            start = end + len(reference_placeholder)
-
-        return parts
+                references.append("")
+            
+            # Move past this placeholder for next iteration
+            remaining_text = remaining_text[placeholder_pos + len(reference_placeholder):]
+        
+        return references
 
     async def fill_placeholders(
         self,

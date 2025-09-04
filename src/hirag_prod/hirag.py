@@ -618,20 +618,37 @@ class HiRAG:
             logger.warning("No reference sentences found in summary")
             return []
 
-        sentence_embeddings = await self.embedding_service.create_embeddings(
-            texts=ref_sentences
-        )
+        # Create mapping between non-empty sentences and their indices
+        non_empty_sentences = []
+        sentence_index_map = {}
+        for i, sentence in enumerate(ref_sentences):
+            if sentence.strip():
+                sentence_index_map[i] = len(non_empty_sentences)
+                non_empty_sentences.append(sentence)
+
+        # Only embed non-empty sentences
+        if non_empty_sentences:
+            sentence_embeddings = await self.embedding_service.create_embeddings(
+                texts=non_empty_sentences
+            )
+        else:
+            sentence_embeddings = []
+            
         chunk_embeddings = await self._query_service.query_chunk_embeddings(
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             chunk_ids=chunk_ids,
         )
 
-        for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
+        for i, sentence in enumerate(ref_sentences):
             # If the sentence is empty, continue
             if not sentence.strip():
                 reference_chunk_list.append("")
                 continue
+
+            # Get the corresponding embedding for this non-empty sentence
+            embedding_index = sentence_index_map[i]
+            sentence_embedding = sentence_embeddings[embedding_index]
 
             similar_chunks = await self.calculate_similarity(
                 sentence_embedding, chunk_embeddings
@@ -720,21 +737,38 @@ class HiRAG:
             if not ref_sentences:
                 logger.warning("No reference sentences found in summary")
                 return summary
+            
+            # Create mapping between non-empty sentences and their indices
+            non_empty_sentences = []
+            sentence_index_map = {}
+            for i, sentence in enumerate(ref_sentences):
+                if sentence.strip():
+                    sentence_index_map[i] = len(non_empty_sentences)
+                    non_empty_sentences.append(sentence)
 
-            sentence_embeddings = await self.embedding_service.create_embeddings(
-                texts=ref_sentences
-            )
+            # Only embed non-empty sentences
+            if non_empty_sentences:
+                sentence_embeddings = await self.embedding_service.create_embeddings(
+                    texts=non_empty_sentences
+                )
+            else:
+                sentence_embeddings = []
+            
             chunk_embeddings = await self._query_service.query_chunk_embeddings(
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
                 chunk_ids=chunk_ids,
             )
 
-            for sentence, sentence_embedding in zip(ref_sentences, sentence_embeddings):
+            for i, sentence in enumerate(ref_sentences):
                 # If the sentence is empty, continue
                 if not sentence.strip():
                     result.append("")
                     continue
+
+                # Get the corresponding embedding for this non-empty sentence
+                embedding_index = sentence_index_map[i]
+                sentence_embedding = sentence_embeddings[embedding_index]
 
                 similar_chunks = await self.calculate_similarity(
                     sentence_embedding, chunk_embeddings
