@@ -289,6 +289,11 @@ class DocumentProcessor:
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
                         chunks = chunk_docling_document(json_doc, generated_md)
+                        # TODO: get items from docling's chunking
+                        if generated_md:
+                            generated_md.tableOfContents = build_rich_toc(
+                                chunks, generated_md
+                            )
                     else:
                         raise DocumentProcessingError(
                             "Invalid document format returned by loader"
@@ -330,7 +335,10 @@ class DocumentProcessor:
             await self.storage.upsert_items_to_vdb(items)
 
             logger.info(f"✅ Processed {len(pending_chunks)} chunks")
-            logger.info(f"✅ Processed {len(items)} items")
+            if items:
+                logger.info(f"✅ Processed {len(items)} items")
+            else:
+                logger.info("⚠️ No items to process")
 
     async def _get_pending_chunks(
         self,
