@@ -366,7 +366,7 @@ class DotsRecursiveChunker:
 
     def chunk(self, document: List[Dict[str, Any]]) -> List[DotsDenseChunk]:
         chunks: List[DotsDenseChunk] = []
-        next_idx = 1
+        next_idx = 0 # Use 0 based index for chunk idx to be consistent with other chunkers
 
         header_items: List[Dict[str, Any]] = []
         text_items: List[Dict[str, Any]] = []

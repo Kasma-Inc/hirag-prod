@@ -147,9 +147,9 @@ def determine_docling_chunk_type(chunk) -> ChunkType:
     return ChunkType.MIXED
 
 
-def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[Chunk]:
+def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[Item]:
     """
-    Split a docling document into chunks and return a list of Chunk objects.
+    Split a docling document into chunks and return a list of Item objects.
     Each chunk will inherit metadata from the original document.
 
     Args:
@@ -158,8 +158,8 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
                (type, filename, uri, etc.) that will be inherited by each chunk
 
     Returns:
-        List[Chunk]: A list of Chunk objects with proper metadata including
-                    chunk-specific metadata and inherited file metadata
+        List[Item]: A list of Item objects with proper metadata including
+                    item,=-specific metadata and inherited file metadata
     """
     # Initialize the chunker
     chunker = HierarchicalChunker()
@@ -203,7 +203,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
                 docling_chunk_meta["y_1"],
             ]
 
-        chunk_obj = Chunk(
+        chunk_obj = Item(
             documentKey=compute_mdhash_id(chunk.text, prefix="chunk-"),
             text=chunk.text,
             chunkIdx=docling_chunk_meta["chunk_idx"],
@@ -250,6 +250,133 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[C
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
+    return chunks
+
+def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
+    """
+    Group items by their headers and combine items within the same group into chunks.
+    Items are grouped consecutively under the same header context.
+    
+    Example: [text, text, header, text, text] -> 2 chunks: [text, text] and [text, text]
+    
+    Args:
+        items: List of Item objects to be grouped
+        
+    Returns:
+        List of Chunk objects with combined text, bboxes, and page numbers
+    """
+    if not items:
+        return []
+    
+    # Build a lookup from documentKey to Item
+    id2item = {item.documentKey: item for item in items if getattr(item, "documentKey", None)}
+    
+    chunks: List[Chunk] = []
+    current_group: List[Item] = []
+    current_headers: Optional[List[str]] = None
+    
+    def _create_chunk_from_group(group: List[Item], headers: Optional[List[str]]) -> Chunk:
+        """Create a chunk from a group of items."""
+        if not group:
+            return None
+            
+        # Combine texts
+        combined_text_parts = []
+        
+        # Add header texts first if available
+        if headers:
+            for h in headers:
+                header_item = id2item.get(h)
+                if header_item and header_item.text:
+                    combined_text_parts.append(header_item.text)
+        
+        # Add item texts
+        for item in group:
+            if item.text:
+                combined_text_parts.append(item.text)
+        
+        combined_text = "\n".join(combined_text_parts)
+        
+        # Combine bboxes into a list
+        combined_bboxes = []
+        for item in group:
+            if item.bbox:
+                combined_bboxes.append(item.bbox)
+        
+        # Combine page numbers into a list (unique)
+        page_numbers = []
+        for item in group:
+            if item.pageNumber is not None and item.pageNumber not in page_numbers:
+                page_numbers.append(item.pageNumber)
+        
+        # Use properties from first item as base
+        first_item = group[0]
+        
+        # Determine chunk type - use "mixed" if multiple types, otherwise use the common type
+        chunk_types = {item.chunkType for item in group}
+        if len(chunk_types) == 1:
+            chunk_type = chunk_types.pop()
+        else:
+            chunk_type = ChunkType.MIXED.value
+        
+        return Chunk(
+            documentKey=compute_mdhash_id(combined_text, prefix="chunk-"),
+            text=combined_text,
+            chunkIdx=first_item.chunkIdx,  # Use first item's index
+            documentId=first_item.documentId,
+            chunkType=chunk_type,
+            pageNumber=page_numbers if page_numbers else None,
+            pageImageUrl=first_item.pageImageUrl,
+            pageWidth=first_item.pageWidth,
+            pageHeight=first_item.pageHeight,
+            bbox=combined_bboxes if combined_bboxes else None,
+            caption=None,  # Could combine captions if needed
+            headers=headers,
+            children=None,
+            type=first_item.type,
+            fileName=first_item.fileName,
+            uri=first_item.uri,
+            private=first_item.private,
+            uploadedAt=first_item.uploadedAt,
+            knowledgeBaseId=first_item.knowledgeBaseId,
+            workspaceId=first_item.workspaceId,
+        )
+    
+    for item in items:
+        # Skip headers/titles as they will be merged into text
+        if item.chunkType in [ChunkType.TITLE.value, ChunkType.SECTION_HEADER.value]:
+            # If we have a current group, create a chunk and start new group
+            if current_group:
+                chunk = _create_chunk_from_group(current_group, current_headers)
+                if chunk:
+                    chunks.append(chunk)
+                current_group = []
+            
+            # Update current headers context
+            current_headers = [item.documentKey] if item.documentKey else None
+            continue
+        
+        # Check if this item has different headers than current context
+        item_headers = item.headers if item.headers else None
+        
+        # If headers changed, finalize current group and start new one
+        if current_headers != item_headers:
+            if current_group:
+                chunk = _create_chunk_from_group(current_group, current_headers)
+                if chunk:
+                    chunks.append(chunk)
+                current_group = []
+            current_headers = item_headers
+        
+        # Add item to current group
+        current_group.append(item)
+    
+    # Handle the last group
+    if current_group:
+        chunk = _create_chunk_from_group(current_group, current_headers)
+        if chunk:
+            chunks.append(chunk)
+    
     return chunks
 
 

@@ -35,6 +35,7 @@ from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     build_rich_toc,
     chunk_docling_document,
+    group_docling_items_by_header,
     chunk_dots_document,
     chunk_dots_document_recursive,
     chunk_langchain_document,
@@ -251,7 +252,8 @@ class DocumentProcessor:
                         loader_configs,
                         loader_type="langchain",
                     )
-                    chunks = chunk_langchain_document(generated_md)
+                    items = chunk_langchain_document(generated_md)
+                    chunks = items.copy() # To save into chunks & items
                 else:
                     if loader_type == "docling_cloud" or loader_type == "docling":
                         json_doc, generated_md = await asyncio.to_thread(
@@ -288,11 +290,11 @@ class DocumentProcessor:
                             )
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
-                        chunks = chunk_docling_document(json_doc, generated_md)
-                        # TODO: get items from docling's chunking
+                        items = chunk_docling_document(json_doc, generated_md)
+                        chunks = group_docling_items_by_header(items)
                         if generated_md:
                             generated_md.tableOfContents = build_rich_toc(
-                                chunks, generated_md
+                                items, generated_md
                             )
                     else:
                         raise DocumentProcessingError(
