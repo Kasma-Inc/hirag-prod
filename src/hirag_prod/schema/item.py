@@ -7,8 +7,7 @@ from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.types import ARRAY
 
-from hirag_prod.schema.base import Base
-from hirag_prod.schema.file import File
+from hirag_prod.schema import Base
 
 # read halfvec and dim from env
 dotenv.load_dotenv()
@@ -52,22 +51,3 @@ class Item(Base):
         for column in self.__table__.columns:
             yield column.name, getattr(self, column.name)
 
-
-def file_to_item(
-    file: File, documentKey: str, text: str, documentId: str, chunkIdx
-) -> Item:
-    return Item(
-        # Given
-        documentKey=documentKey,
-        text=text,
-        documentId=documentId,
-        chunkIdx=chunkIdx,
-        # Copy
-        fileName=file.fileName,
-        uri=file.uri,
-        private=file.private,
-        knowledgeBaseId=file.knowledgeBaseId,
-        workspaceId=file.workspaceId,
-        type=file.type,
-        pageNumber=file.pageNumber,
-    )

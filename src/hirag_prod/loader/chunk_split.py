@@ -7,9 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.chunk import DotsHierarchicalChunker, DotsRecursiveChunker
-from hirag_prod.schema.chunk import Chunk
-from hirag_prod.schema.file import File
-from hirag_prod.schema.item import Item
+from hirag_prod.schema import Chunk, File, Item
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -251,6 +249,9 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
     chunks.sort(key=lambda c: c.chunkIdx)
 
     return chunks
+
+def chunk_docling_markdown_document():
+    pass
 
 def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
     """
@@ -774,8 +775,26 @@ def chunk_langchain_document(
     chunk_texts = text_splitter.split_text(langchain_doc.text)
 
     chunks = []
+    
+    original_text = langchain_doc.text
+    id2pos = {}
+    
+    search_start = 0
+    for idx, chunk_text in enumerate(chunk_texts):
+        # Find start position of chunk_text in original_text
+        start_pos = original_text.find(chunk_text, search_start)
+        
+        if start_pos == -1:
+            start_pos = search_start
+            
+        end_pos = start_pos + len(chunk_text)
+
+        id2pos[idx] = (start_pos, end_pos)
+        search_start = start_pos + len(chunk_text)
+
     for idx, chunk in enumerate(chunk_texts):
-        chunk_obj = Chunk(
+        bbox = id2pos.get(idx, None)
+        chunk_obj = Item(
             documentKey=compute_mdhash_id(chunk, prefix="chunk-"),
             text=chunk,
             chunkIdx=idx,
@@ -792,7 +811,7 @@ def chunk_langchain_document(
             pageImageUrl=None,
             pageWidth=None,
             pageHeight=None,
-            bbox=None,
+            bbox=bbox,
             caption=None,
             headers=None,
             knowledgeBaseId=langchain_doc.knowledgeBaseId,

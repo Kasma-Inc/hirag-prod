@@ -52,6 +52,7 @@ from hirag_prod.schema import (
     Chunk,
     File,
     Item,
+    item_to_chunk,
     LoaderType,
 )
 from hirag_prod.storage import (
@@ -253,7 +254,9 @@ class DocumentProcessor:
                         loader_type="langchain",
                     )
                     items = chunk_langchain_document(generated_md)
-                    chunks = items.copy() # To save into chunks & items
+                    chunks = [
+                        item_to_chunk(item) for item in items
+                    ]  # Convert items to chunks
                 else:
                     if loader_type == "docling_cloud" or loader_type == "docling":
                         json_doc, generated_md = await asyncio.to_thread(

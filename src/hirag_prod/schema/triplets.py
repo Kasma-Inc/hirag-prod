@@ -6,7 +6,7 @@ import dotenv
 from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Column, DateTime, String, Text
 
-from hirag_prod.schema.base import Base
+from hirag_prod.schema import Base
 
 # read halfvec and dim from env
 dotenv.load_dotenv()
