@@ -1,10 +1,17 @@
 from typing import Literal
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class LLMConfig(BaseSettings):
     """LLM configuration"""
+
+    model_config = ConfigDict(
+        alias_generator=lambda x: f"llm_{x}".upper(),
+        populate_by_name=True,
+        extra="ignore"
+    )
 
     service_type: Literal["openai", "local"]
 
@@ -16,8 +23,3 @@ class LLMConfig(BaseSettings):
     timeout: float = 30.0
 
     entry_point: str = "/v1/chat/completions"
-
-    class Config:
-        alias_generator = lambda x: f"llm_{x}".upper()
-        populate_by_name = True
-        extra = "ignore"

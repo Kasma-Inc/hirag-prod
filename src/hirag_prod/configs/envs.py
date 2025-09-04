@@ -1,10 +1,16 @@
 from typing import Literal, Optional
 
-from pydantic import model_validator
+from pydantic import ConfigDict, model_validator
 from pydantic_settings import BaseSettings
 
 
 class Envs(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow"
+    )
+
     ENV: Literal["dev", "prod"] = "dev"
     HI_RAG_LANGUAGE: str = "en"
     POSTGRES_URL_NO_SSL: str
@@ -33,11 +39,6 @@ class Envs(BaseSettings):
     LOCAL_LLM_API_KEY: Optional[str] = None
 
     CONTEXTUAL_API_KEY: Optional[str] = None
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "allow"
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":

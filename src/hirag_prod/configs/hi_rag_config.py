@@ -1,10 +1,17 @@
 from typing import Literal
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class HiRAGConfig(BaseSettings):
     """HiRAG system configuration"""
+
+    model_config = ConfigDict(
+        alias_generator=lambda x: x.upper(),
+        populate_by_name=True,
+        extra="ignore"
+    )
 
     # Database configuration
     vector_db_path: str = "kb/hirag.db"
@@ -40,8 +47,3 @@ class HiRAGConfig(BaseSettings):
     default_link_top_k: int = 30
     default_passage_node_weight: float = 0.6
     default_pagerank_damping: float = 0.5
-
-    class Config:
-        alias_generator = lambda x: x.upper()
-        populate_by_name = True
-        extra = "ignore"
