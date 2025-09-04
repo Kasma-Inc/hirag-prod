@@ -7,8 +7,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
 from hirag_prod._utils import AsyncEmbeddingFunction
+from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import get_db_engine, get_db_session_maker
-from hirag_prod.schema import Chunk, File, Triplets
+from hirag_prod.schema import Chunk, File, Item, Triplets
 from hirag_prod.schema.base import Base as PGBase
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
@@ -47,6 +48,7 @@ class PGVector(BaseVDB):
             "Chunks": Chunk,
             "Files": File,
             "Triplets": Triplets,
+            "Items": Item,
         }  # mapping of table names to model creation functions
 
     def _to_list(self, embedding):
@@ -111,16 +113,51 @@ class PGVector(BaseVDB):
 
             table = model.__table__
             pk_cols = [c.name for c in table.primary_key.columns]
-            ins = insert(table).values(rows)
-            stmt = ins.on_conflict_do_nothing(
-                index_elements=[table.c[name] for name in pk_cols]
-            )
 
-            await session.execute(stmt)
+            if not rows:
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    f"[upsert_texts] No rows to upsert into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                )
+                return rows
+
+            try:
+                cols_per_row = len(rows[0])
+            except Exception:
+                cols_per_row = None
+
+            if not cols_per_row:
+                all_keys = set()
+                for r in rows:
+                    all_keys.update(r.keys())
+                cols_per_row = max(1, len(all_keys))
+
+            # Compute a safe batch size based on parameter budget to avoid exceeding
+            # PostgreSQL's 65535 bind parameter limit for a single statement.
+            # We conservatively cap at 60000 total parameters per statement.
+            param_budget = 60000
+            max_batch_size = max(1, param_budget // cols_per_row)
+
+            total = len(rows)
+            processed = 0
+            for i in range(0, total, max_batch_size):
+                batch = rows[i : i + max_batch_size]
+                ins = insert(table).values(batch)
+                stmt = ins.on_conflict_do_nothing(
+                    index_elements=[table.c[name] for name in pk_cols]
+                )
+                await session.execute(stmt)
+                processed += len(batch)
+
             await session.commit()
             elapsed = time.perf_counter() - start
             logger.info(
-                f"[upsert_texts] Upserted {len(rows)} into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                "[upsert_texts] Upserted %d into '%s' in batches (batch_size<=%d), mode=%s, elapsed=%.3fs",
+                len(rows),
+                table_name,
+                max_batch_size,
+                mode,
+                elapsed,
             )
             return rows
 
@@ -196,6 +233,9 @@ class PGVector(BaseVDB):
         if topn is None:
             topn = self.strategy_provider.default_topn
 
+        if topn > topk:
+            raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
+
         model = self.get_model(table_name)
 
         start = time.perf_counter()
@@ -234,8 +274,9 @@ class PGVector(BaseVDB):
                 payload["distance"] = dist
                 scored.append(payload)
 
-            if rerank:
-                pass  # TODO: refactor the rerank logic to directly rerank the retrieved content
+            scored = (
+                await apply_reranking(query, scored, topn, topk) if rerank else scored
+            )
 
             elapsed = time.perf_counter() - start
             logger.info(
@@ -335,11 +376,17 @@ class PGVector(BaseVDB):
             Chunks = self.get_model("Chunks")
             Files = self.get_model("Files")
             Triplets = self.get_model("Triplets")
+            Items = self.get_model("Items")
 
             def _create(sync_conn):
                 PGBase.metadata.create_all(
                     bind=sync_conn,
-                    tables=[Chunks.__table__, Files.__table__, Triplets.__table__],
+                    tables=[
+                        Chunks.__table__,
+                        Files.__table__,
+                        Triplets.__table__,
+                        Items.__table__,
+                    ],
                 )
 
             await conn.run_sync(_create)

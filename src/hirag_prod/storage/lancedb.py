@@ -6,6 +6,7 @@ from typing import List, Literal, Optional
 import lancedb
 
 from hirag_prod._utils import AsyncEmbeddingFunction
+from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.lance_schema import get_chunks_schema, get_relations_schema
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
@@ -233,6 +234,12 @@ class LanceDB(BaseVDB):
         if topk is None:
             topk = self.strategy_provider.default_topk
 
+        if topn is None:
+            topn = self.strategy_provider.default_topn
+
+        if topn > topk:
+            raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
+
         q = table.query().nearest_to(embedding).distance_type("cosine")
 
         if hasattr(q, "nprobes"):
@@ -250,13 +257,9 @@ class LanceDB(BaseVDB):
         if distance_threshold is not None:
             q = q.distance_range(upper_bound=distance_threshold)
         q = q.select(columns_to_select).limit(topk)
-        if topn is None:
-            topn = self.strategy_provider.default_topn
 
-        if rerank:
-            pass  # TODO: refactor the rerank logic to directly rerank the retrieved content
-
-        return await q.to_list()
+        results = await q.to_list()
+        return await apply_reranking(query, results, topn, topk) if rerank else results
 
     async def query_by_keys(
         self,

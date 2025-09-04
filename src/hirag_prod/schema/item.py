@@ -18,10 +18,10 @@ use_halfvec = bool(os.getenv("USE_HALF_VEC", True))
 vec_type = HALFVEC(dim) if use_halfvec else Vector(dim)
 
 
-class Chunk(Base):
-    __tablename__ = "Chunks"
+class Item(Base):
+    __tablename__ = "Items"
 
-    # Chunk Data
+    # Item Data
     documentKey: str = Column(String, primary_key=True, nullable=False)
     text: str = Column(Text, nullable=False)
     # From FileMetadata
@@ -31,7 +31,7 @@ class Chunk(Base):
     knowledgeBaseId: str = Column(String, nullable=False)
     workspaceId: str = Column(String, nullable=False)
     type: Optional[str] = Column(String, nullable=True)
-    pageNumber: Optional[List[int]] = Column(ARRAY(Integer), nullable=True)
+    pageNumber: Optional[int] = Column(Integer, nullable=True)
     uploadedAt: Optional[datetime] = Column(DateTime, nullable=True)
     # From ChunkMetadata
     documentId: str = Column(String, nullable=False)
@@ -43,7 +43,7 @@ class Chunk(Base):
     headers: Optional[List[str]] = Column(ARRAY(String), nullable=True)
     children: Optional[List[str]] = Column(ARRAY(String), nullable=True)
     caption: Optional[str] = Column(String, nullable=True)
-    bbox = Column(ARRAY(Float, dimensions=2), nullable=True)
+    bbox: Optional[List[float]] = Column(ARRAY(Float), nullable=True)
     # Computed Data
     vector: List[float] = Column(vec_type, nullable=False)
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
@@ -53,10 +53,10 @@ class Chunk(Base):
             yield column.name, getattr(self, column.name)
 
 
-def file_to_chunk(
+def file_to_item(
     file: File, documentKey: str, text: str, documentId: str, chunkIdx
-) -> Chunk:
-    return Chunk(
+) -> Item:
+    return Item(
         # Given
         documentKey=documentKey,
         text=text,

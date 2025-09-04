@@ -3,9 +3,8 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import lancedb
 import pyarrow as pa
@@ -14,6 +13,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
@@ -330,8 +330,6 @@ class VDBManager:
 
 async def get_chunk_info(
     chunk_ids: list[str],
-    vdb_path: str = os.getenv("POSTGRES_URL_NO_SSL_DEV") or "kb/hirag.db",
-    vdb_type: Literal["lancedb", "pgvector"] = "pgvector",
     knowledge_base_id: Optional[str] = None,
     workspace_id: Optional[str] = None,
 ) -> Optional[list[list[Dict[str, Any]]]]:
@@ -342,27 +340,24 @@ async def get_chunk_info(
 
     Args:
         chunk_ids: list of chunk ids to get info for
-        vdb_path: Path to the LanceDB database directory or PostgreSQL connection URL
-        vdb_type: Type of vector database ("lancedb" or "pgvector")
         knowledge_base_id: The id of the knowledge base that the chunk is from (optional)
         workspace_id: The id of the workspace that the chunk is from (optional)
 
     Returns:
-        A list of list of dicts of the chunk rows with its headers if found, otherwise None.
+        A list of dicts of the chunk rows with its headers if found, otherwise None.
     """
     if not chunk_ids:
         return []
 
     results: list[list[Dict[str, Any]]] = []
-    if vdb_type == "lancedb":
+    if get_hi_rag_config().vdb_type == "lancedb":
         raise NotImplementedError("Lancedb is not supported yet")
 
-    elif vdb_type == "pgvector":
+    elif get_hi_rag_config().vdb_type == "pgvector":
         try:
             # Create PGVector instance
             vdb = PGVector.create(
                 embedding_func=None,
-                db_url=vdb_path,
                 strategy_provider=RetrievalStrategyProvider(),
                 vector_type="halfvec",
             )
@@ -421,16 +416,12 @@ async def get_chunk_info(
 async def get_chunk_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
-    vdb_path: str = os.getenv("POSTGRES_URL_NO_SSL_DEV") or "kb/hirag.db",
-    vdb_type: Literal["lancedb", "pgvector"] = "pgvector",
 ) -> list[dict[str, Any]]:
     """Get chunk info by scope (knowledgeBaseId and workspaceId).
 
     Args:
         knowledge_base_id: The id of the knowledge base that the chunk is from
         workspace_id: The id of the workspace that the chunk is from
-        vdb_path: Path to the LanceDB database directory or PostgreSQL connection URL
-        vdb_type: Type of vector database ("lancedb" or "pgvector")
 
     Returns:
         A list of dicts of the chunk rows if found, otherwise an empty list.
@@ -440,9 +431,9 @@ async def get_chunk_info_by_scope(
 
     results: list[dict[str, Any]] = []
 
-    if vdb_type == "lancedb":
+    if get_hi_rag_config().vdb_type == "lancedb":
         try:
-            async with VDBManager(vdb_path) as vdb:
+            async with VDBManager(get_hi_rag_config().vdb_path) as vdb:
                 table = await vdb._get_table("chunks")
                 predicate = (
                     f"`workspaceId` = {repr(workspace_id)} AND "
@@ -455,7 +446,7 @@ async def get_chunk_info_by_scope(
             )
             return results
 
-    elif vdb_type == "pgvector":
+    elif get_hi_rag_config().vdb_type == "pgvector":
         try:
             vdb = PGVector.create(
                 embedding_func=None,
