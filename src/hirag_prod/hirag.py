@@ -277,7 +277,7 @@ class DocumentProcessor:
                             )
                             if generated_md:
                                 generated_md.tableOfContents = build_rich_toc(
-                                    chunks, generated_md
+                                    items, generated_md
                                 )
                         elif isinstance(json_doc, DoclingDocument):
                             # Chunk the Docling document

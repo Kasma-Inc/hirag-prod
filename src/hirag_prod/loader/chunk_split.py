@@ -298,77 +298,77 @@ def _transform_bbox_dims_list(
     return out
 
 
-def get_toc_from_chunks(chunks: List[Chunk]) -> List[Dict[str, Any]]:
+def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
     ToC = []
-    vis_chunks = set()
-    chunk_to_index = {}
-    for idx, chunk in enumerate(chunks):
-        chunk_to_index[chunk.documentKey] = idx
+    vis_items = set()
+    item_to_index = {}
+    for idx, item in enumerate(items):
+        item_to_index[item.documentKey] = idx
 
-    def _is_header(chunk: Chunk) -> bool:
-        return chunk.chunkType in [
+    def _is_header(item: Item) -> bool:
+        return item.chunkType in [
             ChunkType.TITLE.value,
             ChunkType.SECTION_HEADER.value,
         ]
 
-    def _extract_term(chunk: Chunk) -> Dict[str, Any]:
-        if not _is_header(chunk):
+    def _extract_term(item: Item) -> Dict[str, Any]:
+        if not _is_header(item):
             return None
         term = {
-            "title": chunk.text,
-            "chunk_id": chunk.documentKey,
+            "title": item.text,
+            "chunk_id": item.documentKey,
         }
         # Go through children
         valid_children = []
-        for child_id in chunk.children:
-            child_idx = chunk_to_index.get(child_id)
-            vis_chunks.add(child_id)
-            extracted_child = _extract_term(chunks[child_idx])
+        for child_id in item.children:
+            child_idx = item_to_index.get(child_id)
+            vis_items.add(child_id)
+            extracted_child = _extract_term(items[child_idx])
             if extracted_child:
                 valid_children.append(extracted_child)
 
         term["children"] = valid_children
         return term
 
-    for chunk in chunks:
-        if chunk.documentKey in vis_chunks:
+    for item in items:
+        if item.documentKey in vis_items:
             continue
-        vis_chunks.add(chunk.documentKey)
-        term = _extract_term(chunk)
+        vis_items.add(item.documentKey)
+        term = _extract_term(item)
         if term:
             ToC.append(term)
     return ToC
 
 
-def build_rich_toc(chunks: List[Chunk], file: File) -> Dict[str, Any]:
-    id2chunk = {c.documentKey: c for c in chunks}
-    tree = get_toc_from_chunks(chunks)
+def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
+    id2item = {i.documentKey: i for i in items}
+    tree = get_toc_from_items(items)
     blocks: List[Dict[str, Any]] = []
 
     def visit(node: Dict[str, Any], level: int) -> None:
-        cid = node.get("chunk_id")
-        if not cid:
+        iid = node.get("chunk_id")
+        if not iid:
             return
-        c = id2chunk.get(cid)
-        if not c:
+        i = id2item.get(iid)
+        if not i:
             return
 
-        bbox = c.bbox or [0, 0, 0, 0]
+        bbox = i.bbox or [0, 0, 0, 0]
 
         blocks.append(
             {
-                "type": c.chunkType,
+                "type": i.chunkType,
                 "hierarchyLevel": level,
-                "id": c.documentKey,
+                "id": i.documentKey,
                 "sourceBoundingBox": {
                     "x0": bbox[0],
                     "y0": bbox[1],
                     "x1": bbox[2],
                     "y1": bbox[3],
                 },
-                "markdown": c.text or "",
-                "pageIndex": c.pageNumber or 0,
-                "fileUrl": c.uri or "",
+                "markdown": i.text or "",
+                "pageIndex": i.pageNumber or 0,
+                "fileUrl": i.uri or "",
             }
         )
 
