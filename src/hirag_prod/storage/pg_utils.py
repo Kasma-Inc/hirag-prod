@@ -103,8 +103,8 @@ async def insert_job(
     Returns number of affected rows (1 on success).
     """
 
-    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
-    schema = (schema or get_envs().POSTGRES_SCHEMA,)
+    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
+    schema = schema or get_envs().POSTGRES_SCHEMA
 
     # Format the datetime parameter if provided
     updated_at_value = updated_at if updated_at is not None else datetime.now()
@@ -129,8 +129,8 @@ async def delete_job(
 ) -> int:
     """Delete a job row by primary key jobId. Returns affected row count."""
 
-    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
-    schema = (schema or get_envs().POSTGRES_SCHEMA,)
+    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
+    schema = schema or get_envs().POSTGRES_SCHEMA
 
     query = text(
         f"""
@@ -158,8 +158,8 @@ async def get_all_records(
     - Optional `limit` to cap returned rows for safety.
     """
 
-    table_name = (table_name or get_envs().POSTGRES_TABLE_NAME,)
-    schema = (schema or get_envs().POSTGRES_SCHEMA,)
+    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
+    schema = schema or get_envs().POSTGRES_SCHEMA
 
     query = text(
         f'SELECT * FROM "{schema}"."{table_name}" {f"LIMIT {limit}" if isinstance(limit, int) and (limit > 0) else ""}'
