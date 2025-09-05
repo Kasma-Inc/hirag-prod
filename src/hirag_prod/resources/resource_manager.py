@@ -8,6 +8,7 @@ from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
     get_config_manager,
     get_envs,
@@ -106,7 +107,9 @@ class ResourceManager:
                 )
 
             except Exception as e:
-                logging.error(f"❌ Failed to initialize ResourceManager: {e}")
+                log_error_info(
+                    logging.ERROR, f"❌ Failed to initialize ResourceManager", e
+                )
                 # Only cleanup resources that were actually initialized to avoid cleanup errors
                 await self.cleanup(ensure_init_lock=False)
                 raise
@@ -186,7 +189,9 @@ class ResourceManager:
             await redis_client.ping()
             logging.info(f"✅ Redis connection pool initialized successfully")
         except Exception as e:
-            logging.error(f"❌ Failed to connect to Redis: {e}")
+            log_error_info(
+                logging.ERROR, f"❌ Failed to connect to Redis", e, raise_error=True
+            )
             raise
         finally:
             await redis_client.aclose()
@@ -231,20 +236,28 @@ class ResourceManager:
                     logging.info(f"🧹 Cleaning up {resource_name}...")
                     await cleanup_operation[1]()
                     logging.info(f"✅ {resource_name_first_upper} cleanup completed")
-                except asyncio.TimeoutError:
-                    logging.warning(f"{resource_name_first_upper} cleanup timed out")
+                except asyncio.TimeoutError as e:
+                    log_error_info(
+                        logging.WARNING,
+                        f"{resource_name_first_upper} cleanup timed out",
+                        e,
+                    )
                     cleanup_errors.append(
                         f"{resource_name_first_upper} cleanup timeout"
                     )
-                except asyncio.CancelledError:
-                    logging.warning(
-                        f"{resource_name_first_upper} cleanup was cancelled"
+                except asyncio.CancelledError as e:
+                    log_error_info(
+                        logging.WARNING,
+                        f"{resource_name_first_upper} cleanup was cancelled",
+                        e,
                     )
                     cleanup_errors.append(
                         f"{resource_name_first_upper} cleanup cancelled"
                     )
                 except Exception as e:
-                    logging.error(f"Error cleaning up {resource_name}: {e}")
+                    log_error_info(
+                        logging.ERROR, f"Error cleaning up {resource_name}", e
+                    )
                     cleanup_errors.append(f"{resource_name_first_upper}: {e}")
 
             # Log summary

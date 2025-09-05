@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.resources.functions import get_db_session_maker, get_resource_manager
 from hirag_prod.storage.pg_utils import update_job_status
@@ -95,7 +96,10 @@ class ResumeTracker:
                     else default
                 )
             return default
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            log_error_info(
+                logging.INFO, f"Failed to convert {value} to int", e, debug_only=True
+            )
             return default
 
     def _scope_prefix(self, workspace_id: str, knowledge_base_id: str) -> str:
@@ -180,15 +184,6 @@ class ResumeTracker:
         await self.redis_client.hset(key, mapping=mapping)
         await self.redis_client.expire(key, get_envs().REDIS_EXPIRE_TTL)
 
-    async def _persist_job_status(
-        self, job_id: str, status: str, extra: Optional[Dict[str, str]] = None
-    ) -> None:
-        """Hook to persist job status into PostgreSQL. No-op by default."""
-        try:
-            await self.save_job_status_to_postgres(job_id, status)
-        except Exception:
-            pass
-
     async def save_job_status_to_postgres(self, job_id: str, status: str) -> None:
         """Persist job status to PostgreSQL."""
         try:
@@ -199,8 +194,8 @@ class ResumeTracker:
                 await update_job_status(
                     session, job_id, normalized_status, updated_at=datetime.now()
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            log_error_info(logging.ERROR, f"Failed to save job status to Postgres", e)
 
     async def set_job_status(
         self,
@@ -216,7 +211,7 @@ class ResumeTracker:
         now = datetime.now().isoformat()
         mapping = {"status": status.value, "updated_at": now}
         await self.redis_client.hset(key, mapping=mapping)
-        await self._persist_job_status(job_id, status.value, mapping)
+        await self.save_job_status_to_postgres(job_id, status.value)
 
     async def set_job_processing(
         self,
@@ -234,7 +229,7 @@ class ResumeTracker:
         if total_chunks is not None:
             mapping["total_chunks"] = str(self._safe_int(total_chunks))
         await self.redis_client.hset(key, mapping=mapping)
-        await self._persist_job_status(job_id, JobStatus.PROCESSING.value, mapping)
+        await self.save_job_status_to_postgres(job_id, JobStatus.PROCESSING.value)
 
     async def set_job_progress(
         self,
@@ -255,7 +250,7 @@ class ResumeTracker:
         if total_relations is not None:
             mapping["total_relations"] = str(self._safe_int(total_relations))
         await self.redis_client.hset(key, mapping=mapping)
-        await self._persist_job_status(job_id, "progress", mapping)
+        await self.save_job_status_to_postgres(job_id, "progress")
 
     async def set_job_completed(self, job_id: str) -> None:
         await self.set_job_status(job_id, JobStatus.COMPLETED)
@@ -272,9 +267,7 @@ class ResumeTracker:
                 "updated_at": now,
             },
         )
-        await self._persist_job_status(
-            job_id, JobStatus.FAILED.value, {"error": (error_message or "")[:5000]}
-        )
+        await self.save_job_status_to_postgres(job_id, JobStatus.FAILED.value)
 
     # ============================ Chunk registration ==========================
 
@@ -425,8 +418,10 @@ class ResumeTracker:
             )
 
         except Exception as e:
-            logger.warning(
-                f"Failed to cleanup tracking data for document {document_id}: {e}"
+            log_error_info(
+                logging.WARNING,
+                f"Failed to cleanup tracking data for document {document_id}",
+                e,
             )
 
     async def get_processing_stats(

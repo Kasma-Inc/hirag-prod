@@ -1,12 +1,14 @@
 import os
 from typing import Optional
+
 from .api_reranker import ApiReranker
-from .local_reranker import LocalReranker
 from .base import Reranker
+from .local_reranker import LocalReranker
+
 
 def create_reranker(reranker_type: Optional[str] = None) -> Reranker:
     reranker_type = (reranker_type or os.getenv("RERANKER_TYPE", "api")).lower()
-    
+
     if reranker_type == "api":
         api_key = os.getenv("VOYAGE_API_KEY")
         if not api_key:

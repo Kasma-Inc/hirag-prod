@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import logging
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -9,6 +10,7 @@ from sqlalchemy import text
 from sqlmodel import JSON, Field, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_envs, initialize_config_manager
 from hirag_prod.resources.functions import (
     get_resource_manager,
@@ -305,10 +307,11 @@ async def main():
                     try:
                         # Accept ISO 8601 format
                         parsed_dt = datetime.fromisoformat(args.updated_at)
-                    except Exception:
-                        print(
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
                             "Invalid --updated-at format. Use ISO 8601 (e.g. 2025-01-01T12:34:56+00:00)",
-                            file=sys.stderr,
+                            e,
                         )
                         sys.exit(2)
                 affected = await insert_job(
@@ -392,8 +395,8 @@ async def main():
                         for (_, key), width in zip(headers, col_widths)
                     )
                     print(line)
-    except Exception as exc:
-        print(f"Failed to connect to PostgreSQL: {exc}", file=sys.stderr)
+    except Exception as e:
+        log_error_info(logging.ERROR, "Failed to connect to Postgres", e)
 
     await get_resource_manager().cleanup()
 

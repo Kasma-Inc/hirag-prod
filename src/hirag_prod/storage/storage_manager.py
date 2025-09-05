@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 
-from hirag_prod._utils import retry_async
+from hirag_prod._utils import log_error_info, retry_async
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
@@ -42,7 +42,13 @@ class StorageManager:
                 embedding_dimension=get_hi_rag_config().embedding_dimension
             )
         except Exception as e:
-            raise StorageError(f"Failed to initialize VDB: {e}")
+            log_error_info(
+                logging.ERROR,
+                "Failed to initialize VDB",
+                e,
+                raise_error=True,
+                new_error_class=StorageError,
+            )
 
     @retry_async()
     async def clean_vdb_document(self, where: Dict[str, Any]) -> None:
@@ -125,7 +131,7 @@ class StorageManager:
                 table_name="Chunks",
             )
         except Exception as e:
-            logger.warning(f"Failed to get existing chunks: {e}")
+            log_error_info(logging.WARNING, "Failed to get existing chunks", e)
             return []
 
     async def query_chunks(
@@ -204,13 +210,15 @@ class StorageManager:
                 async with get_resource_manager().get_session_maker()() as s:
                     await s.execute(select(1))
             health["vdb"] = True
-        except Exception:
+        except Exception as e:
+            log_error_info(logging.WARNING, "VDB health check failed", e)
             health["vdb"] = False
 
         try:
             await self.gdb.health_check() if hasattr(self.gdb, "health_check") else None
             health["gdb"] = True
-        except Exception:
+        except Exception as e:
+            log_error_info(logging.WARNING, "GDB health check failed", e)
             health["gdb"] = False
         return health
 
@@ -218,4 +226,4 @@ class StorageManager:
         try:
             await self.gdb.clean_up()
         except Exception as e:
-            logger.warning(f"Cleanup failed: {e}")
+            log_error_info(logging.WARNING, "Cleanup failed", e)

@@ -17,8 +17,13 @@ from hirag_prod._llm import (
     create_chat_service,
     create_embedding_service,
 )
-from hirag_prod._utils import _limited_gather_with_factory, compute_mdhash_id
+from hirag_prod._utils import (
+    _limited_gather_with_factory,
+    compute_mdhash_id,
+    log_error_info,
+)
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
+from hirag_prod.configs.cli_options import CliOptions
 from hirag_prod.configs.functions import (
     get_config_manager,
     get_hi_rag_config,
@@ -154,8 +159,12 @@ class DocumentProcessor:
                         await self.resume_tracker.set_job_failed(
                             job_id, "No chunks created from document"
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
+                            "Failed to saving job status (failed) to Postgres",
+                            e,
+                        )
                 return self.metrics.metrics
 
             self.metrics.metrics.total_chunks = len(chunks)
@@ -172,8 +181,12 @@ class DocumentProcessor:
                             document_id=document_id,
                             total_chunks=len(chunks),
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
+                            "Failed to saving job status (processing) to Postgres",
+                            e,
+                        )
 
                 document_uri = chunks[0].uri
                 await self.resume_tracker.register_chunks(
@@ -196,8 +209,12 @@ class DocumentProcessor:
                         job_id,
                         processed_chunks=self.metrics.metrics.processed_chunks,
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (progress) to Postgres",
+                        e,
+                    )
 
             # Process graph data
             if with_graph:
@@ -210,8 +227,12 @@ class DocumentProcessor:
                             total_entities=self.metrics.metrics.total_entities,
                             total_relations=self.metrics.metrics.total_relations,
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
+                            "Failed to saving job status (progress) to Postgres",
+                            e,
+                        )
 
             # Mark as complete
             if self.resume_tracker:
@@ -223,8 +244,12 @@ class DocumentProcessor:
                 if job_id:
                     try:
                         await self.resume_tracker.set_job_completed(job_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
+                            "Failed to saving job status (completed) to Postgres",
+                            e,
+                        )
 
             return self.metrics.metrics
 
@@ -305,8 +330,12 @@ class DocumentProcessor:
                 return chunks, generated_md, items
 
             except Exception as e:
-                raise DocumentProcessingError(
-                    f"Failed to load document {document_path}: {e}"
+                log_error_info(
+                    logging.ERROR,
+                    f"Failed to loading document {document_path}",
+                    e,
+                    raise_error=True,
+                    new_error_class=DocumentProcessingError,
                 )
 
     async def _process_chunks(
@@ -394,7 +423,13 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            raise KGConstructionError(f"Failed to construct knowledge graph: {e}")
+            log_error_info(
+                logging.ERROR,
+                "Failed to construct knowledge graph",
+                e,
+                raise_error=True,
+                new_error_class=KGConstructionError,
+            )
 
 
 # ============================================================================
@@ -428,12 +463,15 @@ class HiRAG:
     @classmethod
     async def create(
         cls,
+        cli_options_dict: Optional[Dict] = None,
         config_dict: Optional[Dict] = None,
         resource_dict: Optional[Dict] = None,
         **kwargs,
     ) -> "HiRAG":
         """Create HiRAG instance"""
-        initialize_config_manager(config_dict)
+        if not cli_options_dict:
+            cli_options_dict: Dict = CliOptions().to_dict()
+        initialize_config_manager(cli_options_dict, config_dict)
         await initialize_resource_manager(resource_dict)
         instance = cls()
         await instance._initialize(**kwargs)
@@ -589,8 +627,13 @@ class HiRAG:
             )
             return response
         except Exception as e:
-            logger.error(f"Chat completion failed: {e}")
-            raise HiRAGException("Chat completion failed") from e
+            log_error_info(
+                logging.ERROR,
+                "Chat completion failed",
+                e,
+                raise_error=True,
+                new_error_class=HiRAGException,
+            )
 
     async def extract_references(
         self,
@@ -714,8 +757,13 @@ class HiRAG:
                     model=get_llm_config().model_name,
                 )
             except Exception as e:
-                logger.error(f"Summary generation failed: {e}")
-                raise HiRAGException("Summary generation failed") from e
+                log_error_info(
+                    logging.ERROR,
+                    "Summary generation failed",
+                    e,
+                    raise_error=True,
+                    new_error_class=HiRAGException,
+                )
 
             if DEBUG:
                 print("\n\n\nGenerated Summary:\n", summary)
@@ -861,8 +909,12 @@ class HiRAG:
 
         except Exception as e:
             total_time = time.perf_counter() - start_time
-            logger.error(f"❌ Summary generation failed after {total_time:.3f}s: {e}")
-            raise
+            log_error_info(
+                logging.ERROR,
+                f"❌ Summary generation failed after {total_time:.3f}s",
+                e,
+                raise_error=True,
+            )
 
     # ========================================================================
     # Public interface methods
@@ -929,7 +981,9 @@ class HiRAG:
                 )
 
             except Exception as e:
-                logger.warning(f"Failed to initialize external job {job_id}: {e}")
+                log_error_info(
+                    logging.WARNING, f"Failed to initialize external job {job_id}", e
+                )
 
         if await self._processor.resume_tracker.is_document_already_completed(
             document_id, workspace_id, knowledge_base_id
@@ -946,14 +1000,20 @@ class HiRAG:
                         document_id, workspace_id, knowledge_base_id
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to reset document {document_id}: {e}")
+                    log_error_info(
+                        logging.WARNING, f"Failed to reset document {document_id}", e
+                    )
             else:
                 logger.info("🎉 Document already fully processed in previous session!")
                 if job_id:
                     try:
                         await self._processor.resume_tracker.set_job_completed(job_id)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log_error_info(
+                            logging.ERROR,
+                            "Failed to saving job status (completed) to Postgres",
+                            e,
+                        )
                 total_time = time.perf_counter() - start_time
                 metrics = ProcessingMetrics(
                     total_chunks=0,
@@ -991,7 +1051,11 @@ class HiRAG:
 
         except Exception as e:
             total_time = time.perf_counter() - start_time
-            logger.error(f"❌ Document processing failed after {total_time:.3f}s: {e}")
+            log_error_info(
+                logging.ERROR,
+                f"❌ Document processing failed after {total_time:.3f}s",
+                e,
+            )
             if (
                 self._processor
                 and self._processor.resume_tracker is not None
@@ -999,8 +1063,12 @@ class HiRAG:
             ):
                 try:
                     await self._processor.resume_tracker.set_job_failed(job_id, str(e))
-                except Exception:
-                    pass
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (failed) to Postgres",
+                        e,
+                    )
             raise
 
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
@@ -1078,7 +1146,7 @@ class HiRAG:
             logger.info("✅ Cleanup completed")
 
         except Exception as e:
-            logger.warning(f"⚠️ Cleanup failed: {e}")
+            log_error_info(logging.WARNING, f"⚠ Cleanup failed", e)
 
     # ========================================================================
     # Context manager support

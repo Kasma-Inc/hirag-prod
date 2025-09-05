@@ -4,6 +4,7 @@ from typing import Any, Optional, Tuple
 
 import requests
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
@@ -89,11 +90,13 @@ def check_cloud_health(base_url: str, token: str, model: str) -> bool:
                 return True
             # Otherwise False
             return False
-        except Exception:
+        except Exception as e:
             # If we can't parse JSON but got a response, treat as failure
+            log_error_info(logging.ERROR, "Failed to parsing JSON response", e)
             return False
 
-    except Exception:
+    except Exception as e:
+        log_error_info(logging.ERROR, "Failed to check cloud health", e)
         return False
 
 
@@ -168,7 +171,11 @@ def load_document(
     try:
         document_path = route_file_path(loader_type, document_path)
     except Exception as e:
-        logger.warning(f"Unexpected error in route_file_path, using original path: {e}")
+        log_error_info(
+            logging.WARNING,
+            f"Unexpected error in route_file_path, using original path",
+            e,
+        )
 
     if loader_type == "docling_cloud":
         docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)

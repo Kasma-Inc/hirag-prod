@@ -5,6 +5,8 @@ import os
 import time
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
+from hirag_prod._utils import log_error_info
+
 if TYPE_CHECKING:
     from hirag_prod.resources.resource_manager import ResourceManager
 
@@ -28,10 +30,12 @@ def timing_logger(operation_name: str):
                 return result
             except Exception as e:
                 duration = time.time() - start_time
-                logging.error(
-                    f"⏱ [TIMING: {os.getpid()}] {operation_name} failed after {duration:.3f}s: {e}"
+                log_error_info(
+                    logging.ERROR,
+                    f"⏱ [TIMING: {os.getpid()}] {operation_name} failed after {duration:.3f}s",
+                    e,
+                    raise_error=True,
                 )
-                raise
 
         return wrapper
 

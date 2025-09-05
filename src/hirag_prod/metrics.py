@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Dict
 
+from hirag_prod._utils import log_error_info
+
 logger = logging.getLogger("HiRAG")
 
 
@@ -51,5 +53,9 @@ class MetricsCollector:
         except Exception as e:
             self.metrics.error_count += 1
             duration = time.perf_counter() - start
-            logger.error(f"❌ Failed {operation} after {duration:.3f}s: {e}")
-            raise
+            log_error_info(
+                logging.ERROR,
+                f"❌ Failed {operation} after {duration:.3f}s",
+                e,
+                raise_error=True,
+            )

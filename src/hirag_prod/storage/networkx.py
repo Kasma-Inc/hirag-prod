@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import pickle
 from dataclasses import dataclass
@@ -6,7 +7,7 @@ from typing import Callable, Dict, List, Optional
 
 import networkx as nx
 
-from hirag_prod._utils import _limited_gather_with_factory
+from hirag_prod._utils import _limited_gather_with_factory, log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.base_gdb import BaseGDB
@@ -83,8 +84,9 @@ class NetworkXGDB(BaseGDB):
                 )
                 return None
             except Exception as e:
-                # TODO: handle the exception
-                raise e
+                log_error_info(
+                    logging.ERROR, "Failed to upsert node", e, raise_error=True
+                )
         else:
             node_in_db = self.graph.nodes[node.id]
             # Handle both old string format and new list format for backwards compatibility
@@ -187,7 +189,9 @@ class NetworkXGDB(BaseGDB):
             self.graph.add_edge(relation.source, relation.target, **props)
 
         except Exception as e:
-            raise e
+            log_error_info(
+                logging.ERROR, "Failed to upsert relation", e, raise_error=True
+            )
 
     async def query_node(self, node_id: str) -> Entity:
         node = self.graph.nodes[node_id]
@@ -305,7 +309,10 @@ class NetworkXGDB(BaseGDB):
             if node in G:
                 try:
                     w = float(weight)
-                except Exception:
+                except Exception as e:
+                    log_error_info(
+                        logging.WARNING, "Failed to convert weight to float", e
+                    )
                     continue
                 if w > 0 and not (w != w):  # exclude NaN and non-positive
                     personalization[node] = w

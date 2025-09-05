@@ -13,6 +13,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
@@ -106,8 +107,7 @@ class VDBManager:
             self.db = await lancedb.connect_async(str(self.db_path))
             logger.info(f"Connected to LanceDB: {self.db_path}")
         except Exception as e:
-            logger.error(f"Connection failed: {e}")
-            raise
+            log_error_info(logging.ERROR, "Connection failed", e, raise_error=True)
 
     async def disconnect(self) -> None:
         """Close database connection"""
@@ -121,7 +121,7 @@ class VDBManager:
         try:
             return await self.db.table_names()
         except Exception as e:
-            logger.error(f"Failed to list tables: {e}")
+            log_error_info(logging.ERROR, "Failed to list tables", e)
             return []
 
     async def _get_table(self, table_name: str):
@@ -153,25 +153,29 @@ class VDBManager:
                 # Iterable schema
                 try:
                     columns = [field.name for field in schema]
-                except Exception:
+                except Exception as e:
+                    log_error_info(logging.WARNING, "Failed to get table columns", e)
                     arrow_data = await table.to_arrow()
                     columns = arrow_data.column_names
             else:
                 try:
                     arrow_data = await table.to_arrow()
                     columns = arrow_data.column_names
-                except Exception:
+                except Exception as e:
+                    log_error_info(logging.WARNING, "Failed to get table columns", e)
                     columns = ["id", "page_content", "vector"]
 
             try:
                 count_result = await table.count_rows()
-            except Exception:
+            except Exception as e:
+                log_error_info(logging.WARNING, "Failed to get row count", e)
                 arrow_data = await table.to_arrow()
                 count_result = len(arrow_data)
 
             try:
                 sample = await table.query().select(columns).limit(1).to_list()
-            except Exception:
+            except Exception as e:
+                log_error_info(logging.WARNING, "Failed to get sample data", e)
                 arrow_data = await table.to_arrow()
                 if len(arrow_data) > 0:
                     sample_df = arrow_data.to_pandas().head(1)
@@ -190,7 +194,7 @@ class VDBManager:
                 "column_types": {col: "unknown" for col in columns},
             }
         except Exception as e:
-            logger.error(f"Failed to get info for {table_name}: {e}")
+            log_error_info(logging.ERROR, f"Failed to get info for {table_name}", e)
             return {"name": table_name, "error": str(e)}
 
     async def export_table_to_csv(
@@ -242,7 +246,7 @@ class VDBManager:
             return True
 
         except Exception as e:
-            logger.error(f"Export failed for {table_name}: {e}")
+            log_error_info(logging.ERROR, f"Export failed for {table_name}", e)
             console.print(f"[red]❌ Export failed: {e}[/red]")
             return False
 
@@ -372,7 +376,9 @@ async def get_chunk_info(
             return base_chunks
 
         except Exception as e:
-            logger.error(f"Failed to get chunks info for ids={chunk_ids}: {e}")
+            log_error_info(
+                logging.ERROR, f"Failed to get chunks info for ids={chunk_ids}", e
+            )
             return []
 
 
@@ -417,8 +423,10 @@ async def get_table_info_by_scope(
             )
             return results
         except Exception as e:
-            logger.error(
-                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}: {e}"
+            log_error_info(
+                logging.ERROR,
+                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}",
+                e,
             )
             return results
 
@@ -521,8 +529,8 @@ Examples:
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️  Interrupted by user[/yellow]")
     except Exception as e:
+        log_error_info(logging.ERROR, "Unhandled error", e)
         console.print(f"[red]❌ Error: {e}[/red]")
-        logger.exception("Unhandled error")
         raise SystemExit(1)
 
 
