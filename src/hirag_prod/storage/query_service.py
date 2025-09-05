@@ -194,11 +194,11 @@ class QueryService:
             async def _fetch_entity_chunk_count(ent: str) -> int:
                 try:
                     node = await self.storage.gdb.query_node(ent)
-                    chunk_ids = (
-                        node.metadata.get("chunk_ids", [])
-                        if hasattr(node, "metadata")
-                        else []
-                    )
+                    chunk_ids: List[str] = []
+                    if hasattr(node, "metadata"):
+                        if hasattr(node.metadata, "chunk_ids"):
+                            chunk_ids = node.metadata.chunk_ids
+
                     return len(chunk_ids) if isinstance(chunk_ids, list) else 0
                 except Exception as e:
                     log_error_info(
