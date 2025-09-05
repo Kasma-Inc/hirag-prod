@@ -109,7 +109,7 @@ def check_docling_cloud_health() -> bool:
 def check_dots_ocr_health() -> bool:
     """Dots OCR service health check"""
     base_url = os.getenv("DOTS_OCR_BASE_URL")
-    token = os.getenv("DOTS_OCR_AUTH_TOKEN")
+    token = os.getenv("DOTS_OCR_API_KEY")
     model = os.getenv("DOTS_OCR_MODEL_NAME", "DotsOCR")
 
     return check_cloud_health(base_url, token, model)
