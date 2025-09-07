@@ -35,6 +35,7 @@ from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     build_rich_toc,
     chunk_docling_document,
+    obtain_docling_md_bbox,
     group_docling_items_by_header,
     chunk_dots_document,
     chunk_dots_document_recursive,
@@ -267,7 +268,6 @@ class DocumentProcessor:
                             loader_configs,
                             loader_type=loader_type,
                         )
-                        chunks = chunk_docling_document(json_doc, generated_md)
                     elif loader_type == "dots_ocr":
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
@@ -294,6 +294,10 @@ class DocumentProcessor:
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
                         items = chunk_docling_document(json_doc, generated_md)
+                        if content_type == "text/markdown":
+                            raw_md = generated_md.text
+                            items = obtain_docling_md_bbox(json_doc, raw_md, items)
+                        
                         chunks = group_docling_items_by_header(items)
                         if generated_md:
                             generated_md.tableOfContents = build_rich_toc(

@@ -157,7 +157,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
 
     Returns:
         List[Item]: A list of Item objects with proper metadata including
-                    item,=-specific metadata and inherited file metadata
+                    item-specific metadata and inherited file metadata
     """
     # Initialize the chunker
     chunker = HierarchicalChunker()
@@ -200,10 +200,10 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
                 docling_chunk_meta["x_1"],
                 docling_chunk_meta["y_1"],
             ]
-
+        text = chunk.text
         chunk_obj = Item(
-            documentKey=compute_mdhash_id(chunk.text, prefix="chunk-"),
-            text=chunk.text,
+            documentKey=compute_mdhash_id(text, prefix="chunk-"),
+            text=text,
             chunkIdx=docling_chunk_meta["chunk_idx"],
             documentId=doc_md.documentKey,
             chunkType=chunk_type.value,
@@ -250,8 +250,74 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
 
     return chunks
 
-def chunk_docling_markdown_document():
-    pass
+
+def obtain_docling_md_bbox(
+    docling_doc: DoclingDocument,
+    raw_md: str,
+    items: List[Item] = None,
+) -> List[Item]:
+    """
+    Finish the bbox for items after docling chunking if the file is markdown format.
+    This function adds character position information as bbox for markdown text chunks.
+    Uses the original file content instead of exported markdown for consistency.
+    """
+    if not items:
+        return []
+    
+    original_content = raw_md
+
+    if not original_content:
+        # Fallback to exported markdown if original content is not available
+        original_content = docling_doc.export_to_markdown()
+    
+    # Create a mapping to store character positions for each item
+    id2pos = {}
+    
+    # Search for each item's text in the original content to get positions
+    search_start = 0
+    for item in items:        
+        # Clean the item text for better matching (remove extra whitespace)
+        clean_item_text = item.text.strip()
+        if not clean_item_text:
+            id2pos[item.documentKey] = None
+            continue
+            
+        # Try exact match first
+        start_pos = original_content.find(clean_item_text, search_start)
+        
+        if start_pos == -1:
+            # If exact match fails, try with normalized
+            normalized_item = ' '.join(c.strip() for c in clean_item_text.split())
+            normalized_content = ' '.join(o.strip() for o in original_content[search_start:].split())
+            
+            relative_pos = normalized_content.find(normalized_item)
+            if relative_pos != -1:
+                start_pos = search_start + relative_pos
+            else:
+                id2pos[item.documentKey] = None
+                continue
+        
+        end_pos = start_pos + len(clean_item_text)
+        id2pos[item.documentKey] = (start_pos, end_pos)
+        
+        # Move search start forward to avoid overlapping matches
+        search_start = start_pos + len(clean_item_text)
+    
+    # Update items with bbox information (character positions)
+    updated_items = []
+    for item in items:
+        # Create a copy of the item with updated bbox
+        pos_info = id2pos.get(item.documentKey)
+        
+        # Update the bbox field with character positions if found
+        if pos_info:
+            item.bbox = list(pos_info)  # [start_pos, end_pos]
+        
+        updated_items.append(item)
+    
+    # Sort by chunk index to maintain order
+    updated_items.sort(key=lambda c: c.chunkIdx)
+    return updated_items
 
 def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
     """
@@ -514,18 +580,27 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
             return
 
         bbox = i.bbox or [0, 0, 0, 0]
+        source_bbox = {}
+        if len(bbox) == 4:
+            source_bbox = {
+                "x0": bbox[0],
+                "y0": bbox[1],
+                "x1": bbox[2],
+                "y1": bbox[3],
+            }
+        elif len(bbox) == 2:
+            source_bbox = {
+                "start_char": bbox[0],
+                "end_char": bbox[1],
+            }
+            
 
         blocks.append(
             {
                 "type": i.chunkType,
                 "hierarchyLevel": level,
                 "id": i.documentKey,
-                "sourceBoundingBox": {
-                    "x0": bbox[0],
-                    "y0": bbox[1],
-                    "x1": bbox[2],
-                    "y1": bbox[3],
-                },
+                "sourceBoundingBox": source_bbox,
                 "markdown": i.text or "",
                 "pageIndex": i.pageNumber or 0,
                 "fileUrl": i.uri or "",

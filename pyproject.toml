@@ -56,7 +56,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-docling-core = { git = "https://github.com/Zachary260325/docling-core.git" }
+docling-core = { git = "https://github.com/Zachary260325/docling-core.git", branch = "main"}
 
 [project.scripts]
 mcp-hirag-tool = "hirag_prod.server:main"
