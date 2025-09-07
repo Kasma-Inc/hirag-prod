@@ -1,10 +1,12 @@
-# This is a hierachical chunker for the JSON by Dots OCR
+# This is a hierachical and recursive chunker for the JSON by Dots OCR
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from hirag_prod._utils import compute_mdhash_id
+from hirag_prod.schema.item import Item
 
 
 class DotsChunkType(Enum):
@@ -267,177 +269,180 @@ class DotsDenseChunk:
 
     chunk_idx: int = None
     text: str = None
-    category: str = "text"
+    category: str = None
     bbox: List[List[float]] = None
     headings: List[int] = None
     caption: Optional[str] = None
     children: Optional[List[int]] = None
     pages_span: List[int] = None
-    anchor_key: Optional[str] = None
-
+    page_height: float = None
+    page_width: float = None
+    document_id: str = None
+    document_type: str = None
+    file_name: str = None
+    uri: str = None
+    private: bool = None
+    knowledge_base_id: str = None
+    workspace_id: str = None
+    uploaded_at: datetime = None
 
 class DotsRecursiveChunker:
     """Recursive chunker for Dots OCR JSON documents (dense aggregation)."""
 
-    def _iter_layout_items(
-        self, document: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        pages = sorted(document, key=lambda p: int(p.get("page_no", 0)))
-        ordered: List[Dict[str, Any]] = []
-        for page in pages:
-            page_no = int(page.get("page_no", 0))
-            items: List[Dict[str, Any]] = page.get("full_layout_info", []) or []
-            items_sorted = sorted(
-                items,
-                key=lambda it: (
-                    float(it.get("bbox", [0, 0, 0, 0])[1]),
-                    float(it.get("bbox", [0, 0, 0, 0])[0]),
-                ),
-            )
-            for raw in items_sorted:
-                ordered.append(
-                    {
-                        "page_no": page_no,
-                        "bbox": list(map(float, raw.get("bbox", [0, 0, 0, 0]))),
-                        "category": raw.get("category", ""),
-                        "text": (raw.get("text", "") or "").strip(),
-                    }
-                )
-        return ordered
-
-    def _is_header(self, category: str) -> bool:
-        return category in {
-            DotsChunkType.TITLE.value,
-            DotsChunkType.SECTION_HEADER.value,
-        }
-
-    def _is_textual(self, category: str) -> bool:
-        return category in {DotsChunkType.TEXT.value, DotsChunkType.LIST_ITEM.value}
-
     def _is_table(self, category: str) -> bool:
-        return category == DotsChunkType.TABLE.value
-
-    def _build_chunk(
-        self,
-        idx: int,
-        category: str,
-        items: List[Dict[str, Any]],
-        anchor_key: Optional[str],
-    ) -> DotsDenseChunk:
-        page_boxes: Dict[int, List[List[float]]] = {}
-        for it in items:
-            page_boxes.setdefault(int(it["page_no"]), []).append(
-                list(map(float, it["bbox"]))
-            )
-
-        pages_span = sorted(page_boxes.keys())
-        bbox: List[List[float]] = []
-        for p in pages_span:
-            boxes = page_boxes[p]
-            x0 = min(b[0] for b in boxes)
-            y0 = min(b[1] for b in boxes)
-            x1 = max(b[2] for b in boxes)
-            y1 = max(b[3] for b in boxes)
-            bbox.append([x0, y0, x1, y1])
-
-        if category == DotsChunkType.TEXT.value:
-            content = "\n".join(
-                it["text"]
-                for it in items
-                if it["text"] and self._is_textual(it["category"])
-            )
-        elif category == DotsChunkType.TABLE.value:
-            content = items[0]["text"] if items else ""
-        else:
-            content = "\n".join(
-                it["text"]
-                for it in items
-                if it["text"] and self._is_textual(it["category"])
-            )
-
+        return category == "table"
+    
+    def _build_table_chunk(self, item: Item, chunk_idx: int) -> DotsDenseChunk:
         return DotsDenseChunk(
-            chunk_idx=idx,
-            text=content,
-            category=category,
-            bbox=bbox,
-            pages_span=pages_span,
-            anchor_key=anchor_key,
-        )
+                    chunk_idx=chunk_idx,
+                    text=item.text,
+                    category="table",
+                    bbox=[item.bbox],
+                    pages_span=[item.pageNumber],
+                    children=None,
+                    caption=item.caption,
+                    headings=None,
+                    page_height=item.pageHeight,
+                    page_width=item.pageWidth,
+                    document_id=item.documentId,
+                    document_type=item.type,
+                    file_name=item.fileName,
+                    uri=item.uri,
+                    private=item.private,
+                    knowledge_base_id=item.knowledgeBaseId,
+                    workspace_id=item.workspaceId,
+                    uploaded_at=item.uploadedAt,
+                )
 
-    def chunk(self, document: List[Dict[str, Any]]) -> List[DotsDenseChunk]:
+    def chunk(self, items: Optional[List[Item]], header_set: Optional[set[str]]) -> List[DotsDenseChunk]:
+        if not items:
+            return []
+        
+        header_set = header_set or set()
+        
+        id2item = {item.documentKey: item for item in items}
+        
         chunks: List[DotsDenseChunk] = []
-        next_idx = 0 # Use 0 based index for chunk idx to be consistent with other chunkers
-
-        header_items: List[Dict[str, Any]] = []
-        text_items: List[Dict[str, Any]] = []
-
-        def first_non_empty_text(items: List[Dict[str, Any]]) -> Optional[str]:
-            for it in items:
-                if it.get("text"):
-                    return it["text"]
-            return None
-
-        def flush_text():
-            nonlocal next_idx, text_items, header_items
-            if text_items:
-                anchor_text = first_non_empty_text(text_items)
-                anchor_key = (
-                    compute_mdhash_id(anchor_text, prefix="chunk-")
-                    if anchor_text
-                    else None
-                )
-                all_items = list(header_items) + list(text_items)
-                chunks.append(
-                    self._build_chunk(
-                        next_idx, DotsChunkType.TEXT.value, all_items, anchor_key
-                    )
-                )
-                next_idx += 1
-                text_items = []
-                header_items = []
-
-        for it in self._iter_layout_items(document):
-            cat = it["category"]
-
-            if self._is_header(cat):
-                header_items.append(it)
-                if text_items:
-                    flush_text()
+        chunk_idx = 1
+        i = 0
+        while i < len(items):
+            item = items[i]
+            item_type = item.chunkType
+            
+            if self._is_table(item_type):
+                merged_item = self._build_table_chunk(item, chunk_idx)
+                
+                chunks.append(merged_item)
+                chunk_idx += 1
+                i += 1
                 continue
-
-            elif self._is_table(cat):
-                flush_text()
-                anchor_text = it.get("text") or ""
-                anchor_key = (
-                    compute_mdhash_id(anchor_text, prefix="chunk-")
-                    if anchor_text
-                    else None
-                )
-                chunks.append(
-                    self._build_chunk(
-                        next_idx, DotsChunkType.TABLE.value, [it], anchor_key
-                    )
-                )
-                next_idx += 1
+            
+            if item.documentKey in header_set:
+                i += 1
                 continue
-
-            elif self._is_textual(cat):
-                text_items.append(it)
+            
+            non_header_items = []
+            while i < len(items):
+                cur_item = items[i]
+                if cur_item.documentKey in header_set:
+                    break
+                elif self._is_table(cur_item.chunkType):
+                    merged_item = self._build_table_chunk(cur_item, chunk_idx)
+                    chunks.append(merged_item)
+                    chunk_idx += 1
+                    i += 1
+                    continue
+                else:
+                    non_header_items.append(cur_item)
+                    i += 1
+                
+            if not non_header_items:
                 continue
-
-            else:
-                text_items.append(it)
-
-        if text_items:
-            anchor_text = first_non_empty_text(text_items)
-            anchor_key = (
-                compute_mdhash_id(anchor_text, prefix="chunk-") if anchor_text else None
+            
+            first_non = non_header_items[0]
+            header_ids = first_non.headers
+            
+            if not header_ids: # the first non-header items block
+                merged_text = " ".join(n.text for n in non_header_items)
+                non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
+                pages_span = [p for p in non_header_pages]
+                bbox_list = []
+                for page in non_header_pages:
+                    page_bboxes = [n.bbox for n in non_header_items if n.pageNumber == page]
+                    if page_bboxes:
+                        min_x = min(b[0] for b in page_bboxes)
+                        min_y = min(b[1] for b in page_bboxes)
+                        max_x = max(b[2] for b in page_bboxes)
+                        max_y = max(b[3] for b in page_bboxes)
+                        bbox_list.append([min_x, min_y, max_x, max_y])
+                
+                merged_item = DotsDenseChunk(
+                    chunk_idx=chunk_idx,
+                    text=merged_text,
+                    category="text",
+                    bbox=bbox_list,
+                    pages_span=pages_span,
+                    children=None,
+                    caption=None,
+                    headings=None,
+                    page_height=item.pageHeight,
+                    page_width=item.pageWidth,
+                    document_id=item.documentId,
+                    document_type=item.type,
+                    file_name=item.fileName,
+                    uri=item.uri,
+                    private=item.private,
+                    knowledge_base_id=item.knowledgeBaseId,
+                    workspace_id=item.workspaceId,
+                    uploaded_at=item.uploadedAt,
+                )
+                
+                chunks.append(merged_item)
+                chunk_idx += 1
+                i += 1
+                continue
+            
+            header_items = [id2item[hid] for hid in header_ids if hid in id2item]
+            non_header_texts = [h.text for h in non_header_items]
+            header_texts = [h.text for h in header_items]
+            merged_text = " ".join(header_texts + non_header_texts)
+            
+            pages_span = [h.pageNumber for h in header_items]
+            non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
+            pages_span.extend(p for p in non_header_pages)
+            
+            bbox_list = [h.bbox for h in header_items]
+            for page in non_header_pages:
+                page_bboxes = [n.bbox for n in non_header_items if n.pageNumber == page]
+                if page_bboxes:
+                    min_x = min(b[0] for b in page_bboxes)
+                    min_y = min(b[1] for b in page_bboxes)
+                    max_x = max(b[2] for b in page_bboxes)
+                    max_y = max(b[3] for b in page_bboxes)
+                    bbox_list.append([min_x, min_y, max_x, max_y])
+            
+            merged_item = DotsDenseChunk(
+                chunk_idx=chunk_idx,
+                text=merged_text,
+                category="text",
+                bbox=bbox_list,
+                pages_span=pages_span,
+                children=None,
+                caption=None,
+                headings=None,
+                page_height=item.pageHeight,
+                page_width=item.pageWidth,
+                document_id=item.documentId,
+                document_type=item.type,
+                file_name=item.fileName,
+                uri=item.uri,
+                private=item.private,
+                knowledge_base_id=item.knowledgeBaseId,
+                workspace_id=item.workspaceId,
+                uploaded_at=item.uploadedAt,
             )
-            all_items = list(header_items) + list(text_items)
-            chunks.append(
-                self._build_chunk(
-                    next_idx, DotsChunkType.TEXT.value, all_items, anchor_key
-                )
-            )
-
+            
+            chunks.append(merged_item)
+            chunk_idx += 1
+                
         return chunks

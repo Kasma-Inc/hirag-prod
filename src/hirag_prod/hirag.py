@@ -287,11 +287,11 @@ class DocumentProcessor:
                     # Validate instance, as it may fall back to docling if cloud service unavailable
                     if isinstance(json_doc, list):
                         # Chunk the Dots OCR document
-                        items = chunk_dots_document(
+                        items, header_set = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
                         )
                         chunks = chunk_dots_document_recursive(
-                            json_doc=json_doc, md_doc=generated_md, items=items
+                            items=items, header_set=header_set
                         )
                         if generated_md:
                             generated_md.tableOfContents = build_rich_toc(
