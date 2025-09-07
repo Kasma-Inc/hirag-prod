@@ -10,7 +10,7 @@ class LLMConfig(BaseSettings):
     model_config = ConfigDict(
         alias_generator=lambda x: f"llm_{x}".upper(),
         populate_by_name=True,
-        extra="ignore"
+        extra="ignore",
     )
 
     service_type: Literal["openai", "local"]

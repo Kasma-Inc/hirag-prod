@@ -9,8 +9,8 @@ from sqlalchemy.dialects.postgresql import insert
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import get_db_engine, get_db_session_maker
-from hirag_prod.schema import Chunk, File, Item, Triplets
 from hirag_prod.schema import Base as PGBase
+from hirag_prod.schema import Chunk, File, Item, Triplets
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 

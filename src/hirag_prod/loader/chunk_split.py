@@ -718,7 +718,6 @@ def chunk_dots_document_recursive(
     chunker = DotsRecursiveChunker()
     dense_chunks = chunker.chunk(items, header_set)
 
-
     chunks: List[Chunk] = []
     for dchunk in dense_chunks:
 

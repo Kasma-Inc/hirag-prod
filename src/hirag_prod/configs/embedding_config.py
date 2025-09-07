@@ -10,7 +10,7 @@ class EmbeddingConfig(BaseSettings):
     model_config = ConfigDict(
         alias_generator=lambda x: f"embedding_{x}".upper(),
         populate_by_name=True,
-        extra="ignore"
+        extra="ignore",
     )
 
     service_type: Literal["openai", "local"]

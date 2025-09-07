@@ -8,9 +8,7 @@ class HiRAGConfig(BaseSettings):
     """HiRAG system configuration"""
 
     model_config = ConfigDict(
-        alias_generator=lambda x: x.upper(),
-        populate_by_name=True,
-        extra="ignore"
+        alias_generator=lambda x: x.upper(), populate_by_name=True, extra="ignore"
     )
 
     # Database configuration
