@@ -287,8 +287,8 @@ def obtain_docling_md_bbox(
 
         if start_pos == -1:
             # If exact match fails, try with normalized
-            normalized_item = " ".join(c.strip() for c in clean_item_text.split())
-            normalized_content = " ".join(
+            normalized_item = "".join(c.strip() for c in clean_item_text.split())
+            normalized_content = "".join(
                 o.strip() for o in original_content[search_start:].split()
             )
 

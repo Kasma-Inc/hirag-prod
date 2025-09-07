@@ -108,7 +108,12 @@ class BaseLoader(ABC):
         docling_doc: DoclingDocument = self.loader_docling.convert(
             document_path
         ).document
-        md_str: str = docling_doc.export_to_markdown()
+        file_type = document_meta.get("type", None)
+        if file_type == "md" or file_type == "markdown":
+            # For markdown files, use export_to_text to better match original pattern
+            md_str: str = docling_doc.export_to_text()
+        else:
+            md_str: str = docling_doc.export_to_markdown()
         doc_md = File(
             documentKey=document_meta.get(
                 "documentKey", compute_mdhash_id(md_str, prefix="doc-")
