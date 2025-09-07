@@ -1,7 +1,7 @@
 # This is a quickstart script for the HiRAG system.
+import argparse
 import asyncio
 import logging
-import argparse
 import sys
 
 from hirag_prod import HiRAG
@@ -120,11 +120,11 @@ def main():
     parser.add_argument(
         "--test",
         default="2",
-        help="Test to run. Options: 1/wiki_subcorpus, 2/s3: small_pdf (default), 3/oss: U.S.Health, 4/md-itinerary, 5/md-wiki"
+        help="Test to run. Options: 1/wiki_subcorpus, 2/s3: small_pdf (default), 3/oss: U.S.Health, 4/md-itinerary, 5/md-wiki",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Print available tests for user reference
     print("Available tests:")
     print("  1 / wiki_subcorpus - 2wiki subcorpus text file")
@@ -133,7 +133,7 @@ def main():
     print("  4 / md-itinerary - Holiday itinerary markdown")
     print("  5 / md-wiki - Wikipedia article markdown")
     print(f"\nRunning test: {args.test}\n")
-    
+
     asyncio.run(index(args.test))
 
 

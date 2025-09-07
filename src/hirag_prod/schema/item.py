@@ -7,7 +7,7 @@ from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.types import ARRAY
 
-from hirag_prod.schema import Base
+from hirag_prod.schema.base import Base
 
 # read halfvec and dim from env
 dotenv.load_dotenv()
@@ -50,4 +50,3 @@ class Item(Base):
     def __iter__(self):
         for column in self.__table__.columns:
             yield column.name, getattr(self, column.name)
-

@@ -1,5 +1,6 @@
-from hirag_prod.schema import Chunk, File, Item
-
+from hirag_prod.schema.chunk import Chunk
+from hirag_prod.schema.file import File
+from hirag_prod.schema.item import Item
 
 
 def file_to_chunk(
@@ -12,7 +13,7 @@ def file_to_chunk(
         documentId=documentId,
         chunkIdx=chunkIdx,
     )
-    
+
     # Copy
     for col in dict(file):
         if hasattr(new_chunk, col):
@@ -21,9 +22,7 @@ def file_to_chunk(
                 setattr(new_chunk, col, getattr(file, col))
 
 
-def item_to_chunk(
-    item: Item
-) -> Chunk:
+def item_to_chunk(item: Item) -> Chunk:
     new_chunk = Chunk()
     for col in dict(item):
         if hasattr(new_chunk, col):
@@ -34,6 +33,7 @@ def item_to_chunk(
                 attr = [attr] if attr is not None else None
             setattr(new_chunk, col, attr)
     return new_chunk
+
 
 def file_to_item(
     file: File, documentKey: str, text: str, documentId: str, chunkIdx

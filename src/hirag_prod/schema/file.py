@@ -3,7 +3,7 @@ from typing import Literal, Optional
 
 from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
 
-from hirag_prod.schema import Base
+from hirag_prod.schema.base import Base
 
 file_types = Literal[
     "pdf",

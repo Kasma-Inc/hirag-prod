@@ -263,129 +263,136 @@ def obtain_docling_md_bbox(
     """
     if not items:
         return []
-    
+
     original_content = raw_md
 
     if not original_content:
         # Fallback to exported markdown if original content is not available
         original_content = docling_doc.export_to_markdown()
-    
+
     # Create a mapping to store character positions for each item
     id2pos = {}
-    
+
     # Search for each item's text in the original content to get positions
     search_start = 0
-    for item in items:        
+    for item in items:
         # Clean the item text for better matching (remove extra whitespace)
         clean_item_text = item.text.strip()
         if not clean_item_text:
             id2pos[item.documentKey] = None
             continue
-            
+
         # Try exact match first
         start_pos = original_content.find(clean_item_text, search_start)
-        
+
         if start_pos == -1:
             # If exact match fails, try with normalized
-            normalized_item = ' '.join(c.strip() for c in clean_item_text.split())
-            normalized_content = ' '.join(o.strip() for o in original_content[search_start:].split())
-            
+            normalized_item = " ".join(c.strip() for c in clean_item_text.split())
+            normalized_content = " ".join(
+                o.strip() for o in original_content[search_start:].split()
+            )
+
             relative_pos = normalized_content.find(normalized_item)
             if relative_pos != -1:
                 start_pos = search_start + relative_pos
             else:
                 id2pos[item.documentKey] = None
                 continue
-        
+
         end_pos = start_pos + len(clean_item_text)
         id2pos[item.documentKey] = (start_pos, end_pos)
-        
+
         # Move search start forward to avoid overlapping matches
         search_start = start_pos + len(clean_item_text)
-    
+
     # Update items with bbox information (character positions)
     updated_items = []
     for item in items:
         # Create a copy of the item with updated bbox
         pos_info = id2pos.get(item.documentKey)
-        
+
         # Update the bbox field with character positions if found
         if pos_info:
             item.bbox = list(pos_info)  # [start_pos, end_pos]
-        
+
         updated_items.append(item)
-    
+
     # Sort by chunk index to maintain order
     updated_items.sort(key=lambda c: c.chunkIdx)
     return updated_items
+
 
 def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
     """
     Group items by their headers and combine items within the same group into chunks.
     Items are grouped consecutively under the same header context.
-    
+
     Example: [text, text, header, text, text] -> 2 chunks: [text, text] and [text, text]
-    
+
     Args:
         items: List of Item objects to be grouped
-        
+
     Returns:
         List of Chunk objects with combined text, bboxes, and page numbers
     """
     if not items:
         return []
-    
+
     # Build a lookup from documentKey to Item
-    id2item = {item.documentKey: item for item in items if getattr(item, "documentKey", None)}
-    
+    id2item = {
+        item.documentKey: item for item in items if getattr(item, "documentKey", None)
+    }
+
     chunks: List[Chunk] = []
     current_group: List[Item] = []
     current_headers: Optional[List[str]] = None
-    
-    def _create_chunk_from_group(group: List[Item], headers: Optional[List[str]]) -> Chunk:
+
+    def _create_chunk_from_group(
+        group: List[Item], headers: Optional[List[str]]
+    ) -> Chunk:
         """Create a chunk from a group of items."""
         if not group:
             return None
-            
+
         # Combine texts
         combined_text_parts = []
-        
+
         # Add header texts first if available
         if headers:
             for h in headers:
                 header_item = id2item.get(h)
                 if header_item and header_item.text:
                     combined_text_parts.append(header_item.text)
-        
+
         # Add item texts
         for item in group:
             if item.text:
                 combined_text_parts.append(item.text)
-        
+
         combined_text = "\n".join(combined_text_parts)
-        
+
         # Combine bboxes into a list
         combined_bboxes = []
         for item in group:
             if item.bbox:
                 combined_bboxes.append(item.bbox)
-        
+
         # Combine page numbers into a list (unique)
         page_numbers = []
         for item in group:
             if item.pageNumber is not None and item.pageNumber not in page_numbers:
                 page_numbers.append(item.pageNumber)
-        
+
         # Use properties from first item as base
         first_item = group[0]
-        
+
         # Determine chunk type - use "mixed" if multiple types, otherwise use the common type
         chunk_types = {item.chunkType for item in group}
         if len(chunk_types) == 1:
             chunk_type = chunk_types.pop()
         else:
             chunk_type = ChunkType.MIXED.value
-        
+
         return Chunk(
             documentKey=compute_mdhash_id(combined_text, prefix="chunk-"),
             text=combined_text,
@@ -408,7 +415,7 @@ def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
             knowledgeBaseId=first_item.knowledgeBaseId,
             workspaceId=first_item.workspaceId,
         )
-    
+
     for item in items:
         # Skip headers/titles as they will be merged into text
         if item.chunkType in [ChunkType.TITLE.value, ChunkType.SECTION_HEADER.value]:
@@ -418,14 +425,14 @@ def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
                 if chunk:
                     chunks.append(chunk)
                 current_group = []
-            
+
             # Update current headers context
             current_headers = [item.documentKey] if item.documentKey else None
             continue
-        
+
         # Check if this item has different headers than current context
         item_headers = item.headers if item.headers else None
-        
+
         # If headers changed, finalize current group and start new one
         if current_headers != item_headers:
             if current_group:
@@ -434,16 +441,16 @@ def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
                     chunks.append(chunk)
                 current_group = []
             current_headers = item_headers
-        
+
         # Add item to current group
         current_group.append(item)
-    
+
     # Handle the last group
     if current_group:
         chunk = _create_chunk_from_group(current_group, current_headers)
         if chunk:
             chunks.append(chunk)
-    
+
     return chunks
 
 
@@ -593,7 +600,6 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
                 "start_char": bbox[0],
                 "end_char": bbox[1],
             }
-            
 
         blocks.append(
             {
@@ -850,24 +856,26 @@ def chunk_langchain_document(
     chunk_texts = text_splitter.split_text(langchain_doc.text)
 
     chunks = []
-    
+
     original_text = langchain_doc.text
     id2pos = {}
     print("Original text length:", len(original_text))
-    
+
     search_start = 0
     for idx, chunk_text in enumerate(chunk_texts):
         # Find start position of chunk_text in original_text
         start_pos = original_text.find(chunk_text, search_start)
-        
+
         if start_pos == -1:
             id2pos[idx] = None
             continue  # Skip if not found
-            
+
         end_pos = start_pos + len(chunk_text)
 
         id2pos[idx] = (start_pos, end_pos)
-        search_start = start_pos + len(chunk_text) - chunk_overlap  # Move search start forward
+        search_start = (
+            start_pos + len(chunk_text) - chunk_overlap
+        )  # Move search start forward
 
     for idx, chunk in enumerate(chunk_texts):
         bbox = id2pos.get(idx, None)
