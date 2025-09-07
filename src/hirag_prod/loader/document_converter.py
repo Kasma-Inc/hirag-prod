@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import requests
 from docling_core.types import DoclingDocument
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_document_converter_config
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 
@@ -110,14 +111,21 @@ def convert(
                 "json", "docling_document", parsed_url, bucket_name, json_file_path
             )
 
-    except requests.exceptions.Timeout:
-        logger.error(
-            f"Request timeout after {get_document_converter_config(converter_type).timeout} seconds"
+    except requests.exceptions.Timeout as e:
+        log_error_info(
+            logging.ERROR,
+            f"Request timeout after {get_document_converter_config(converter_type).timeout} seconds",
+            e,
+            raise_error=True,
         )
-        raise
     except requests.exceptions.RequestException as e:
-        logger.error(f"Document conversion API request failed: {str(e)}")
-        raise
+        log_error_info(
+            logging.ERROR,
+            f"Document conversion API request failed",
+            e,
+            raise_error=True,
+        )
     except Exception as e:
-        logger.error(f"Failed to process document: {str(e)}")
-        raise
+        log_error_info(
+            logging.ERROR, f"Failed to process document", e, raise_error=True
+        )

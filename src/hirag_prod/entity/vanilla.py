@@ -1,6 +1,5 @@
 import logging
 import time
-import warnings
 from dataclasses import dataclass, field
 from typing import Callable, List, Tuple
 
@@ -9,6 +8,7 @@ import json_repair
 from hirag_prod._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
+    log_error_info,
 )
 from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.entity.base import BaseKG
@@ -135,11 +135,10 @@ class VanillaKG(BaseKG):
             return entities
 
         except Exception as e:
-            logging.exception(
-                f"[Entity] Extraction failed for chunk {chunk.documentKey}"
-            )
-            warnings.warn(
-                f"Entity extraction failed for chunk {chunk.documentKey}: {e}"
+            log_error_info(
+                logging.ERROR,
+                f"[Entity] Extraction failed for chunk {chunk.documentKey}",
+                e,
             )
             return []
 
@@ -230,11 +229,10 @@ class VanillaKG(BaseKG):
             return relations
 
         except Exception as e:
-            logging.exception(
-                f"[Relation] Extraction failed for chunk {chunk.documentKey}"
-            )
-            warnings.warn(
-                f"Relation extraction failed for chunk {chunk.documentKey}: {e}"
+            log_error_info(
+                logging.ERROR,
+                f"[Relation] Extraction failed for chunk {chunk.documentKey}",
+                e,
             )
             return []
 
@@ -254,7 +252,12 @@ class VanillaKG(BaseKG):
         try:
             decoded_obj = json_repair.repair_json(relation_result, return_objects=True)
             triplets = decoded_obj.get("triplets", [])
-        except json_repair.JSONRepairError:
+        except json_repair.JSONRepairError as e:
+            log_error_info(
+                logging.ERROR,
+                f"[Relation] Failed to parse relations from chunk {chunk.documentKey}",
+                e,
+            )
             return []
 
         relations = []
@@ -399,8 +402,9 @@ class VanillaKG(BaseKG):
             return entities, relations
 
         except Exception as e:
-            logging.exception(
-                f"[SingleChunk] Failed to process chunk {chunk.documentKey}"
+            log_error_info(
+                logging.ERROR,
+                f"[SingleChunk] Failed to process chunk {chunk.documentKey}",
+                e,
             )
-            warnings.warn(f"Chunk processing failed for {chunk.documentKey}: {e}")
             return [], []

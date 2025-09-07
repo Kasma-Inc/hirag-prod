@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal, Optional
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 
-from hirag_prod._utils import AsyncEmbeddingFunction
+from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import get_db_engine, get_db_session_maker
 from hirag_prod.schema import Chunk, File, Item, Triplets
@@ -123,7 +123,8 @@ class PGVector(BaseVDB):
 
             try:
                 cols_per_row = len(rows[0])
-            except Exception:
+            except Exception as e:
+                log_error_info(logging.WARNING, "Rows are empty", e)
                 cols_per_row = None
 
             if not cols_per_row:

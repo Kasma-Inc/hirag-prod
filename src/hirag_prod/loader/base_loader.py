@@ -51,8 +51,8 @@ class BaseLoader(ABC):
         return docling_doc, doc_md
 
     def load_dots_ocr(
-        self, document_path: str, document_meta: Optional[dict] = None, **loader_args
-    ) -> Tuple[list, File, File]:
+        self, document_path: str, document_meta: Optional[dict] = None
+    ) -> Tuple[File, File]:
         """Load document and set the metadata of the split chunks
 
         Args:
@@ -61,7 +61,7 @@ class BaseLoader(ABC):
             loader_args (dict): The arguments for the loader.
 
         Returns:
-            File: the loaded document
+            Tuple[File, File]: the loaded document
         """
         assert document_meta.get("private") is not None, "private is required"
         assert document_path.startswith("s3://") or document_path.startswith("oss://")

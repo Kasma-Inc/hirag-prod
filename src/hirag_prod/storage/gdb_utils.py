@@ -11,6 +11,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.storage.networkx import NetworkXGDB
 
 logging.basicConfig(
@@ -119,8 +120,9 @@ class GDBManager:
             )
             logger.info(f"Connected to Graph DB: {self.db_path}")
         except Exception as e:
-            logger.error(f"Graph DB connection failed: {e}")
-            raise
+            log_error_info(
+                logging.ERROR, "Graph DB connection failed", e, raise_error=True
+            )
 
     async def disconnect(self) -> None:
         """Close graph database connection"""
@@ -195,7 +197,7 @@ class GDBManager:
                 "graph_type": "directed" if nx.is_directed(graph) else "undirected",
             }
         except Exception as e:
-            logger.error(f"Failed to get graph stats: {e}")
+            log_error_info(logging.ERROR, "Failed to get graph stats", e)
             return {"error": str(e)}
 
     async def get_nodes_sample(self, limit: int = 5) -> List[Dict[str, Any]]:
@@ -204,7 +206,7 @@ class GDBManager:
             nodes = list(self.gdb.graph.nodes(data=True))[:limit]
             return [{"id": node_id, **node_data} for node_id, node_data in nodes]
         except Exception as e:
-            logger.error(f"Failed to get nodes sample: {e}")
+            log_error_info(logging.ERROR, "Failed to get nodes sample", e)
             return []
 
     async def get_edges_sample(self, limit: int = 5) -> List[Dict[str, Any]]:
@@ -216,7 +218,7 @@ class GDBManager:
                 for source, target, edge_data in edges
             ]
         except Exception as e:
-            logger.error(f"Failed to get edges sample: {e}")
+            log_error_info(logging.ERROR, "Failed to get edges sample", e)
             return []
 
     async def export_nodes_to_csv(
@@ -264,7 +266,7 @@ class GDBManager:
                 return False
 
         except Exception as e:
-            logger.error(f"Nodes export failed: {e}")
+            log_error_info(logging.ERROR, "Nodes export failed", e)
             console.print(f"[red]❌ Nodes export failed: {e}[/red]")
             return False
 
@@ -313,7 +315,7 @@ class GDBManager:
                 return False
 
         except Exception as e:
-            logger.error(f"Edges export failed: {e}")
+            log_error_info(logging.ERROR, "Edges export failed", e)
             console.print(f"[red]❌ Edges export failed: {e}[/red]")
             return False
 
@@ -342,7 +344,7 @@ class GDBManager:
 
             return result
         except Exception as e:
-            logger.error(f"Failed to query node neighbors: {e}")
+            log_error_info(logging.ERROR, "Failed to query node neighbors", e)
             return []
 
     async def export_node_neighbors_to_csv(
@@ -371,7 +373,7 @@ class GDBManager:
                 return False
 
         except Exception as e:
-            logger.error(f"Neighbor export failed: {e}")
+            log_error_info(logging.ERROR, "Neighbor export failed", e)
             console.print(f"[red]❌ Neighbor export failed: {e}[/red]")
             return False
 
@@ -567,8 +569,8 @@ Examples:
     except KeyboardInterrupt:
         console.print("\n[yellow]⚠️  Interrupted by user[/yellow]")
     except Exception as e:
+        log_error_info(logging.ERROR, "Unhandled error", e)
         console.print(f"[red]❌ Error: {e}[/red]")
-        logger.exception("Unhandled error")
         raise SystemExit(1)
 
 

@@ -9,8 +9,10 @@ from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
 
 
-def initialize_config_manager(config_dict: Optional[Dict] = None) -> None:
-    ConfigManager(config_dict)
+def initialize_config_manager(
+    cli_options_dict: Optional[Dict] = None, config_dict: Optional[Dict] = None
+) -> None:
+    ConfigManager(cli_options_dict, config_dict)
 
 
 def get_config_manager() -> ConfigManager:

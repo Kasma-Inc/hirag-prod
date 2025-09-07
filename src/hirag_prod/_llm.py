@@ -18,6 +18,7 @@ from tenacity import (
     wait_exponential,
 )
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.functions import get_embedding_config, get_llm_config
 from hirag_prod.configs.llm_config import LLMConfig
@@ -91,8 +92,14 @@ class RateLimiterManager:
         # Get current event loop
         try:
             current_loop = asyncio.get_running_loop()
-        except RuntimeError:
+        except RuntimeError as e:
             # No running loop, create a new limiter
+            log_error_info(
+                logging.INFO,
+                "No running event loop, create a new limiter",
+                e,
+                debug_only=True,
+            )
             limiter = AsyncLimiter(max_rate=max_rate, time_period=time_period)
             setattr(instance, limiter_attr, limiter)
             setattr(instance, loop_attr, None)
@@ -612,7 +619,7 @@ class BatchProcessor:
 
     def _handle_batch_error(
         self, error: Exception, current_batch_size: int, sample_text: str
-    ) -> int:
+    ) -> Optional[int]:
         """Handle batch processing errors with adaptive sizing"""
         error_msg = str(error).lower()
 
@@ -623,24 +630,30 @@ class BatchProcessor:
             if current_batch_size > 1:
                 # Reduce batch size and retry
                 new_batch_size = max(1, current_batch_size // 2)
-                self._logger.warning(
-                    f"⚠️ API limit error, reducing batch size from {current_batch_size} to {new_batch_size}"
+                log_error_info(
+                    logging.WARNING,
+                    f"⚠️ API limit error, reducing batch size from {current_batch_size} to {new_batch_size}",
+                    error,
                 )
-                self._logger.warning(f"⚠️ Error details: {error}")
                 return new_batch_size
             else:
                 # Even single text fails, this is a different issue
-                self._logger.error(
-                    "❌ Even single text embedding failed, this may be a content issue"
+                log_error_info(
+                    logging.ERROR,
+                    f"❌ Even single text embedding failed, this may be a content issue. Failed text preview: {sample_text[:200]}...",
+                    error,
+                    raise_error=True,
                 )
-                self._logger.error(f"❌ Failed text preview: {sample_text[:200]}...")
-                raise error
+                return None
         else:
             # Different type of error, don't retry
-            self._logger.error(
-                f"❌ Non-batch-size related error in batch processing: {error}"
+            log_error_info(
+                logging.ERROR,
+                "❌ Non-batch-size related error in batch processing",
+                error,
+                raise_error=True,
             )
-            raise error
+            return None
 
 
 class TextValidator:

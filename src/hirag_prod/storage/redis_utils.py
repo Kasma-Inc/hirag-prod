@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Set, Union
 import redis
 from dotenv import load_dotenv
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_envs, initialize_config_manager
 from hirag_prod.resources.functions import (
     get_redis,
@@ -113,8 +114,9 @@ class RedisStorageManager:
             yield pipeline
             pipeline.execute()
         except Exception as e:
-            logger.error(f"Pipeline operation failed: {e}")
-            raise
+            log_error_info(
+                logging.ERROR, "Pipeline operation failed", e, raise_error=True
+            )
 
     def _extract_document_ids(self) -> Set[str]:
         """Extract all tracked document IDs from Redis keys"""
@@ -129,7 +131,10 @@ class RedisStorageManager:
                 try:
                     idx = parts.index("doc")
                     doc_ids.add(parts[idx + 1])
-                except Exception:
+                except Exception as e:
+                    log_error_info(
+                        logging.WARNING, "Error extracting document ID from key", e
+                    )
                     continue
 
         # Extract from completion keys
@@ -140,7 +145,10 @@ class RedisStorageManager:
                 try:
                     idx = parts.index("completed")
                     doc_ids.add(parts[idx + 1])
-                except Exception:
+                except Exception as e:
+                    log_error_info(
+                        logging.WARNING, "Error extracting document ID from key", e
+                    )
                     continue
 
         return doc_ids
@@ -396,7 +404,7 @@ class RedisStorageManager:
                 "uptime_in_seconds": info.get("uptime_in_seconds"),
             }
         except Exception as e:
-            logger.error(f"Failed to get Redis info: {e}")
+            log_error_info(logging.ERROR, "Failed to get Redis info", e)
             return {"error": str(e)}
 
 
@@ -466,7 +474,7 @@ async def main():
             print(f"❌ Unknown command: {command}")
 
     except Exception as e:
-        logger.error(f"Command failed: {e}")
+        log_error_info(logging.ERROR, "Command failed", e)
         print(f"❌ Error: {e}")
     finally:
         await get_resource_manager().cleanup()

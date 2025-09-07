@@ -20,10 +20,15 @@ class ConfigManager:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, config_dict: Optional[Dict] = None) -> None:
+    def __init__(
+        self,
+        cli_options_dict: Optional[Dict] = None,
+        config_dict: Optional[Dict] = None,
+    ) -> None:
         if getattr(self, "_created", False):
             return
 
+        self.debug: bool = cli_options_dict["debug"]
         self.envs: Envs = Envs(**config_dict if config_dict else {})
         self.hi_rag_config = HiRAGConfig(**self.envs.model_dump())
         self.embedding_config: EmbeddingConfig = EmbeddingConfig(

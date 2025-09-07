@@ -1,10 +1,13 @@
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from contextual import AsyncContextualAI
+from contextual.types import ParseCreateResponse, ParseJobStatusResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.storage.pg_utils import queryContextResult, saveContextResult
 
@@ -36,7 +39,7 @@ class ContextualClient:
             )
         self.client = AsyncContextualAI(api_key=self.api_key)
 
-    async def get_parse_status(self, job_id: str) -> Dict[str, Any]:
+    async def get_parse_status(self, job_id: str) -> Optional[ParseJobStatusResponse]:
         """
         Get the status of a parse job.
 
@@ -47,7 +50,12 @@ class ContextualClient:
             response = await self.client.parse.job_status(job_id=job_id)
             return response
         except Exception as e:
-            raise Exception(f"Error getting parse status for job {job_id}: {str(e)}")
+            log_error_info(
+                logging.ERROR,
+                f"Error getting parse status for job {job_id}",
+                e,
+                raise_error=True,
+            )
 
     async def get_parse_results(
         self, job_id: str, output_types: List[str] = None, session: AsyncSession = None
@@ -94,7 +102,12 @@ class ContextualClient:
                 return result_dict
 
         except Exception as e:
-            raise Exception(f"Error getting parse results for job {job_id}: {str(e)}")
+            log_error_info(
+                logging.ERROR,
+                f"Error getting parse results for job {job_id}",
+                e,
+                raise_error=True,
+            )
 
     async def wait_for_parse_completion(
         self,
@@ -207,7 +220,7 @@ class ContextualClient:
         max_split_table_cells: Optional[int] = None,
         figure_caption_mode: str = "concise",
         page_range: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> Optional[ParseCreateResponse]:
         """
         This function is for posting the job to the Contextual API, but would not wait for results.
 
@@ -248,4 +261,9 @@ class ContextualClient:
 
             return response
         except Exception as e:
-            raise Exception(f"Error parsing document {file_path}: {str(e)}")
+            log_error_info(
+                logging.ERROR,
+                f"Error parsing document {file_path}",
+                e,
+                raise_error=True,
+            )

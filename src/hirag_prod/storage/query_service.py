@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.storage.storage_manager import StorageManager
 
@@ -76,7 +77,7 @@ class QueryService:
                     logger.warning(f"Chunk {key} has no vector data")
                     res[key] = None
         except Exception as e:
-            logger.error(f"Failed to query chunk embeddings: {e}")
+            log_error_info(logging.ERROR, "Failed to query chunk embeddings", e)
             return {}
         return res
 
@@ -193,13 +194,16 @@ class QueryService:
             async def _fetch_entity_chunk_count(ent: str) -> int:
                 try:
                     node = await self.storage.gdb.query_node(ent)
-                    chunk_ids = (
-                        node.metadata.get("chunk_ids", [])
-                        if hasattr(node, "metadata")
-                        else []
-                    )
+                    chunk_ids: List[str] = []
+                    if hasattr(node, "metadata"):
+                        if hasattr(node.metadata, "chunk_ids"):
+                            chunk_ids = node.metadata.chunk_ids
+
                     return len(chunk_ids) if isinstance(chunk_ids, list) else 0
-                except Exception:
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR, "Failed to fetch entity chunk count", e
+                    )
                     return 0
 
             counts = await asyncio.gather(

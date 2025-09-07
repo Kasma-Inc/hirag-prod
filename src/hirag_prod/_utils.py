@@ -15,6 +15,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Type,
     TypeAlias,
     TypeVar,
 )
@@ -24,11 +25,32 @@ import tiktoken
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
 
-from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.configs.functions import get_config_manager, get_hi_rag_config
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
 load_dotenv("/chatbot/.env")
+
+T = TypeVar("T")
+
+
+def log_error_info(
+    level: int,
+    message: str,
+    error: BaseException,
+    debug_only: bool = False,
+    exc_info: Optional[bool] = None,
+    raise_error: bool = False,
+    new_error_class: Type[T] = None,
+):
+    if (not debug_only) or get_config_manager().debug:
+        logger.log(
+            level,
+            f"{message}: {error}",
+            exc_info=get_config_manager().debug if exc_info is None else exc_info,
+        )
+    if raise_error:
+        raise new_error_class(message) if new_error_class else error
 
 
 def retry_async(
@@ -55,8 +77,10 @@ def retry_async(
                     last_exception = e
                     if attempt == _max_retries - 1:
                         break
-                    logger.warning(
-                        f"Attempt {attempt + 1} failed: {e}, retrying in {_delay}s"
+                    log_error_info(
+                        logging.WARNING,
+                        f"Attempt {attempt + 1} failed: {e}, retrying in {_delay}s",
+                        e,
                     )
                     await asyncio.sleep(_delay)
             raise last_exception
@@ -70,9 +94,9 @@ def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
     try:
         # If there is already an event loop, use it.
         loop = asyncio.get_event_loop()
-    except RuntimeError:
+    except RuntimeError as e:
         # If in a sub-thread, create a new event loop.
-        logger.info("Creating a new event loop in a sub-thread.")
+        log_error_info(logging.INFO, "Creating a new event loop in a sub-thread.", e)
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
     return loop
@@ -97,8 +121,10 @@ def extract_first_complete_json(s: str):
                         # Attempt to parse the JSON string
                         return json.loads(first_json_str.replace("\n", ""))
                     except json.JSONDecodeError as e:
-                        logger.error(
-                            f"JSON decoding failed: {e}. Attempted string: {first_json_str[:50]}..."
+                        log_error_info(
+                            logging.ERROR,
+                            f"JSON decoding failed: {e}. Attempted string: {first_json_str[:50]}...",
+                            e,
                         )
                         return None
                     finally:
@@ -124,8 +150,11 @@ def parse_value(value: str):
                 return float(value)
             else:
                 return int(value)
-        except ValueError:
+        except ValueError as e:
             # If conversion fails, return the value as-is (likely a string)
+            log_error_info(
+                logging.INFO, f"Failed to convert string: {value}", e, debug_only=True
+            )
             return value.strip('"')  # Remove surrounding quotes if they exist
 
 
@@ -335,15 +364,17 @@ async def _limited_gather_with_factory(
                 except Exception as e:
                     if attempt <= max_retries - 1:
                         delay = retry_delay * (2**attempt)  # Exponential backoff
-                        logger.warning(
-                            f"Task {task_id} failed (attempt {attempt + 1}/{max_retries}): "
-                            f"{type(e).__name__}: {str(e)}. Retrying in {delay:.1f}s..."
+                        log_error_info(
+                            logging.WARNING,
+                            f"Task {task_id} failed (attempt {attempt + 1}/{max_retries}): {type(e).__name__}: {str(e)}. Retrying in {delay:.1f}s...",
+                            e,
                         )
                         await asyncio.sleep(delay)
                     else:
-                        logger.error(
-                            f"Task {task_id} failed permanently after {max_retries} attempts: "
-                            f"{type(e).__name__}: {str(e)}"
+                        log_error_info(
+                            logging.WARNING,
+                            f"Task {task_id} failed permanently after {max_retries} attempts: {type(e).__name__}: {str(e)}",
+                            e,
                         )
                         if progress_bar:
                             progress_bar.update(1)

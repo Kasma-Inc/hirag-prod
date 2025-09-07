@@ -1,9 +1,10 @@
 import logging
-import os
-from typing import Any, Optional, Tuple
+from typing import Any, Literal, Optional, Tuple
 
 import requests
 
+from hirag_prod._utils import log_error_info
+from hirag_prod.configs.functions import get_document_converter_config
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
@@ -64,15 +65,19 @@ DEFAULT_LOADER_CONFIGS = {
 }
 
 
-def check_cloud_health(base_url: str, token: str, model: str) -> bool:
+def check_cloud_health(
+    document_converter_type: Literal["dots_ocr", "docling_cloud"],
+) -> bool:
     """Check the health of the cloud service"""
     try:
-        health_url = f"{base_url.rstrip('/')}/health"
+        health_url = f"{get_document_converter_config(document_converter_type).base_url.rstrip('/')}/health"
 
         headers = {
             "Content-Type": "application/json",
-            "Model-Name": model,
-            "Authorization": f"Bearer {token}",
+            "Model-Name": get_document_converter_config(
+                document_converter_type
+            ).model_name,
+            "Authorization": f"Bearer {get_document_converter_config(document_converter_type).api_key}",
         }
 
         resp = requests.get(health_url, headers=headers)
@@ -89,30 +94,14 @@ def check_cloud_health(base_url: str, token: str, model: str) -> bool:
                 return True
             # Otherwise False
             return False
-        except Exception:
+        except Exception as e:
             # If we can't parse JSON but got a response, treat as failure
+            log_error_info(logging.ERROR, "Failed to parsing JSON response", e)
             return False
 
-    except Exception:
+    except Exception as e:
+        log_error_info(logging.ERROR, "Failed to check cloud health", e)
         return False
-
-
-def check_docling_cloud_health() -> bool:
-    """docling cloud service health check"""
-    base_url = os.getenv("DOCLING_CLOUD_BASE_URL")
-    token = os.getenv("DOCLING_CLOUD_AUTH_TOKEN")
-    model = os.getenv("DOCLING_CLOUD_MODEL_NAME", "docling")
-
-    return check_cloud_health(base_url, token, model)
-
-
-def check_dots_ocr_health() -> bool:
-    """Dots OCR service health check"""
-    base_url = os.getenv("DOTS_OCR_BASE_URL")
-    token = os.getenv("DOTS_OCR_AUTH_TOKEN")
-    model = os.getenv("DOTS_OCR_MODEL_NAME", "DotsOCR")
-
-    return check_cloud_health(base_url, token, model)
 
 
 def load_document(
@@ -129,6 +118,7 @@ def load_document(
         content_type (str): The content type of the document.
         document_meta (Optional[dict]): The metadata of the document.
         loader_configs (Optional[dict]): If unspecified, use DEFAULT_LOADER_CONFIGS.
+        loader_type (LoaderType): The loader type to use.
 
     Raises:
         ValueError: If the content type is not supported.
@@ -146,9 +136,9 @@ def load_document(
     if loader_type in ["docling_cloud", "dots_ocr"]:
         cloud_check = False
         if loader_type == "docling_cloud":
-            cloud_check = check_docling_cloud_health()
+            cloud_check = check_cloud_health("docling_cloud")
         elif loader_type == "dots_ocr":
-            cloud_check = check_dots_ocr_health()
+            cloud_check = check_cloud_health("dots_ocr")
 
         if not cloud_check:
             # Show warning in log
@@ -168,7 +158,11 @@ def load_document(
     try:
         document_path = route_file_path(loader_type, document_path)
     except Exception as e:
-        logger.warning(f"Unexpected error in route_file_path, using original path: {e}")
+        log_error_info(
+            logging.WARNING,
+            f"Unexpected error in route_file_path, using original path",
+            e,
+        )
 
     if loader_type == "docling_cloud":
         docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)

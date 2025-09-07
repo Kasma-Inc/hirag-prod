@@ -12,6 +12,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from docling_core.types import DoclingDocument
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
     get_cloud_storage_config,
     initialize_config_manager,
@@ -99,7 +100,7 @@ def exists_cloud_file(
     except ClientError as e:
         if e.response["Error"]["Code"] == "404":
             return False
-        logger.error(e)
+        log_error_info(logging.ERROR, f"Failed to check file existence", e)
         return False
 
 
@@ -136,7 +137,7 @@ def list_cloud_files(storage_type: Literal["s3", "oss"], prefix: str = None) -> 
             print(f"No files found in {prefix}")
             return False
     except ClientError as e:
-        logger.error(e)
+        log_error_info(logging.ERROR, f"Failed to list cloud files", e)
         return False
 
 
@@ -167,7 +168,7 @@ def download_cloud_file(
         )
         return True
     except ClientError as e:
-        logger.error(e)
+        log_error_info(logging.ERROR, f"Failed to download cloud file", e)
         return False
 
 
