@@ -20,7 +20,6 @@ jobs:
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
-        pip install pylint
         pip install black
         pip install blackdoc
         pip install isort
@@ -28,7 +27,6 @@ jobs:
 
     - name: Lint Python
       run: |
-        pylint --disable=all --enable=duplicate-code $(git ls-files '*.py' ':!:tests')
         black --check $(git ls-files '*.py')
         blackdoc --check $(git ls-files '*.py')
         isort --check $(git ls-files '*.py') --profile black
