@@ -1,8 +1,6 @@
 # This is a quickstart script for the HiRAG system.
-import argparse
 import asyncio
 import logging
-import sys
 
 from hirag_prod import HiRAG
 from hirag_prod.configs.cli_options import CliOptions
