@@ -32,4 +32,4 @@ jobs:
         black --check $(git ls-files '*.py')
         blackdoc --check $(git ls-files '*.py')
         isort --check $(git ls-files '*.py') --profile black
-        autoflake --in-place --remove-unused-variables $(git ls-files '*.py')
+        autoflake --in-place --remove-unused-variables $(git ls-files '*.py') --check
