@@ -70,6 +70,17 @@ def get_test(id: str):
         }
         query = "What is the cause of Odisha train accident in 2023?"
         return document_path, content_type, document_meta, query
+    elif id == "oss: " or id == "6":
+        document_path = f"oss://graxy-dev/ofnil/tmp/test/2023-24_INTERIM_notes_to_the_condensed_consolidated_interim_financial_information.pdf"
+        content_type = "application/pdf"
+        document_meta = {
+            "type": "pdf",
+            "fileName": "2023-24_INTERIM_notes_to_the_condensed_consolidated_interim_financial_information.pdf",
+            "uri": document_path,
+            "private": False,
+        }
+        query = "What are the key financial highlights for 2023-24?"
+        return document_path, content_type, document_meta, query
     else:
         # Default to small.pdf if test not found
         document_path = f"s3://monkeyocr/test/input/test_pdf/small.pdf"
@@ -84,7 +95,40 @@ def get_test(id: str):
         return document_path, content_type, document_meta, query
 
 
-async def index(test_id="2"):
+def print_chunks_user_friendly(chunks):
+    """
+    Print chunks in a more user-friendly format.
+    """
+    import re
+    from html import unescape
+
+    if not chunks:
+        print("No chunks found.")
+        return
+
+    print(f"Found {len(chunks)} relevant chunks:\n")
+
+    for i, chunk in enumerate(chunks, 1):
+        print(f"📄 Chunk {i}")
+        print(f"   Source: {chunk.get('fileName', 'Unknown')}")
+        if "pagerank_score" in chunk:
+            print(f"   Relevance Score: {chunk['pagerank_score']:.4f}")
+
+        # Clean up the text content
+        text = chunk.get("text", "")
+
+        # For non-table content, clean up and display
+        clean_text = text.strip()
+        if len(clean_text) > 300:
+            clean_text = clean_text[:300] + "..."
+        print(f"   Content: {clean_text}")
+
+        print(f"   Last Updated: {chunk.get('updatedAt', 'Unknown')}")
+        print("   " + "─" * 50)
+        print()
+
+
+async def index(test_id="2", overwrite=True, summary=True):
     index = await HiRAG.create()
 
     await index.set_language("en")  # en | cn
@@ -98,20 +142,22 @@ async def index(test_id="2"):
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
         loader_type="dots_ocr",
-        overwrite=True,
+        overwrite=overwrite,
     )
 
     ret = await index.query(
         query=query,
-        summary=True,
+        summary=summary,
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
+        threshold=0.001,
     )
 
     print("———————————————————— Chunks ————————————————————\n")
-    print(ret["chunks"])
-    print("\n\n———————————————————— Summary ————————————————————\n")
-    print(ret["summary"])
+    print_chunks_user_friendly(ret["chunks"])
+    if summary:
+        print("———————————————————— Summary ————————————————————\n")
+        print(ret["summary"])
 
 
 def main():
@@ -125,9 +171,11 @@ def main():
     print("  3 / oss: U.S.Health - U.S. Healthcare guide PDF")
     print("  4 / md-itinerary - Holiday itinerary markdown")
     print("  5 / md-wiki - Wikipedia article markdown")
-    print(f"\nRunning test: {cli_options.test}\n")
+    print(f"\nRunning test: {cli_options.test}")
+    print(f"Overwrite: {cli_options.overwrite}")
+    print(f"Summary: {cli_options.summary}\n")
 
-    asyncio.run(index(cli_options.test))
+    asyncio.run(index(cli_options.test, cli_options.overwrite, cli_options.summary))
 
 
 if __name__ == "__main__":

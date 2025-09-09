@@ -191,6 +191,7 @@ class PGVector(BaseVDB):
             target_id = rel.target
             source_name = None if is_chunk(source_id) else props.get("source")
             target_name = None if is_chunk(target_id) else props.get("target")
+            document_id = props.get("document_id", "")
 
             edge_rows.append(
                 {
@@ -198,6 +199,7 @@ class PGVector(BaseVDB):
                     "target": target_id,
                     "workspaceId": workspace_id,
                     "knowledgeBaseId": knowledge_base_id,
+                    "documentId": document_id,
                 }
             )
 
@@ -217,6 +219,7 @@ class PGVector(BaseVDB):
                         "entityName": name_hint,
                         "entityType": "entity",
                         "chunkIds": [],
+                        "documentId": document_id,
                     }
                     node_map[key] = rec
                 if chunk_id and chunk_id not in rec["chunkIds"]:
@@ -281,6 +284,9 @@ class PGVector(BaseVDB):
                                 node_table.c.chunkIds,
                                 ins.excluded.chunkIds,
                             ),
+                            "documentId": func.coalesce(
+                                ins.excluded.documentId, node_table.c.documentId
+                            ),
                             "updatedAt": now,
                         },
                     )
@@ -325,6 +331,7 @@ class PGVector(BaseVDB):
             "entity_type": etype,
             "description": [],
             "chunk_ids": chunk_ids,
+            "document_id": getattr(row, "documentId", ""),
             "workspace_id": getattr(row, "workspaceId", ""),
             "knowledge_base_id": getattr(row, "knowledgeBaseId", ""),
         }

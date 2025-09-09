@@ -1072,6 +1072,7 @@ class HiRAG:
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
+        threshold: float = 0.001,
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1093,12 +1094,21 @@ class HiRAG:
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
-            return query_results
-        return await self._query_service.query(
-            query=query,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-        )
+        else:
+            query_results = await self._query_service.query(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+        # Filter chunks by threshold on relevance score
+        if threshold > 0.0 and query_results.get("chunks"):
+            filtered_chunks = [
+                chunk
+                for chunk in query_results["chunks"]
+                if chunk.get("pagerank_score", 0.0) >= threshold
+            ]
+            query_results["chunks"] = filtered_chunks
+        return query_results
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""

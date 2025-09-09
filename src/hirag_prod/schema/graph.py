@@ -13,6 +13,9 @@ class Graph(Base):
     workspaceId: str = Column(String, primary_key=True, nullable=False)
     knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
+    documentId: str = Column(
+        String, nullable=False
+    )  # For tracing back to the source document
 
     def __iter__(self):
         for column in self.__table__.columns:
