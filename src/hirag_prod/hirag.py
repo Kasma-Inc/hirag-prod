@@ -18,7 +18,6 @@ from hirag_prod._llm import (
     create_embedding_service,
 )
 from hirag_prod._utils import (
-    _limited_gather_with_factory,
     compute_mdhash_id,
     log_error_info,
 )
@@ -403,15 +402,8 @@ class DocumentProcessor:
 
             # Store relations to both graph database and vector database
             if relations:
-                # Store to graph database for graph analysis
-                gdb_relation_factories = [
-                    lambda rel=rel: self.storage.gdb.upsert_relation(rel)
-                    for rel in relations
-                ]
-                await _limited_gather_with_factory(
-                    gdb_relation_factories,
-                    get_hi_rag_config().relation_upsert_concurrency,
-                )
+                # use pgvector to mimic graphdb
+                await self.storage.vdb.upsert_graph(relations)
 
                 # Store to vector database for semantic search
                 await self.storage.upsert_relations_to_vdb(relations)
@@ -1037,10 +1029,6 @@ class HiRAG:
                 loader_type=loader_type,
             )
 
-            # Save graph state
-            if with_graph and self._storage:
-                await self._storage.gdb.dump()
-
             total_time = time.perf_counter() - start_time
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
@@ -1195,10 +1183,10 @@ class HiRAG:
         """Dense Passage Retrieval-style recall using current embeddings and stored vectors.
 
         Steps:
-          - Retrieve a candidate pool without rerank
-          - Fetch embeddings of candidates and the query
-          - Compute cosine similarities, min-max normalize
-          - Return top-k chunk rows with scores and ids
+        - Retrieve a candidate pool without rerank
+        - Fetch embeddings of candidates and the query
+        - Compute cosine similarities, min-max normalize
+        - Return top-k chunk rows with scores and ids
         """
         if not self._query_service or not self.embedding_service:
             raise HiRAGException("HiRAG instance not properly initialized")

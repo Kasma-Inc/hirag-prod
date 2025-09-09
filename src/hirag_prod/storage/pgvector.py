@@ -1,16 +1,18 @@
 import logging
+import math
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
-from sqlalchemy import delete, select
+import networkx as nx
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import get_db_engine, get_db_session_maker
 from hirag_prod.schema import Base as PGBase
-from hirag_prod.schema import Chunk, File, Item, Triplets
+from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, Triplets
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
@@ -49,6 +51,8 @@ class PGVector(BaseVDB):
             "Files": File,
             "Triplets": Triplets,
             "Items": Item,
+            "Graph": Graph,
+            "Nodes": Node,
         }  # mapping of table names to model creation functions
 
     def _to_list(self, embedding):
@@ -161,6 +165,241 @@ class PGVector(BaseVDB):
                 elapsed,
             )
             return rows
+
+    # use pg to mimic graphdb
+    async def upsert_graph(
+        self,
+        relations: List[Relation],
+        table_name: str = "Graph",
+        mode: Literal["append", "overwrite"] = "append",
+    ):
+
+        edge_rows = []
+        node_map: Dict[tuple, Dict[str, Any]] = (
+            {}
+        )  # key=(id, workspaceId, knowledgeBaseId), value=row
+
+        def is_chunk(node_id: str) -> bool:
+            return str(node_id).startswith("chunk-")
+
+        for rel in relations:
+            props = rel.properties or {}
+            workspace_id = props.get("workspace_id")
+            knowledge_base_id = props.get("knowledge_base_id")
+            chunk_id = props.get("chunk_id", [])
+            source_id = rel.source
+            target_id = rel.target
+            source_name = None if is_chunk(source_id) else props.get("source")
+            target_name = None if is_chunk(target_id) else props.get("target")
+
+            edge_rows.append(
+                {
+                    "source": source_id,
+                    "target": target_id,
+                    "workspaceId": workspace_id,
+                    "knowledgeBaseId": knowledge_base_id,
+                }
+            )
+
+            for node_id, name_hint in (
+                (source_id, source_name),
+                (target_id, target_name),
+            ):
+                if is_chunk(node_id):
+                    continue
+                key = (node_id, workspace_id, knowledge_base_id)
+                rec = node_map.get(key)
+                if rec is None:
+                    rec = {
+                        "id": node_id,
+                        "workspaceId": workspace_id,
+                        "knowledgeBaseId": knowledge_base_id,
+                        "entityName": name_hint,
+                        "entityType": "entity",
+                        "chunkIds": [],
+                    }
+                    node_map[key] = rec
+                if chunk_id and chunk_id not in rec["chunkIds"]:
+                    rec["chunkIds"].append(chunk_id)
+
+        GraphModel = self.get_model("Graph")
+        NodeModel = self.get_model("Nodes")
+
+        start = time.perf_counter()
+        async with get_db_session_maker()() as session:
+            now = datetime.now()
+
+            if edge_rows:
+                graph_table = GraphModel.__table__
+                pk_cols = [c.name for c in graph_table.primary_key.columns]
+                cols_per_row = len(edge_rows[0])
+                param_budget = 60000
+                max_batch_size = max(1, param_budget // cols_per_row)
+                for i in range(0, len(edge_rows), max_batch_size):
+                    batch = [
+                        {**r, "updatedAt": now}
+                        for r in edge_rows[i : i + max_batch_size]
+                    ]
+                    ins = insert(graph_table).values(batch)
+                    stmt = ins.on_conflict_do_nothing(
+                        index_elements=[graph_table.c[name] for name in pk_cols]
+                    )
+                    await session.execute(stmt)
+
+            node_rows = list(node_map.values())
+            if node_rows:
+                node_table = NodeModel.__table__
+                for nr in node_rows:
+                    if nr.get("chunkIds"):
+                        nr["chunkIds"] = list(dict.fromkeys(nr["chunkIds"]))
+                cols_per_row = len(node_rows[0])
+                param_budget = 60000
+                max_batch_size = max(1, param_budget // cols_per_row)
+                for i in range(0, len(node_rows), max_batch_size):
+                    batch = [
+                        {**nr, "updatedAt": now}
+                        for nr in node_rows[i : i + max_batch_size]
+                    ]
+                    ins = insert(node_table).values(batch)
+                    stmt = ins.on_conflict_do_update(
+                        index_elements=[
+                            node_table.c.id,
+                            node_table.c.workspaceId,
+                            node_table.c.knowledgeBaseId,
+                        ],
+                        set_={
+                            "entityName": func.coalesce(
+                                ins.excluded.entityName, node_table.c.entityName
+                            ),
+                            "entityType": func.coalesce(
+                                ins.excluded.entityType, node_table.c.entityType
+                            ),
+                            "chunkIds": func.coalesce(
+                                func.array_cat(
+                                    node_table.c.chunkIds, ins.excluded.chunkIds
+                                ),
+                                node_table.c.chunkIds,
+                                ins.excluded.chunkIds,
+                            ),
+                            "updatedAt": now,
+                        },
+                    )
+                    await session.execute(stmt)
+
+            await session.commit()
+            elapsed = time.perf_counter() - start
+            logger.info(
+                "[upsert_graph] Upserted %d edges and %d nodes, elapsed=%.3fs",
+                len(edge_rows),
+                len(node_rows),
+                elapsed,
+            )
+            return {"edges": len(edge_rows), "nodes": len(node_rows)}
+
+    async def query_node(
+        self,
+        node_id: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> Entity:
+        NodeModel = self.get_model("Nodes")
+        async with get_db_session_maker()() as session:
+            stmt = (
+                select(NodeModel)
+                .where(NodeModel.id == node_id)
+                .where(NodeModel.workspaceId == workspace_id)
+                .where(NodeModel.knowledgeBaseId == knowledge_base_id)
+            )
+            row = (await session.execute(stmt)).scalars().first()
+
+        if not row:
+            raise ValueError(f"Node not found: {node_id}")
+
+        name = getattr(row, "entityName", None) or ""
+        etype = getattr(row, "entityType", None) or "UNKNOWN"
+        chunk_ids = getattr(row, "chunkIds", None) or []
+        if isinstance(chunk_ids, list):
+            chunk_ids = list(dict.fromkeys(chunk_ids))
+
+        meta = {
+            "entity_type": etype,
+            "description": [],
+            "chunk_ids": chunk_ids,
+            "workspace_id": getattr(row, "workspaceId", ""),
+            "knowledge_base_id": getattr(row, "knowledgeBaseId", ""),
+        }
+        return Entity(id=node_id, page_content=name, metadata=meta)
+
+    async def pagerank_top_chunks_with_reset(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+        reset_weights: Dict[str, float],
+        topk: int,
+        alpha: float = 0.85,
+    ) -> List[Tuple[str, float]]:
+        if topk <= 0:
+            return []
+
+        start = time.perf_counter()
+        GraphModel = self.get_model("Graph")
+
+        async with get_db_session_maker()() as session:
+            stmt = (
+                select(GraphModel)
+                .where(GraphModel.workspaceId == workspace_id)
+                .where(GraphModel.knowledgeBaseId == knowledge_base_id)
+            )
+            rows = list((await session.execute(stmt)).scalars().all())
+
+        if not rows:
+            return []
+
+        G = nx.DiGraph()
+        for r in rows:
+            if getattr(r, "source", None) and getattr(r, "target", None):
+                G.add_edge(r.source, r.target)
+
+        if G.number_of_nodes() == 0:
+            return []
+
+        personalization: Dict[str, float] = {}
+        total = 0.0
+        for node, w in (reset_weights or {}).items():
+            if node in G:
+                try:
+                    val = float(w)
+                except Exception:
+                    continue
+                if not math.isfinite(val) or val <= 0:
+                    continue
+                personalization[node] = val
+                total += val
+
+        if total <= 0:
+            return []
+        for node in personalization:
+            personalization[node] /= total
+
+        pr = nx.pagerank(
+            G.to_undirected(), alpha=alpha, personalization=personalization
+        )
+        chunk_scores = [
+            (node, score)
+            for node, score in pr.items()
+            if str(node).startswith("chunk-")
+        ]
+        chunk_scores.sort(key=lambda x: x[1], reverse=True)
+        out = chunk_scores[:topk]
+
+        elapsed = time.perf_counter() - start
+        logger.info(
+            "[pagerank_top_chunks_with_reset] nodes=%d, returned=%d, elapsed=%.3fs",
+            G.number_of_nodes(),
+            len(out),
+            elapsed,
+        )
+        return out
 
     async def clean_table(
         self,
@@ -378,6 +617,8 @@ class PGVector(BaseVDB):
             Files = self.get_model("Files")
             Triplets = self.get_model("Triplets")
             Items = self.get_model("Items")
+            Graph = self.get_model("Graph")
+            Nodes = self.get_model("Nodes")
 
             def _create(sync_conn):
                 PGBase.metadata.create_all(
@@ -387,6 +628,8 @@ class PGVector(BaseVDB):
                         Files.__table__,
                         Triplets.__table__,
                         Items.__table__,
+                        Graph.__table__,
+                        Nodes.__table__,
                     ],
                 )
 
