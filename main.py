@@ -99,8 +99,6 @@ def print_chunks_user_friendly(chunks):
     """
     Print chunks in a more user-friendly format.
     """
-    import re
-    from html import unescape
 
     if not chunks:
         print("No chunks found.")
