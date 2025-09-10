@@ -70,3 +70,7 @@ def get_db_session():
 
 def get_redis(**kwargs: Any):
     return get_resource_manager().get_redis_client(**kwargs)
+
+
+def get_translator():
+    return get_resource_manager().get_translator()

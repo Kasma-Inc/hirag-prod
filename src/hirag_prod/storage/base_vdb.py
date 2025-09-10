@@ -10,21 +10,12 @@ class BaseVDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def upsert_text(
-        self,
-        text_to_embed: str,
-        properties: dict,
-        table_name: str,
-        mode: Literal["append", "overwrite"] = "append",
-    ):
-        raise NotImplementedError
-
-    @abstractmethod
     async def upsert_texts(
         self,
-        texts_to_embed: List[str],
+        texts_to_upsert: List[str],
         properties_list: List[dict],
         table_name: str,
+        with_translation: bool = False,
         mode: Literal["append", "overwrite"] = "append",
     ):
         raise NotImplementedError

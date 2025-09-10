@@ -5,11 +5,7 @@ from pydantic_settings import BaseSettings
 
 
 class Envs(BaseSettings):
-    model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="allow"
-    )
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", extra="allow")
 
     ENV: Literal["dev", "prod"] = "dev"
     HI_RAG_LANGUAGE: str = "en"

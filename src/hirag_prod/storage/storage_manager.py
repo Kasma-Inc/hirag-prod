@@ -66,7 +66,7 @@ class StorageManager:
             return
         texts_to_embed = [c.text for c in chunks]
         await self.vdb.upsert_texts(
-            texts_to_embed=texts_to_embed,
+            texts_to_upsert=texts_to_embed,
             properties_list=chunks,
             table_name="Chunks",
             mode="append",
@@ -78,9 +78,10 @@ class StorageManager:
             return
         texts_to_embed = [c.text for c in items]
         await self.vdb.upsert_texts(
-            texts_to_embed=texts_to_embed,
+            texts_to_upsert=texts_to_embed,
             properties_list=items,
             table_name="Items",
+            with_translation=True,
             mode="append",
         )
 
@@ -114,7 +115,7 @@ class StorageManager:
             for r in filtered
         ]
         await self.vdb.upsert_texts(
-            texts_to_embed=texts_to_embed,
+            texts_to_upsert=texts_to_embed,
             properties_list=properties_list,
             table_name="Triplets",
             mode="append",

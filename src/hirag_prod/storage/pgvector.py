@@ -8,9 +8,13 @@ from sqlalchemy.dialects.postgresql import insert
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.reranker.utils import apply_reranking
-from hirag_prod.resources.functions import get_db_engine, get_db_session_maker
-from hirag_prod.schema import Chunk, File, Item, Triplets
+from hirag_prod.resources.functions import (
+    get_db_engine,
+    get_db_session_maker,
+    get_translator,
+)
 from hirag_prod.schema import Base as PGBase
+from hirag_prod.schema import Chunk, File, Item, Triplets
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
@@ -72,41 +76,34 @@ class PGVector(BaseVDB):
         instance = cls(embedding_func, strategy_provider, vector_type=vector_type)
         return instance
 
-    # upserts a single text embedding into the specified table
-    async def upsert_text(
-        self,
-        text_to_embed: str,
-        properties: dict,
-        table_name: str,
-        mode: Literal["append", "overwrite"] = "append",
-    ):
-        return (
-            await self.upsert_texts([text_to_embed], [properties], table_name, mode)
-        )[0]
-
     # batch upserts text embeddings into the specified table
     async def upsert_texts(
         self,
-        texts_to_embed: List[str],
+        texts_to_upsert: List[str],
         properties_list: List[dict],
         table_name: str,
+        with_translation: bool = False,
         mode: Literal["append", "overwrite"] = "append",
     ):
-        if len(texts_to_embed) != len(properties_list):
+        if len(texts_to_upsert) != len(properties_list):
             raise ValueError(
-                "texts_to_embed and properties_list must have the same length"
+                "texts_to_upsert and properties_list must have the same length"
             )
 
         model = self.get_model(table_name)
 
         start = time.perf_counter()
         async with get_db_session_maker()() as session:
-            embs = await self.embedding_func(texts_to_embed)
+            embs = await self.embedding_func(texts_to_upsert)
             now = datetime.now()
             rows = []
-            for props, emb in zip(properties_list, embs):
-                vec = self._to_list(emb)
-                row = dict(props or {})
+            for i in range(len(properties_list)):
+                row = dict(properties_list[i] or {})
+                if with_translation:
+                    row["translation"] = (
+                        await get_translator().translate(texts_to_upsert[i], dest="en")
+                    ).text
+                vec = self._to_list(embs[i])
                 row["vector"] = vec
                 row["updatedAt"] = now
                 rows.append(row)
