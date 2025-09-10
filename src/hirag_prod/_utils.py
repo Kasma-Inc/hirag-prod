@@ -114,7 +114,7 @@ def extract_first_complete_json(s: str):
                 first_json_start = i
         elif char == "}":
             if stack:
-                start = stack.pop()
+                stack.pop()
                 if not stack:
                     first_json_str = s[first_json_start : i + 1]
                     try:

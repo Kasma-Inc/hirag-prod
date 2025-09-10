@@ -191,9 +191,13 @@ class QueryService:
                     phrase_weights[ent_id] = phrase_weights.get(ent_id, 0.0) + base_w
                     occurrence_counts[ent_id] = occurrence_counts.get(ent_id, 0) + 1
 
-            async def _fetch_entity_chunk_count(ent: str) -> int:
+            async def _fetch_entity_chunk_count(
+                ent: str, workspace_id: str, knowledge_base_id: str
+            ) -> int:
                 try:
-                    node = await self.storage.gdb.query_node(ent)
+                    node = await self.storage.vdb.query_node(
+                        ent, workspace_id, knowledge_base_id
+                    )
                     chunk_ids: List[str] = []
                     if hasattr(node, "metadata"):
                         if hasattr(node.metadata, "chunk_ids"):
@@ -207,7 +211,10 @@ class QueryService:
                     return 0
 
             counts = await asyncio.gather(
-                *[_fetch_entity_chunk_count(eid) for eid in query_entity_ids]
+                *[
+                    _fetch_entity_chunk_count(eid, workspace_id, knowledge_base_id)
+                    for eid in query_entity_ids
+                ]
             )
             ent_to_chunk_count = {
                 eid: cnt for eid, cnt in zip(query_entity_ids, counts)
@@ -245,7 +252,7 @@ class QueryService:
                 reset_weights[k] = reset_weights.get(k, 0.0) + v
 
         # Personalized PageRank over graph using reset vector
-        pr_ranked = await self.storage.gdb.pagerank_top_chunks_with_reset(
+        pr_ranked = await self.storage.vdb.pagerank_top_chunks_with_reset(
             reset_weights=reset_weights,
             topk=topk,
             alpha=damping,

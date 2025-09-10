@@ -18,7 +18,6 @@ from hirag_prod._llm import (
     create_embedding_service,
 )
 from hirag_prod._utils import (
-    _limited_gather_with_factory,
     compute_mdhash_id,
     log_error_info,
 )
@@ -297,11 +296,11 @@ class DocumentProcessor:
                     # Validate instance, as it may fall back to docling if cloud service unavailable
                     if isinstance(json_doc, list):
                         # Chunk the Dots OCR document
-                        items = chunk_dots_document(
+                        items, header_set = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
                         )
                         chunks = chunk_dots_document_recursive(
-                            json_doc=json_doc, md_doc=generated_md, items=items
+                            items=items, header_set=header_set
                         )
                         if generated_md:
                             generated_md.tableOfContents = build_rich_toc(
@@ -403,15 +402,8 @@ class DocumentProcessor:
 
             # Store relations to both graph database and vector database
             if relations:
-                # Store to graph database for graph analysis
-                gdb_relation_factories = [
-                    lambda rel=rel: self.storage.gdb.upsert_relation(rel)
-                    for rel in relations
-                ]
-                await _limited_gather_with_factory(
-                    gdb_relation_factories,
-                    get_hi_rag_config().relation_upsert_concurrency,
-                )
+                # use pgvector to mimic graphdb
+                await self.storage.vdb.upsert_graph(relations)
 
                 # Store to vector database for semantic search
                 await self.storage.upsert_relations_to_vdb(relations)
@@ -1037,10 +1029,6 @@ class HiRAG:
                 loader_type=loader_type,
             )
 
-            # Save graph state
-            if with_graph and self._storage:
-                await self._storage.gdb.dump()
-
             total_time = time.perf_counter() - start_time
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
@@ -1084,6 +1072,7 @@ class HiRAG:
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
+        threshold: float = 0.001,
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1105,12 +1094,21 @@ class HiRAG:
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
-            return query_results
-        return await self._query_service.query(
-            query=query,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-        )
+        else:
+            query_results = await self._query_service.query(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+        # Filter chunks by threshold on relevance score
+        if threshold > 0.0 and query_results.get("chunks"):
+            filtered_chunks = [
+                chunk
+                for chunk in query_results["chunks"]
+                if chunk.get("pagerank_score", 0.0) >= threshold
+            ]
+            query_results["chunks"] = filtered_chunks
+        return query_results
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
@@ -1195,10 +1193,10 @@ class HiRAG:
         """Dense Passage Retrieval-style recall using current embeddings and stored vectors.
 
         Steps:
-          - Retrieve a candidate pool without rerank
-          - Fetch embeddings of candidates and the query
-          - Compute cosine similarities, min-max normalize
-          - Return top-k chunk rows with scores and ids
+        - Retrieve a candidate pool without rerank
+        - Fetch embeddings of candidates and the query
+        - Compute cosine similarities, min-max normalize
+        - Return top-k chunk rows with scores and ids
         """
         if not self._query_service or not self.embedding_service:
             raise HiRAGException("HiRAG instance not properly initialized")

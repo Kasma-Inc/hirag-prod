@@ -494,35 +494,11 @@ def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
     return [x_0, height - y_0, x_1, height - y_1]
 
 
-def _collect_dots_page_dimensions(
-    json_doc: List[Dict[str, Any]],
-) -> Dict[int, Dict[str, Any]]:
-    page_dimensions: Dict[int, Dict[str, Any]] = {}
-    for page in json_doc:
-        page_no = page.get("page_no")
-        if page_no is not None:
-            page_dimensions[page_no] = {
-                "width": page.get("width"),
-                "height": page.get("height"),
-            }
-    return page_dimensions
-
-
 def _transform_bbox_dims_list(
     bboxes: Optional[List[List[float]]],
-    pages: Optional[List[int]],
-    page_dimensions: Dict[int, Dict[str, Any]],
+    height: Optional[float],
 ) -> Optional[List[List[float]]]:
-    if not bboxes or not pages:
-        return bboxes
-    out: List[List[float]] = []
-    for bb, pn in zip(bboxes, pages):
-        ph = (page_dimensions.get(pn) or {}).get("height")
-        if ph is None:
-            out.append(bb)
-        else:
-            out.append(_transform_bbox_dims(bb, ph))
-    return out
+    return [_transform_bbox_dims(bbox, height) for bbox in bboxes]
 
 
 def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
@@ -635,7 +611,7 @@ def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
     left_bottom_origin: bool = True,
-) -> List[Item]:
+) -> tuple[List[Item], set[str]]:
     """
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
@@ -710,6 +686,7 @@ def chunk_dots_document(
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
+    header_set = set()
     # For all headings & children, do a mapping
     for chunk in chunks:
         tmp_idx = chunk.chunkIdx
@@ -718,6 +695,7 @@ def chunk_dots_document(
             # Map the chunk ID to the heading text
             header_ids = [chunk_id_mapping[h] for h in raw_headers]
             chunk.headers = header_ids
+            header_set.update(header_ids)
 
         raw_children = dots_chunks[tmp_idx].children if tmp_idx in dots_chunks else []
         if raw_children:
@@ -725,107 +703,49 @@ def chunk_dots_document(
             child_ids = [chunk_id_mapping[c] for c in raw_children]
             chunk.children = child_ids
 
-    return chunks
-
-
-def _fetch_header_texts_from_items(
-    anchor_key: str, items: Optional[List[Item]]
-) -> tuple[list[str], dict[str, str]]:
-    """
-    Get headers and their texts for the given anchor from items in memory.
-    Returns (headers, {header_id: text}); returns ([], {}) if not found.
-    """
-    if not anchor_key or not items:
-        return [], {}
-
-    id2item = {it.documentKey: it for it in items if getattr(it, "documentKey", None)}
-    anchor = id2item.get(anchor_key)
-    if not anchor or not anchor.headers:
-        return [], {}
-
-    headers: List[str] = [h for h in anchor.headers if h in id2item]
-    texts = {h: id2item[h].text for h in headers}
-    return headers, texts
+    return chunks, header_set
 
 
 def chunk_dots_document_recursive(
-    json_doc: List[Dict[str, Any]],
-    md_doc: File,
     left_bottom_origin: bool = True,
     items: Optional[List[Item]] = None,
+    header_set: Optional[set[str]] = None,
 ) -> List[Chunk]:
     """
     Split a dots document into chunks using DotsRecursiveChunker and return a list of Chunk objects.
     This produces aggregated chunks that may span multiple pages, with pageNumber and bbox aligned by page.
     """
     chunker = DotsRecursiveChunker()
-    dense_chunks = chunker.chunk(json_doc)
-
-    page_dimensions = _collect_dots_page_dimensions(json_doc)
-
-    header_cache: Dict[str, tuple[list[str], dict[str, str]]] = {}
+    dense_chunks = chunker.chunk(items, header_set)
 
     chunks: List[Chunk] = []
     for dchunk in dense_chunks:
-        chunk_type = _dots_category_to_chunk_type(dchunk.category)
 
-        pages = dchunk.pages_span or []
-        bbox_list = dchunk.bbox or []
-
-        tbbox_list = bbox_list
+        tbbox_list = dchunk.bbox
         if left_bottom_origin:
-            tbbox_list = _transform_bbox_dims_list(bbox_list, pages, page_dimensions)
-
-        page_width = None
-        page_height = None
-        if pages:
-            first_page_dim = page_dimensions.get(pages[0], {})
-            page_width = first_page_dim.get("width", None)
-            page_height = first_page_dim.get("height", None)
-
-        # Get header texts from anchor_key and prepend them
-        final_text = dchunk.text or ""
-        headers_list: Optional[List[str]] = None
-        anchor_key = getattr(dchunk, "anchor_key", None)
-        if anchor_key:
-            if anchor_key not in header_cache:
-                header_cache[anchor_key] = _fetch_header_texts_from_items(
-                    anchor_key, items
-                )
-            hdrs, hdr_texts = header_cache[anchor_key]
-            if hdrs:
-                headers_list = hdrs
-                ordered_header_texts = [
-                    hdr_texts.get(h, "") for h in hdrs if hdr_texts.get(h)
-                ]
-                if ordered_header_texts:
-                    final_text = (
-                        "\n".join(ordered_header_texts + [final_text])
-                        if final_text
-                        else "\n".join(ordered_header_texts)
-                    )
+            tbbox_list = _transform_bbox_dims_list(tbbox_list, dchunk.page_height)
 
         chunk_obj = Chunk(
-            documentKey=compute_mdhash_id(final_text, prefix="chunk-"),
-            text=final_text,
+            documentKey=compute_mdhash_id(dchunk.text, prefix="chunk-"),
+            text=dchunk.text,
             chunkIdx=dchunk.chunk_idx,
-            documentId=md_doc.documentKey,
-            chunkType=chunk_type.value,
-            pageNumber=pages if pages else None,
+            documentId=dchunk.document_id,
+            chunkType=dchunk.category,
+            pageNumber=dchunk.pages_span,
             pageImageUrl=None,
-            pageWidth=page_width,
-            pageHeight=page_height,
+            pageWidth=dchunk.page_width,
+            pageHeight=dchunk.page_height,
             bbox=tbbox_list if tbbox_list else None,
             caption=dchunk.caption,
-            headers=headers_list,
+            headers=dchunk.headings,
             children=None,
-            type=md_doc.type,
-            fileName=md_doc.fileName,
-            uri=md_doc.uri,
-            private=md_doc.private,
-            uploadedAt=md_doc.uploadedAt,
-            knowledgeBaseId=md_doc.knowledgeBaseId,
-            workspaceId=md_doc.workspaceId,
+            type=dchunk.document_type,
+            fileName=dchunk.file_name,
+            uri=dchunk.uri,
+            private=dchunk.private,
+            uploadedAt=dchunk.uploaded_at,
+            knowledgeBaseId=dchunk.knowledge_base_id,
+            workspaceId=dchunk.workspace_id,
         )
         chunks.append(chunk_obj)
 
