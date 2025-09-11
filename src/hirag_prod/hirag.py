@@ -3,20 +3,12 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
 
-from hirag_prod._llm import (
-    ChatCompletion,
-    EmbeddingService,
-    LocalChatService,
-    LocalEmbeddingService,
-    create_chat_service,
-    create_embedding_service,
-)
 from hirag_prod._utils import (
     compute_mdhash_id,
     log_error_info,
@@ -48,7 +40,11 @@ from hirag_prod.loader.chunk_split import (
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
 from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import initialize_resource_manager
+from hirag_prod.resources.functions import (
+    get_chat_service,
+    get_embedding_service,
+    initialize_resource_manager,
+)
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
 from hirag_prod.storage import (
@@ -444,14 +440,6 @@ class HiRAG:
     _metrics: Optional[MetricsCollector] = field(default=None, init=False)
     _kg_constructor: Optional[VanillaKG] = field(default=None, init=False)
 
-    # Services
-    chat_service: Optional[Union[ChatCompletion, LocalChatService]] = field(
-        default=None, init=False
-    )
-    embedding_service: Optional[Union[EmbeddingService, LocalEmbeddingService]] = field(
-        default=None, init=False
-    )
-
     @classmethod
     async def create(
         cls,
@@ -500,13 +488,13 @@ class HiRAG:
         if vdb is None:
             if get_hi_rag_config().vdb_type == "lancedb":
                 vdb = await LanceDB.create(
-                    embedding_func=self.embedding_service.create_embeddings,
+                    embedding_func=get_embedding_service().create_embeddings,
                     db_url=get_hi_rag_config().vector_db_path,
                     strategy_provider=RetrievalStrategyProvider(),
                 )
             elif get_hi_rag_config().vdb_type == "pgvector":
                 vdb = PGVector.create(
-                    embedding_func=self.embedding_service.create_embeddings,
+                    embedding_func=get_embedding_service().create_embeddings,
                     strategy_provider=RetrievalStrategyProvider(),
                     vector_type="halfvec",
                 )
@@ -516,7 +504,7 @@ class HiRAG:
             if get_hi_rag_config().gdb_type == "networkx":
                 gdb = NetworkXGDB.create(
                     path=get_hi_rag_config().graph_db_path,
-                    llm_func=self.chat_service.complete,
+                    llm_func=get_chat_service().complete,
                 )
             elif get_hi_rag_config().gdb_type == "neo4j":
                 # Placeholder for future Neo4j adapter
@@ -530,11 +518,6 @@ class HiRAG:
 
     async def _reinitialize_storage(self) -> None:
         """Reinitialize storage components with current configuration"""
-        if not self.chat_service or not self.embedding_service:
-            raise HiRAGException(
-                "Services not initialized - cannot reinitialize storage"
-            )
-
         await self._create_storage_manager()
 
         # Update dependent components
@@ -547,12 +530,6 @@ class HiRAG:
     # outside of the HiRAG class for better management of resources
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
-        # Initialize services
-        self.chat_service = create_chat_service()
-        self.embedding_service = create_embedding_service(
-            default_batch_size=get_hi_rag_config().embedding_batch_size
-        )
-
         await self._create_storage_manager(kwargs.get("vdb"), kwargs.get("gdb"))
 
         # Initialize other components
@@ -562,7 +539,7 @@ class HiRAG:
         )
 
         self._kg_constructor = VanillaKG.create(
-            extract_func=self.chat_service.complete,
+            extract_func=get_chat_service().complete,
             llm_model_name=get_llm_config().model_name,
         )
 
@@ -609,11 +586,8 @@ class HiRAG:
 
     async def chat_complete(self, prompt: str, **kwargs: Any) -> str:
         """Chat with the user"""
-        if not self.chat_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
         try:
-            response = await self.chat_service.complete(
+            response = await get_chat_service().complete(
                 prompt=prompt,
                 **kwargs,
             )
@@ -635,9 +609,6 @@ class HiRAG:
         knowledge_base_id: str,
     ) -> List[str]:
         """Extract references from summary"""
-
-        if not self.chat_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
 
         # for each sentence, do a query and find the best matching document key to find the referenced chunk
         reference_chunk_list = []
@@ -663,7 +634,7 @@ class HiRAG:
 
         # Only embed non-empty sentences
         if non_empty_sentences:
-            sentence_embeddings = await self.embedding_service.create_embeddings(
+            sentence_embeddings = await get_embedding_service().create_embeddings(
                 texts=non_empty_sentences
             )
         else:
@@ -712,9 +683,6 @@ class HiRAG:
     ) -> str:
         """Generate summary from chunks"""
         DEBUG = False  # Set to True for debugging output
-
-        if not self.chat_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
 
         logger.info("🚀 Starting summary generation")
         start_time = time.perf_counter()
@@ -788,7 +756,7 @@ class HiRAG:
 
             # Only embed non-empty sentences
             if non_empty_sentences:
-                sentence_embeddings = await self.embedding_service.create_embeddings(
+                sentence_embeddings = await get_embedding_service().create_embeddings(
                     texts=non_empty_sentences
                 )
             else:
@@ -1198,9 +1166,6 @@ class HiRAG:
         - Compute cosine similarities, min-max normalize
         - Return top-k chunk rows with scores and ids
         """
-        if not self._query_service or not self.embedding_service:
-            raise HiRAGException("HiRAG instance not properly initialized")
-
         # Step 1: candidate pool (no rerank)
         candidates = await self._query_service.query_chunks(
             query=query,
@@ -1232,7 +1197,7 @@ class HiRAG:
         chunk_matrix = np.array(
             [chunk_vec_map[cid] for cid in filtered_ids], dtype=np.float32
         )
-        query_vec = await self.embedding_service.create_embeddings([query])
+        query_vec = await get_embedding_service().create_embeddings([query])
         # embedding services return numpy array (n, d); take first row
         if hasattr(query_vec, "shape"):
             query_vec = np.array(query_vec[0], dtype=np.float32)
