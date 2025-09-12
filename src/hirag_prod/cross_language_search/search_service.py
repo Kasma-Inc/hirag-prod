@@ -2,14 +2,20 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from googletrans.models import Translated
+from pydantic import BaseModel
 
+from hirag_prod.configs.functions import get_envs, get_llm_config
 from hirag_prod.cross_language_search.functions import (
     get_synonyms_and_validate,
     search_by_search_keyword_list,
     search_by_search_sentence_list,
 )
-from hirag_prod.resources.functions import get_translator
+from hirag_prod.resources.functions import get_chat_service, get_translator
 from hirag_prod.storage.vdb_utils import get_item_info_by_scope
+
+
+class TranslationResponse(BaseModel):
+    translation_list: List[str]
 
 
 async def cross_language_search(
@@ -21,18 +27,30 @@ async def cross_language_search(
     if is_english:
         search_list.append(search_content)
     else:
-        # Translate search content to English
-        search_translation_result: Translated = await get_translator().translate(
-            search_content, dest="en"
-        )
-        search_all_translations: Optional[List[List[Any]]] = (
-            search_translation_result.extra_data["all-translations"]
-        )
-        if search_all_translations is not None:
-            for translation_type in search_all_translations:
-                search_list.extend(translation_type[1])
+        if get_envs().SEARCH_TRANSLATOR_TYPE == "google":
+            # Translate search content to English
+            search_translation_result: Translated = await get_translator().translate(
+                search_content, dest="en"
+            )
+            search_all_translations: Optional[List[List[Any]]] = (
+                search_translation_result.extra_data["all-translations"]
+            )
+            if search_all_translations is not None:
+                for translation_type in search_all_translations:
+                    search_list.extend(translation_type[1])
+            else:
+                search_list.append(search_translation_result.text)
         else:
-            search_list.append(search_translation_result.text)
+            translation_response: (
+                TranslationResponse
+            ) = await get_chat_service().complete(
+                prompt=f"Please translate the following search keyword or sentence into English. Please translate as briefly as possible. Please give at least 5 different possible translations and output them as a JSON list. The search to translate is {search_content}",
+                model=get_llm_config().model_name,
+                max_tokens=get_llm_config().max_tokens,
+                response_format=TranslationResponse,
+                timeout=get_llm_config().timeout,
+            )
+            search_list.extend(translation_response.translation_list)
 
     search_keyword_list: List[str] = []
     search_sentence_list: List[str] = []

@@ -36,6 +36,8 @@ class Envs(BaseSettings):
 
     CONTEXTUAL_API_KEY: Optional[str] = None
 
+    SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
+
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":
         if self.EMBEDDING_SERVICE_TYPE == "openai":

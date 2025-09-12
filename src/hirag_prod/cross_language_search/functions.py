@@ -14,7 +14,7 @@ async def validate_similarity(
     str_list_to_embed: List[str],
     search_list: List[str],
     matched_list_batch: List[Optional[List[Optional[Any]]]],
-    threshold: float = 0.8,
+    threshold: float = 0.9,
 ) -> None:
     embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
         str_list_to_embed + search_list

@@ -5,12 +5,13 @@ import weakref
 from abc import ABC
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, TypeVar, Union
 
 import httpx
 import numpy as np
 from aiolimiter import AsyncLimiter
 from openai import APIConnectionError, AsyncOpenAI, RateLimitError
+from pydantic import BaseModel
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -401,6 +402,8 @@ class ChatCompletion(metaclass=SingletonMeta):
             self._token_tracker = TokenUsageTracker()
             self._initialized = True
 
+    T = TypeVar("T", bound=BaseModel)
+
     @rate_limited(
         max_rate=APIConstants.DEFAULT_RATE_LIMIT,
         time_period=APIConstants.DEFAULT_RATE_PERIOD,
@@ -413,8 +416,9 @@ class ChatCompletion(metaclass=SingletonMeta):
         prompt: str,
         system_prompt: Optional[str] = None,
         history_messages: Optional[List[Dict[str, str]]] = None,
+        response_format: Optional[type[T]] = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Union[str, T]:
         """
         Complete a chat prompt using the specified model.
 
@@ -423,6 +427,7 @@ class ChatCompletion(metaclass=SingletonMeta):
             prompt: The user prompt
             system_prompt: Optional system prompt
             history_messages: Optional conversation history
+            response_format: Optional response format
             **kwargs: Additional parameters for the API call
 
         Returns:
@@ -430,14 +435,25 @@ class ChatCompletion(metaclass=SingletonMeta):
         """
         messages = self._build_messages(system_prompt, history_messages, prompt)
 
-        response = await self.client.chat.completions.create(
-            model=model, messages=messages, **kwargs
-        )
+        if response_format is None:
+            response = await self.client.chat.completions.create(
+                model=model, messages=messages, **kwargs
+            )
+        else:
+            response = await self.client.beta.chat.completions.parse(
+                model=model,
+                messages=messages,
+                response_format=response_format,
+                **kwargs,
+            )
 
         # Track token usage
         self._token_tracker.track_usage(response.usage, model, prompt)
 
-        return response.choices[0].message.content
+        if response_format is None:
+            return response.choices[0].message.content
+        else:
+            return response.choices[0].message.parsed
 
     def _build_messages(
         self,
