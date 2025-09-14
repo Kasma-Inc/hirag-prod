@@ -22,13 +22,13 @@ class Item(Base):
 
     # Item Data
     documentKey: str = Column(String, primary_key=True, nullable=False)
+    knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
+    workspaceId: str = Column(String, primary_key=True, nullable=False)
     text: str = Column(Text, nullable=False)
     # From FileMetadata
     fileName: str = Column(String, nullable=False)
     uri: str = Column(String, nullable=False)
     private: bool = Column(Boolean, default=False, nullable=False)
-    knowledgeBaseId: str = Column(String, nullable=False)
-    workspaceId: str = Column(String, nullable=False)
     type: Optional[str] = Column(String, nullable=True)
     pageNumber: Optional[int] = Column(Integer, nullable=True)
     uploadedAt: Optional[datetime] = Column(DateTime, nullable=True)
