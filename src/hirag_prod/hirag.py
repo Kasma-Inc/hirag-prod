@@ -32,9 +32,8 @@ from hirag_prod.loader.chunk_split import (
     build_rich_toc,
     chunk_docling_document,
     chunk_dots_document,
-    chunk_dots_document_recursive,
     chunk_langchain_document,
-    group_docling_items_by_header,
+    items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
@@ -295,28 +294,32 @@ class DocumentProcessor:
                         items, header_set = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
                         )
-                        chunks = chunk_dots_document_recursive(
-                            items=items, header_set=header_set
-                        )
-                        if generated_md:
-                            generated_md.tableOfContents = build_rich_toc(
-                                items, generated_md
-                            )
+                        dots_left_bottom_origin = True
+
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
-                        items = chunk_docling_document(json_doc, generated_md)
+                        items, header_set = chunk_docling_document(
+                            json_doc, generated_md
+                        )
                         if content_type == "text/markdown":
                             raw_md = generated_md.text
                             items = obtain_docling_md_bbox(json_doc, raw_md, items)
+                        dots_left_bottom_origin = False
 
-                        chunks = group_docling_items_by_header(items)
-                        if generated_md:
-                            generated_md.tableOfContents = build_rich_toc(
-                                items, generated_md
-                            )
                     else:
                         raise DocumentProcessingError(
                             "Invalid document format returned by loader"
+                        )
+
+                    # Unified chunking method :)
+                    chunks = items_to_chunks_recursive(
+                        items=items,
+                        header_set=header_set,
+                        dots_left_bottom_origin=dots_left_bottom_origin,
+                    )
+                    if generated_md:
+                        generated_md.tableOfContents = build_rich_toc(
+                            items, generated_md
                         )
 
                 logger.info(
