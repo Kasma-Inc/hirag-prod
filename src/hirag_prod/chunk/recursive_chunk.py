@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from datetime import datetime
-from hirag_prod.schema.item import Item
 from typing import List, Optional
+
+from hirag_prod.schema.item import Item
+
 
 @dataclass
 class DenseChunk:
@@ -26,25 +28,28 @@ class DenseChunk:
     workspace_id: str = None
     uploaded_at: datetime = None
 
+
 class UnifiedRecursiveChunker:
     """Recursive chunker for Items obtained after OCR JSON documents (dense aggregation)."""
 
     def _is_table(self, category: str) -> bool:
         return category == "table"
 
-    def _process_page_bboxes(self, page_bboxes: List[List[float]], page: int) -> List[float]:
+    def _process_page_bboxes(
+        self, page_bboxes: List[List[float]], page: int
+    ) -> List[float]:
         """Process bboxes for a single page and return aggregated bbox."""
         if not page_bboxes:
             return []
-        
+
         bbox_len = [len(b) for b in page_bboxes if b]
-        
+
         # Verify all bboxes have the same length
         if len(set(bbox_len)) > 1:
             raise ValueError(
                 f"Inconsistent bbox lengths on page {page}: {set(bbox_len)}"
             )
-        
+
         bbox_len = bbox_len[0] if bbox_len else 0
 
         if bbox_len == 4:
@@ -62,7 +67,9 @@ class UnifiedRecursiveChunker:
             # Fallback: use empty bbox
             return []
 
-    def _build_bbox_list_for_pages(self, items: List[Item], pages: List[int]) -> List[List[float]]:
+    def _build_bbox_list_for_pages(
+        self, items: List[Item], pages: List[int]
+    ) -> List[List[float]]:
         """Build bbox list for given pages from items."""
         bbox_list = []
         for page in pages:
@@ -71,12 +78,12 @@ class UnifiedRecursiveChunker:
         return bbox_list
 
     def _create_dense_chunk(
-        self, 
-        chunk_idx: int, 
-        text: str, 
-        bbox_list: List[List[float]], 
-        pages_span: List[int], 
-        reference_item: Item
+        self,
+        chunk_idx: int,
+        text: str,
+        bbox_list: List[List[float]],
+        pages_span: List[int],
+        reference_item: Item,
     ) -> DenseChunk:
         """Create a DenseChunk with common fields from a reference item."""
         return DenseChunk(
@@ -176,14 +183,16 @@ class UnifiedRecursiveChunker:
                 merged_text = " ".join(n.text for n in non_header_items)
                 non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
                 pages_span = [p for p in non_header_pages]
-                bbox_list = self._build_bbox_list_for_pages(non_header_items, non_header_pages)
+                bbox_list = self._build_bbox_list_for_pages(
+                    non_header_items, non_header_pages
+                )
 
                 merged_item = self._create_dense_chunk(
                     chunk_idx=chunk_idx,
                     text=merged_text,
                     bbox_list=bbox_list,
                     pages_span=pages_span,
-                    reference_item=item
+                    reference_item=item,
                 )
 
                 chunks.append(merged_item)
@@ -201,7 +210,9 @@ class UnifiedRecursiveChunker:
             pages_span.extend(p for p in non_header_pages)
 
             bbox_list = [h.bbox for h in header_items]
-            non_header_bbox_list = self._build_bbox_list_for_pages(non_header_items, non_header_pages)
+            non_header_bbox_list = self._build_bbox_list_for_pages(
+                non_header_items, non_header_pages
+            )
             bbox_list.extend(non_header_bbox_list)
 
             merged_item = self._create_dense_chunk(
@@ -209,7 +220,7 @@ class UnifiedRecursiveChunker:
                 text=merged_text,
                 bbox_list=bbox_list,
                 pages_span=pages_span,
-                reference_item=item
+                reference_item=item,
             )
 
             chunks.append(merged_item)
