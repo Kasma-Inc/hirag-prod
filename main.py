@@ -174,7 +174,14 @@ def main():
     print(f"Summary: {cli_options.summary}\n")
     print(f"Loader Type: {cli_options.loader_type}\n")
 
-    asyncio.run(index(cli_options.test, cli_options.overwrite, cli_options.summary, cli_options.loader_type))
+    asyncio.run(
+        index(
+            cli_options.test,
+            cli_options.overwrite,
+            cli_options.summary,
+            cli_options.loader_type,
+        )
+    )
 
 
 if __name__ == "__main__":

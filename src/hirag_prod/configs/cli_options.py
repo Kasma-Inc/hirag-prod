@@ -37,7 +37,13 @@ class CliOptions:
             args: Namespace = parser.parse_known_args()[0]
         except SystemExit:
             # Fallback if argument parsing fails (e.g., when called from other scripts)
-            args = argparse.Namespace(debug=False, test="2", overwrite="T", summary="T", loader_type="dots_ocr")
+            args = argparse.Namespace(
+                debug=False,
+                test="2",
+                overwrite="T",
+                summary="T",
+                loader_type="dots_ocr",
+            )
 
         self.debug: bool = args.debug
         self.test: str = args.test
