@@ -294,7 +294,6 @@ class DocumentProcessor:
                         items, header_set = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
                         )
-                        dots_left_bottom_origin = True
 
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
@@ -304,7 +303,6 @@ class DocumentProcessor:
                         if content_type == "text/markdown":
                             raw_md = generated_md.text
                             items = obtain_docling_md_bbox(json_doc, raw_md, items)
-                        dots_left_bottom_origin = False
 
                     else:
                         raise DocumentProcessingError(
@@ -315,7 +313,6 @@ class DocumentProcessor:
                     chunks = items_to_chunks_recursive(
                         items=items,
                         header_set=header_set,
-                        dots_left_bottom_origin=dots_left_bottom_origin,
                     )
                     if generated_md:
                         generated_md.tableOfContents = build_rich_toc(

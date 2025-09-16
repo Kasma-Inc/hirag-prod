@@ -211,7 +211,7 @@ def _extract_docling_chunk_meta(chunk) -> dict:
     for item in chunk.meta.doc_items or []:
         for prov in item.prov or []:
             if page_no is None:
-                page_no = prov.page_no - 1  # Convert to 0-based index
+                page_no = prov.page_no
             bb = prov.bbox
             if bb.l < min_l:
                 min_l = bb.l
@@ -327,7 +327,9 @@ def chunk_docling_document(
             document_id=doc_md.documentKey,
             chunk_type=chunk_type.value,
             source_file=doc_md,
-            page_number=page_number,
+            page_number=(
+                page_number - 1 if page_number is not None else None
+            ),  # Convert to 0-based index
             page_width=page_width,
             page_height=page_height,
             bbox=bbox,
@@ -723,7 +725,6 @@ def chunk_langchain_document(
 
 
 def items_to_chunks_recursive(
-    dots_left_bottom_origin: bool = False,
     items: Optional[List[Item]] = None,
     header_set: Optional[set[str]] = None,
 ) -> List[Chunk]:
@@ -737,8 +738,6 @@ def items_to_chunks_recursive(
     chunks: List[Chunk] = []
     for dchunk in dense_chunks:
         tbbox_list = dchunk.bbox
-        if dots_left_bottom_origin:
-            tbbox_list = _transform_bbox_dims_list(tbbox_list, dchunk.page_height)
 
         file_metadata = {
             "type": dchunk.document_type,
