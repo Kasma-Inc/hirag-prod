@@ -211,7 +211,7 @@ def _extract_docling_chunk_meta(chunk) -> dict:
     for item in chunk.meta.doc_items or []:
         for prov in item.prov or []:
             if page_no is None:
-                page_no = prov.page_no
+                page_no = prov.page_no - 1  # Convert to 0-based index
             bb = prov.bbox
             if bb.l < min_l:
                 min_l = bb.l
