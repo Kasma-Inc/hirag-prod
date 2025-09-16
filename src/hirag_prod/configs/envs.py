@@ -34,8 +34,6 @@ class Envs(BaseSettings):
     LOCAL_LLM_BASE_URL: Optional[str] = None
     LOCAL_LLM_API_KEY: Optional[str] = None
 
-    CONTEXTUAL_API_KEY: Optional[str] = None
-
     SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
 
     @model_validator(mode="after")

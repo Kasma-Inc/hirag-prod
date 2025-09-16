@@ -172,68 +172,6 @@ async def get_all_records(
     return [dict(row._mapping) for row in rows]
 
 
-class ContextualResultTable(SQLModel, table=True):
-    __tablename__ = "ContextualResultTable"
-    job_id: str = Field(primary_key=True)
-    file_name: str
-    markdown_document: str
-    pages: List[Dict[str, Any]] = Field(sa_type=JSON, nullable=True)
-    hierarchy_blocks: List[Dict[str, Any]] = Field(sa_type=JSON, nullable=True)
-    table_of_content: str
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "job_id": self.job_id,
-            "file_name": self.file_name,
-            "markdown_document": self.markdown_document,
-            "pages": self.pages,
-            "hierarchy_blocks": self.hierarchy_blocks,
-            "table_of_content": self.table_of_content,
-        }
-
-
-async def saveContextResult(
-    session: AsyncSession, result: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Save a context result to the database."""
-
-    # Extract fields from Contextual AI API response structure
-    document_metadata = result.get("document_metadata", {})
-    hierarchy = document_metadata.get("hierarchy", {})
-
-    result_record = ContextualResultTable(
-        job_id=result.get("job_id"),
-        file_name=result.get("file_name", ""),
-        markdown_document=result.get("markdown_document", ""),
-        pages=result.get("pages", []),
-        hierarchy_blocks=hierarchy.get("blocks", []),
-        table_of_content=hierarchy.get("table_of_contents", ""),
-    )
-    session.add(result_record)
-    await session.commit()
-
-    # Refresh the object to ensure all attributes are loaded before calling to_dict()
-    await session.refresh(result_record)
-    return result_record.to_dict()
-
-
-async def queryContextResult(
-    session: AsyncSession, job_id: str
-) -> Optional[Dict[str, Any]]:
-    """Query context result from database."""
-
-    statement = select(ContextualResultTable).where(
-        ContextualResultTable.job_id == job_id
-    )
-    result = await session.exec(statement)
-    result = result.first()
-
-    if result:
-        return result.to_dict()
-
-    return None
-
-
 async def main():
     parser = argparse.ArgumentParser(description="PostgreSQL table utilities")
     parser.add_argument(
