@@ -175,26 +175,6 @@ def _create_chunk_base(
     )
 
 
-def _map_chunk_ids_to_document_keys(
-    chunks: List[Item], chunk_id_mapping: Dict[int, str]
-) -> set[str]:
-    """Map temporary chunk IDs to document keys for headers and children."""
-    header_set = set()
-
-    for chunk in chunks:
-        if chunk.headers:
-            chunk.headers = [
-                chunk_id_mapping.get(header_id) for header_id in chunk.headers
-            ]
-            header_set.update([h for h in chunk.headers if h is not None])
-        if chunk.children:
-            chunk.children = [
-                chunk_id_mapping.get(child_id) for child_id in chunk.children
-            ]
-
-    return header_set
-
-
 def _find_text_positions(
     texts: List[str], original_text: str, chunk_overlap: int = 0
 ) -> Dict[int, Optional[tuple[int, int]]]:
@@ -366,7 +346,18 @@ def chunk_docling_document(
         chunk_id_mapping[chunk_obj.chunkIdx] = chunk_obj.documentKey
 
     # Translate all chunk IDs to their document keys
-    header_set = _map_chunk_ids_to_document_keys(chunks, chunk_id_mapping)
+    header_set = set()
+
+    for chunk in chunks:
+        if chunk.headers:
+            chunk.headers = [
+                chunk_id_mapping.get(header_id) for header_id in chunk.headers
+            ]
+            header_set.update([h for h in chunk.headers if h is not None])
+        if chunk.children:
+            chunk.children = [
+                chunk_id_mapping.get(child_id) for child_id in chunk.children
+            ]
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
@@ -661,6 +652,7 @@ def chunk_dots_document(
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
+    header_set = set()
     # For all headings & children, do a mapping
     for chunk in chunks:
         tmp_idx = chunk.chunkIdx
@@ -669,14 +661,13 @@ def chunk_dots_document(
             # Map the chunk ID to the heading text
             header_ids = [chunk_id_mapping[h] for h in raw_headers]
             chunk.headers = header_ids
+            header_set.update(header_ids)
 
         raw_children = dots_chunks[tmp_idx].children if tmp_idx in dots_chunks else []
         if raw_children:
             # Map the chunk ID to the children
             child_ids = [chunk_id_mapping[c] for c in raw_children]
             chunk.children = child_ids
-
-    header_set = _map_chunk_ids_to_document_keys(chunks, chunk_id_mapping)
 
     return chunks, header_set
 
