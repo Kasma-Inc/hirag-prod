@@ -53,11 +53,11 @@ class UnifiedRecursiveChunker:
         bbox_len = bbox_len[0] if bbox_len else 0
 
         if bbox_len == 4:
-            min_x = min(b[0] for b in page_bboxes)
-            min_y = min(b[1] for b in page_bboxes)
-            max_x = max(b[2] for b in page_bboxes)
-            max_y = max(b[3] for b in page_bboxes)
-            return [min_x, min_y, max_x, max_y]
+            x_0 = min(b[0] for b in page_bboxes)
+            y_0 = max(b[1] for b in page_bboxes)
+            x_1 = max(b[2] for b in page_bboxes)
+            y_1 = min(b[3] for b in page_bboxes)
+            return [x_0, y_0, x_1, y_1]
         elif bbox_len == 2:
             # Handle charspan style bbox [start, end]
             min_start = min(b[0] for b in page_bboxes)
