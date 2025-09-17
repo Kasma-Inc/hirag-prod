@@ -683,7 +683,6 @@ class HiRAG:
         chunks: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks"""
-        DEBUG = False  # Set to True for debugging output
 
         logger.info("🚀 Starting summary generation")
         start_time = time.perf_counter()
@@ -726,16 +725,10 @@ class HiRAG:
                     new_error_class=HiRAGException,
                 )
 
-            if DEBUG:
-                print("\n\n\nGenerated Summary:\n", summary)
-
             # Find all sentences that contain the placeholder
             ref_parser = ReferenceParser()
 
             ref_sentences = await ref_parser.parse_references(summary, placeholder)
-
-            if DEBUG:
-                print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
 
             # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
@@ -783,14 +776,6 @@ class HiRAG:
                     sentence_embedding, chunk_embeddings
                 )
 
-                if DEBUG:
-                    print(
-                        "\n\n\nSimilar Chunks for Sentence:",
-                        sentence,
-                        "\n",
-                        similar_chunks,
-                    )
-
                 # Sort by similarity
                 reference_list = similar_chunks
                 reference_list.sort(key=lambda x: x["similarity"], reverse=True)
@@ -835,15 +820,6 @@ class HiRAG:
                     key=lambda x: (x["documentKey"].split("_")[0], -x["similarity"])
                 )
 
-                # Append the document keys to the result
-                if DEBUG:
-                    print(
-                        "\n\n\nFiltered References for Sentence:",
-                        sentence,
-                        "\n",
-                        filtered_references,
-                    )
-
                 if len(filtered_references) == 1:
                     result.append([filtered_references[0]["documentKey"]])
                 else:
@@ -859,9 +835,6 @@ class HiRAG:
                 reference_placeholder=placeholder,
                 format_prompt=format_prompt,
             )
-
-            if DEBUG:
-                print("\n\n\nFormatted Summary:\n", summary)
 
             total_time = time.perf_counter() - start_time
             logger.info(f"✅ Summary generation completed in {total_time:.3f}s")
