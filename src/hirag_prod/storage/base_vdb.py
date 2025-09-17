@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Callable, List, Literal, Optional
+from typing import Callable, List, Literal, Optional, Union
 
 
 class BaseVDB(ABC):
@@ -23,7 +23,7 @@ class BaseVDB(ABC):
     @abstractmethod
     async def query(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,

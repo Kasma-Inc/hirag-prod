@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import select
 
@@ -139,7 +139,7 @@ class StorageManager:
 
     async def query_chunks(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         rerank: bool = False,
@@ -167,7 +167,7 @@ class StorageManager:
 
     async def query_triplets(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         rerank: bool = False,

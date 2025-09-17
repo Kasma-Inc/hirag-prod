@@ -2,7 +2,7 @@ import logging
 import math
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import networkx as nx
 from sqlalchemy import delete, func, select
@@ -457,7 +457,7 @@ class PGVector(BaseVDB):
 
     async def query(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,
@@ -469,6 +469,21 @@ class PGVector(BaseVDB):
         topn: Optional[int] = TOPN,
         rerank: bool = False,
     ) -> List[dict]:
+        if isinstance(query, list):
+            return await self.multi_vector_query(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                table_name=table_name,
+                topk=topk,
+                uri_list=uri_list,
+                require_access=require_access,
+                columns_to_select=columns_to_select,
+                distance_threshold=distance_threshold,
+                topn=topn,
+                rerank=rerank,
+            )
+    
         if columns_to_select is None:
             columns_to_select = ["text", "uri", "fileName", "private"]
 
@@ -520,6 +535,91 @@ class PGVector(BaseVDB):
 
             scored = (
                 await apply_reranking(query, scored, topn, topk) if rerank else scored
+            )
+
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"[query] Retrieved {len(scored)} records from '{table_name}', elapsed={elapsed:.3f}s"
+            )
+            return scored
+    
+    async def multi_vector_query(
+        self,
+        query: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        topk: Optional[int] = TOPK,
+        uri_list: Optional[List[str]] = None,
+        require_access: Optional[Literal["private", "public"]] = None,
+        columns_to_select: Optional[List[str]] = None,
+        distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
+        topn: Optional[int] = TOPN,
+        rerank: bool = False,
+    ) -> List[dict]:
+        if columns_to_select is None:
+            columns_to_select = ["text", "uri", "fileName", "private"]
+
+        if topk is None:
+            topk = self.strategy_provider.default_topk
+        if topn is None:
+            topn = self.strategy_provider.default_topn
+
+        if topn > topk:
+            raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
+
+        model = self.get_model(table_name)
+
+        start = time.perf_counter()
+        async with get_db_session_maker()() as session:
+            # Generate embeddings for all query strings
+            q_embs = await self.embedding_func(query)
+            q_embs = [self._to_list(emb) for emb in q_embs]
+
+            # Calculate cosine distance for each query embedding and take the minimum
+            distance_expressions = [
+                model.vector.cosine_distance(q_emb) for q_emb in q_embs
+            ]
+            
+            # Use func.least to get the minimum distance among all query embeddings
+            if len(distance_expressions) == 1:
+                distance_expr = distance_expressions[0].label("distance")
+            else:
+                distance_expr = func.least(*distance_expressions).label("distance")
+
+            stmt = select(model, distance_expr)
+
+            if uri_list and hasattr(model, "uri"):
+                stmt = stmt.where(model.uri.in_(uri_list))
+            if require_access is not None and hasattr(model, "private"):
+                stmt = stmt.where(model.private == (require_access == "private"))
+            if workspace_id and hasattr(model, "workspaceId"):
+                stmt = stmt.where(model.workspaceId == workspace_id)
+            if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
+                stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
+
+            if distance_threshold is not None:
+                stmt = stmt.where(distance_expr < float(distance_threshold))
+
+            stmt = stmt.order_by(distance_expr.asc()).limit(topk)
+
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            scored = []
+            for row, dist in rows:
+                payload = {
+                    col: getattr(row, col)
+                    for col in columns_to_select
+                    if hasattr(row, col)
+                }
+                payload["distance"] = dist
+                scored.append(payload)
+
+            # Convert list of query strings to single string for reranking
+            query_string = "; ".join(query) if isinstance(query, list) else query
+            scored = (
+                await apply_reranking(query_string, scored, topn, topk) if rerank else scored
             )
 
             elapsed = time.perf_counter() - start

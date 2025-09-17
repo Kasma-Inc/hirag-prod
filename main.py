@@ -149,6 +149,7 @@ async def index(test_id="2", overwrite=True, summary=True, loader_type="dots_ocr
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
         threshold=0.001,
+        translation=["en", "zh-TW", "zh"],
     )
 
     print("———————————————————— Chunks ————————————————————\n")

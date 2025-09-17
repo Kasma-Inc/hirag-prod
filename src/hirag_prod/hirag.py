@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
@@ -42,6 +42,7 @@ from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_embedding_service,
+    get_translator,
     initialize_resource_manager,
 )
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
@@ -1036,11 +1037,12 @@ class HiRAG:
 
     async def query(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
         threshold: float = 0.001,
+        translation: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1049,25 +1051,40 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+        
+        original_query = query if isinstance(query, str) else " ".join(query)
+        query_list = [original_query]
+        
+        if translation:
+            # Get translator from resource manager
+            translator = get_translator()
+
+            # Translate to each specified language
+            for target_language in translation:
+                try:
+                    # Following the same pattern as cross_language_search
+                    translated_result = await translator.translate(original_query, dest=target_language)
+                    if translated_result.text and translated_result.text != original_query:
+                        query_list.append(translated_result.text)
+                        logger.info(f"🌐 Translated query to {target_language}: {translated_result.text}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+
+        query_results = await self._query_service.query(
+            query=query_list if len(query_list) > 1 else original_query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+
         if summary:
-            query_results = await self._query_service.query(
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-            )
             text_summary = await self.generate_summary(
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                query=query,
+                query=original_query,
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
-        else:
-            query_results = await self._query_service.query(
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-            )
+
         # Filter chunks by threshold on relevance score
         if threshold > 0.0 and query_results.get("chunks"):
             filtered_chunks = [
@@ -1076,6 +1093,7 @@ class HiRAG:
                 if chunk.get("pagerank_score", 0.0) >= threshold
             ]
             query_results["chunks"] = filtered_chunks
+        
         return query_results
 
     async def get_health_status(self) -> Dict[str, Any]:

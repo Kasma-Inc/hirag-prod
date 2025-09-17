@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
@@ -112,7 +112,7 @@ class QueryService:
 
     async def dual_recall_with_pagerank(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         topk: Optional[int] = None,
@@ -277,7 +277,7 @@ class QueryService:
         self,
         workspace_id: str,
         knowledge_base_id: str,
-        query: str,
+        query: Union[str, List[str]],
     ) -> Dict[str, Any]:
         """Query Strategy (default: dual_recall_with_pagerank)"""
         result = await self.dual_recall_with_pagerank(
