@@ -109,7 +109,7 @@ def load_document(
     content_type: str,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: LoaderType = "docling_cloud",
+    loader_type: LoaderType = "dots_ocr",
 ) -> Tuple[Any, File]:
     """Load a document from the given path and content type
 

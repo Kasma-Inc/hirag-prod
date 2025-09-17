@@ -124,7 +124,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        loader_type: LoaderType = "docling_cloud",
+        loader_type: LoaderType = "dots_ocr",
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
@@ -891,7 +891,7 @@ class HiRAG:
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
         overwrite: Optional[bool] = False,
-        loader_type: LoaderType = "docling_cloud",
+        loader_type: LoaderType = "dots_ocr",
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
