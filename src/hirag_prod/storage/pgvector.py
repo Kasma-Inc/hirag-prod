@@ -483,7 +483,7 @@ class PGVector(BaseVDB):
                 topn=topn,
                 rerank=rerank,
             )
-    
+
         if columns_to_select is None:
             columns_to_select = ["text", "uri", "fileName", "private"]
 
@@ -542,7 +542,7 @@ class PGVector(BaseVDB):
                 f"[query] Retrieved {len(scored)} records from '{table_name}', elapsed={elapsed:.3f}s"
             )
             return scored
-    
+
     async def multi_vector_query(
         self,
         query: List[str],
@@ -580,7 +580,7 @@ class PGVector(BaseVDB):
             distance_expressions = [
                 model.vector.cosine_distance(q_emb) for q_emb in q_embs
             ]
-            
+
             # Use func.least to get the minimum distance among all query embeddings
             if len(distance_expressions) == 1:
                 distance_expr = distance_expressions[0].label("distance")
@@ -619,7 +619,9 @@ class PGVector(BaseVDB):
             # Convert list of query strings to single string for reranking
             query_string = "; ".join(query) if isinstance(query, list) else query
             scored = (
-                await apply_reranking(query_string, scored, topn, topk) if rerank else scored
+                await apply_reranking(query_string, scored, topn, topk)
+                if rerank
+                else scored
             )
 
             elapsed = time.perf_counter() - start

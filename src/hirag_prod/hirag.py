@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
@@ -1037,7 +1037,7 @@ class HiRAG:
 
     async def query(
         self,
-        query: Union[str, List[str]],
+        query: str,
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
@@ -1051,10 +1051,10 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
-        
-        original_query = query if isinstance(query, str) else " ".join(query)
+
+        original_query = query
         query_list = [original_query]
-        
+
         if translation:
             # Get translator from resource manager
             translator = get_translator()
@@ -1063,10 +1063,17 @@ class HiRAG:
             for target_language in translation:
                 try:
                     # Following the same pattern as cross_language_search
-                    translated_result = await translator.translate(original_query, dest=target_language)
-                    if translated_result.text and translated_result.text != original_query:
+                    translated_result = await translator.translate(
+                        original_query, dest=target_language
+                    )
+                    if (
+                        translated_result.text
+                        and translated_result.text != original_query
+                    ):
                         query_list.append(translated_result.text)
-                        logger.info(f"🌐 Translated query to {target_language}: {translated_result.text}")
+                        logger.info(
+                            f"🌐 Translated query to {target_language}: {translated_result.text}"
+                        )
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
 
@@ -1093,7 +1100,7 @@ class HiRAG:
                 if chunk.get("pagerank_score", 0.0) >= threshold
             ]
             query_results["chunks"] = filtered_chunks
-        
+
         return query_results
 
     async def get_health_status(self) -> Dict[str, Any]:
