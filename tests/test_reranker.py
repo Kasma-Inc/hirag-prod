@@ -37,7 +37,7 @@ async def test_api_reranker_integration():
     assert all("id" in item for item in result)
 
     # Results should be sorted by score (highest first)
-    scores = [item["score"] for item in result]
+    scores = [item["relevance_score"] for item in result]
     assert scores == sorted(scores, reverse=True)
 
     print(f"✅ API Reranker test passed: {len(result)} items reranked")
@@ -130,7 +130,7 @@ async def test_local_reranker_integration():
     assert all("text" in item for item in result)
     assert all("id" in item for item in result)
 
-    scores = [item["score"] for item in result]
+    scores = [item["relevance_score"] for item in result]
     assert scores == sorted(scores, reverse=True)
 
     print(f"✅ Local Reranker test passed: {len(result)} items reranked")

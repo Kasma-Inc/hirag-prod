@@ -3,11 +3,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
-from dotenv import load_dotenv
 
 from hirag_prod._utils import (
     compute_mdhash_id,
@@ -57,8 +56,6 @@ from hirag_prod.storage import (
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
-
-load_dotenv("/chatbot/.env")
 
 # Configure Logging
 logging.basicConfig(
@@ -1014,8 +1011,9 @@ class HiRAG:
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
-        threshold: float = 0.001,
+        threshold: float = 0.0,
         translation: Optional[List[str]] = None,
+        strategy: Literal["pagerank", "reranker"] = "pagerank",
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1054,6 +1052,7 @@ class HiRAG:
             query=query_list if len(query_list) > 1 else original_query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
+            strategy=strategy,
         )
 
         if summary:
@@ -1070,7 +1069,7 @@ class HiRAG:
             filtered_chunks = [
                 chunk
                 for chunk in query_results["chunks"]
-                if chunk.get("pagerank_score", 0.0) >= threshold
+                if chunk.get("relevance_score", 0.0) >= threshold
             ]
             query_results["chunks"] = filtered_chunks
 

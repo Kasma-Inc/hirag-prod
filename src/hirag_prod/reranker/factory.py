@@ -17,12 +17,12 @@ def create_reranker(reranker_type: Optional[str] = None) -> Reranker:
     elif reranker_type == "local":
         base_url = os.getenv("RERANKER_MODEL_BASE_URL")
         model_name = os.getenv("RERANKER_MODEL_NAME", "Qwen3-Reranker-8B")
-        entry_point = os.getenv("RERANKER_MODEL_Entry_Point", "/rerank")
-        auth_token = os.getenv("RERANKER_MODEL_Authorization")
+        entry_point = os.getenv("RERANKER_MODEL_ENTRY_POINT", "/rerank")
+        auth_token = os.getenv("RERANKER_MODEL_AUTHORIZATION")
         if not base_url:
             raise ValueError("RERANKER_MODEL_BASE_URL required")
         if not auth_token:
-            raise ValueError("RERANKER_MODEL_Authorization required")
+            raise ValueError("RERANKER_MODEL_AUTHORIZATION required")
         return LocalReranker(base_url, model_name, entry_point, auth_token)
     else:
         raise ValueError(f"Unsupported reranker type: {reranker_type}")

@@ -2,7 +2,7 @@ import logging
 import math
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import networkx as nx
 from sqlalchemy import delete, func, select
@@ -457,7 +457,7 @@ class PGVector(BaseVDB):
 
     async def query(
         self,
-        query: Union[str, List[str]],
+        query: str,
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,
@@ -469,20 +469,6 @@ class PGVector(BaseVDB):
         topn: Optional[int] = TOPN,
         rerank: bool = False,
     ) -> List[dict]:
-        if isinstance(query, list):
-            return await self.multi_vector_query(
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                table_name=table_name,
-                topk=topk,
-                uri_list=uri_list,
-                require_access=require_access,
-                columns_to_select=columns_to_select,
-                distance_threshold=distance_threshold,
-                topn=topn,
-                rerank=rerank,
-            )
 
         if columns_to_select is None:
             columns_to_select = ["text", "uri", "fileName", "private"]
@@ -543,7 +529,8 @@ class PGVector(BaseVDB):
             )
             return scored
 
-    async def multi_vector_query(
+    # Function overload to handle list of queries
+    async def query(
         self,
         query: List[str],
         workspace_id: str,
@@ -617,11 +604,8 @@ class PGVector(BaseVDB):
                 scored.append(payload)
 
             # Convert list of query strings to single string for reranking
-            query_string = "; ".join(query) if isinstance(query, list) else query
             scored = (
-                await apply_reranking(query_string, scored, topn, topk)
-                if rerank
-                else scored
+                await apply_reranking(query, scored, topn, topk) if rerank else scored
             )
 
             elapsed = time.perf_counter() - start

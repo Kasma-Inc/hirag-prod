@@ -1,9 +1,10 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.reranker import Reranker, create_reranker
 from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
@@ -14,6 +15,7 @@ class QueryService:
 
     def __init__(self, storage: StorageManager):
         self.storage = storage
+        self.reranker: Optional[Reranker] = create_reranker()
 
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query chunks via unified storage"""
@@ -273,21 +275,71 @@ class QueryService:
             "query_top": query_chunks,
         }
 
+    async def dual_recall_with_rerank(
+        self,
+        query: Union[str, List[str]],
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Two-path retrieval + Reranking fusion."""
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+
+        # Path 1: chunk recall (rerank happens in VDB query)
+        chunk_recall = await self.recall_chunks(
+            query,
+            topk=topk,
+            topn=topn,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        query_chunks = chunk_recall["chunks"]
+
+        # rerank
+        if self.reranker and query_chunks:
+            try:
+                reranked_chunks = await self.reranker.rerank(
+                    query=query,
+                    items=query_chunks,
+                    topn=topn,
+                )
+                query_chunks = reranked_chunks
+            except Exception as e:
+                log_error_info(logging.ERROR, "Failed to rerank chunks", e)
+
+        return {
+            "query_top": query_chunks,
+        }
+
     async def query(
         self,
         workspace_id: str,
         knowledge_base_id: str,
         query: Union[str, List[str]],
+        strategy: Literal["pagerank", "reranker"] = "reranker",
     ) -> Dict[str, Any]:
-        """Query Strategy (default: dual_recall_with_pagerank)"""
-        result = await self.dual_recall_with_pagerank(
-            query=query,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-        )
-        result["chunks"] = (
-            result.get("pagerank")
-            if result.get("pagerank")
-            else result.get("query_top", [])
-        )
-        return result
+        """Query Strategy"""
+        if strategy == "reranker":
+            result = await self.dual_recall_with_rerank(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+            result["chunks"] = result.get("query_top", [])
+            return result
+        elif strategy == "pagerank":
+            result = await self.dual_recall_with_pagerank(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+            result["chunks"] = (
+                result.get("pagerank")
+                if result.get("pagerank")
+                else result.get("query_top", [])
+            )
+            return result
+        else:
+            raise ValueError(f"Unknown query strategy: {strategy}")

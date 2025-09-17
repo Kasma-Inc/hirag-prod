@@ -17,6 +17,7 @@ class Envs(BaseSettings):
     REDIS_KEY_PREFIX: str = "hirag"
     REDIS_EXPIRE_TTL: int = 3600 * 24
     EMBEDDING_DIMENSION: int
+    USE_HALF_VEC: bool = True
 
     EMBEDDING_SERVICE_TYPE: Literal["openai", "local"] = "openai"
     EMBEDDING_BASE_URL: Optional[str] = None

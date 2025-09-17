@@ -1,7 +1,7 @@
 """Local deployment reranker implementation"""
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import httpx
 
@@ -72,19 +72,49 @@ class LocalReranker(Reranker):
             result = response.json()
             return result.get("results", [])
 
-    async def rerank(self, query: str, items: List[Dict], topn: int) -> List[Dict]:
+    async def rerank(
+        self, query: Union[str, List[str]], items: List[Dict], topn: int
+    ) -> List[Dict]:
         if not items or topn <= 0:
             return []
 
         topn = min(topn, len(items))
         docs = [item.get("text", "") for item in items]
-        results = await self._call_api(query, docs)
 
-        reranked = []
-        for r in results[:topn]:
-            idx = r.get("index")
-            if idx is not None and 0 <= idx < len(items):
+        # Handle single query case
+        if isinstance(query, str):
+            results = await self._call_api(query, docs)
+            reranked = []
+            for r in results[:topn]:
+                idx = r.get("index")
+                if idx is not None and 0 <= idx < len(items):
+                    item = items[idx].copy()
+                    item["relevance_score"] = r.get("relevance_score", 0.0)
+                    reranked.append(item)
+            return reranked
+
+        # Handle list of queries case - find max relevance score among all queries
+        else:
+            max_scores = {}
+
+            # Process each query and track maximum scores
+            for single_query in query:
+                results = await self._call_api(single_query, docs)
+                for r in results:
+                    idx = r.get("index")
+                    if idx is not None and 0 <= idx < len(items):
+                        score = r.get("relevance_score", 0.0)
+                        # Keep the maximum score for each document
+                        if idx not in max_scores or score > max_scores[idx]:
+                            max_scores[idx] = score
+
+            # Create final reranked list with max scores
+            reranked = []
+            for idx, score in max_scores.items():
                 item = items[idx].copy()
-                item["score"] = r.get("relevance_score", 0.0)
+                item["relevance_score"] = score
                 reranked.append(item)
-        return reranked
+
+            # Sort by score descending and return top n
+            reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
+            return reranked[:topn]
