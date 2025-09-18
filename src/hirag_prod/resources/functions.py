@@ -3,7 +3,7 @@ import functools
 import logging
 import os
 import time
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from hirag_prod._utils import log_error_info
 
@@ -70,6 +70,47 @@ def get_db_session():
 
 def get_redis(**kwargs: Any):
     return get_resource_manager().get_redis_client(**kwargs)
+
+
+def get_chinese_convertor(convertor_type: str = "s2hk"):
+    return get_resource_manager().get_chinese_convertor(convertor_type)
+
+
+def get_sentence_tokenizer():
+    return get_resource_manager().get_sentence_tokenizer()
+
+
+def tokenize_sentence(sentence: str) -> Tuple[List[str], List[int], List[int]]:
+    if len(sentence.strip()) == 0:
+        return [], [], []
+    else:
+        result_list: List[str] = []
+        token_start_index_list: List[int] = []
+        token_end_index_list: List[int] = []
+        current_text_index: int = 0
+        current_result_list_index: int = 0
+        finish: bool = False
+        while not finish:
+            if current_text_index + 510 < len(sentence):
+                result_list.extend(
+                    get_sentence_tokenizer()(
+                        sentence[current_text_index : current_text_index + 510]
+                    )[:-1]
+                )
+            else:
+                result_list.extend(
+                    get_sentence_tokenizer()(sentence[current_text_index:])
+                )
+                finish = True
+            for token in result_list[current_result_list_index:]:
+                token_start_index_list.append(
+                    current_text_index + sentence[current_text_index:].find(token[0])
+                )
+                for char in token:
+                    current_text_index += sentence[current_text_index:].find(char) + 1
+                token_end_index_list.append(current_text_index)
+            current_result_list_index = len(result_list)
+        return result_list, token_start_index_list, token_end_index_list
 
 
 def get_translator():

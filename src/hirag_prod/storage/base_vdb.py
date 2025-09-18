@@ -15,6 +15,7 @@ class BaseVDB(ABC):
         texts_to_upsert: List[str],
         properties_list: List[dict],
         table_name: str,
+        with_tokenization: bool = False,
         with_translation: bool = False,
         mode: Literal["append", "overwrite"] = "append",
     ):
