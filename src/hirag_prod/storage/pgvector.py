@@ -12,7 +12,6 @@ from tqdm import tqdm
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.configs.functions import get_init_config
 from hirag_prod.cross_language_search.functions import normalize_tokenize_text
-from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,

@@ -135,9 +135,6 @@ class ResourceManager:
             logging.info(f"🔄 Initializing ResourceManager...")
 
             try:
-                # Download nltk data
-                nltk.download("wordnet")
-
                 # Initialize database engine with connection pool
                 if (not self._db_engine) or (not self._session_maker):
                     await self._initialize_database()
