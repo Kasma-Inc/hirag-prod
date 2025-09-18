@@ -6,6 +6,11 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List
 
+from hirag_prod.configs.functions import get_init_config
+
+TOPN = get_init_config().default_query_top_n
+TOPK = get_init_config().default_query_top_k
+
 from hirag_prod import HiRAG
 
 # Configure logging with more detailed format
@@ -277,12 +282,12 @@ async def evaluate_single_question_graphrag(
         try:
             # Perform entity and relation retrieval
             logger.debug(f"[{question_idx + 1}] Retrieving entities...")
-            entities = await index.query_entities(question, topk=10, topn=5)
+            entities = await index.query_entities(question, topk=TOPK, topn=TOPN)
             logger.debug(f"[{question_idx + 1}] Retrieved {len(entities)} entities")
 
             logger.debug(f"[{question_idx + 1}] Retrieving relations...")
             neighbors, relations = await index.query_relations(
-                question, topk=10, topn=5
+                question, topk=TOPK, topn=TOPN
             )
             logger.debug(
                 f"[{question_idx + 1}] Retrieved {len(neighbors)} neighbors, {len(relations)} relations"
@@ -301,7 +306,7 @@ async def evaluate_single_question_graphrag(
         # Rerank chunks using the same reranker as the system
         logger.debug(f"[{question_idx + 1}] Reranking chunks...")
         retrieved_chunks = await rerank_chunks_with_query(
-            index, chunk_ids, question, topn=5
+            index, chunk_ids, question, topn=TOPN
         )
 
         retrieval_time = time.time() - start_time

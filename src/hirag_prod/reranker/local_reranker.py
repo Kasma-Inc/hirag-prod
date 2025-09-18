@@ -73,13 +73,17 @@ class LocalReranker(Reranker):
             return result.get("results", [])
 
     async def rerank(
-        self, query: Union[str, List[str]], items: List[Dict], topn: int
+        self,
+        query: Union[str, List[str]],
+        items: List[Dict],
+        topn: int,
+        key: str = "text",
     ) -> List[Dict]:
         if not items or topn <= 0:
             return []
 
         topn = min(topn, len(items))
-        docs = [item.get("text", "") for item in items]
+        docs = [item.get(key, "") for item in items]
 
         # Handle single query case
         if isinstance(query, str):

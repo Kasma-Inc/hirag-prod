@@ -1176,7 +1176,6 @@ class HiRAG:
             query=query,
             topk=pool_size,
             topn=None,
-            rerank=False,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
         )

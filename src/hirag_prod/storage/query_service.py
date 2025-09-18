@@ -4,8 +4,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
-from hirag_prod.reranker import Reranker
-from hirag_prod.resources.functions import get_reranker
+from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
@@ -16,7 +15,6 @@ class QueryService:
 
     def __init__(self, storage: StorageManager):
         self.storage = storage
-        self.reranker: Optional[Reranker] = get_reranker()
 
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query chunks via unified storage"""
@@ -288,7 +286,7 @@ class QueryService:
         topk = topk or get_hi_rag_config().default_query_top_k
         topn = topn or get_hi_rag_config().default_query_top_n
 
-        # Path 1: chunk recall (rerank happens in VDB query)
+        # Path 1: chunk recall
         chunk_recall = await self.recall_chunks(
             query,
             topk=topk,
@@ -299,12 +297,13 @@ class QueryService:
         query_chunks = chunk_recall["chunks"]
 
         # rerank
-        if self.reranker and query_chunks:
+        if query_chunks:
             try:
-                reranked_chunks = await self.reranker.rerank(
+                reranked_chunks = await apply_reranking(
                     query=query,
-                    items=query_chunks,
+                    results=query_chunks,
                     topn=topn,
+                    topk=topk,
                 )
                 query_chunks = reranked_chunks
             except Exception as e:
@@ -358,13 +357,14 @@ class QueryService:
             )
 
             # Apply reranking to the pagerank results
-            if self.reranker and chunks_to_rerank:
+            if chunks_to_rerank:
                 try:
                     topn = get_hi_rag_config().default_query_top_n
-                    reranked_chunks = await self.reranker.rerank(
+                    reranked_chunks = await apply_reranking(
                         query=query,
-                        items=chunks_to_rerank,
+                        results=chunks_to_rerank,
                         topn=topn,
+                        topk=topn,
                     )
                     chunks_to_rerank = reranked_chunks
                 except Exception as e:

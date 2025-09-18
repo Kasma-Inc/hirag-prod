@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import select
 
 from hirag_prod._utils import log_error_info, retry_async
-from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import (
@@ -21,6 +21,8 @@ from hirag_prod.storage import (
 from hirag_prod.storage.pgvector import PGVector
 
 logger = logging.getLogger("HiRAG")
+TOPK = get_init_config().default_query_top_k
+TOPN = get_init_config().default_query_top_n
 
 
 class StorageManager:
@@ -142,7 +144,6 @@ class StorageManager:
         query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
-        rerank: bool = False,
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -151,8 +152,8 @@ class StorageManager:
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Chunks",
-            topk=topk or get_hi_rag_config().default_query_top_k,
-            topn=topn or get_hi_rag_config().default_query_top_n,
+            topk=topk or TOPK,
+            topn=topn or TOPN,
             columns_to_select=[
                 "text",
                 "uri",
@@ -161,7 +162,6 @@ class StorageManager:
                 "updatedAt",
                 "documentKey",
             ],
-            rerank=rerank,
         )
         return rows
 
@@ -170,7 +170,6 @@ class StorageManager:
         query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
-        rerank: bool = False,
         topk: int = None,
         topn: int = None,
     ) -> List[Dict[str, Any]]:
@@ -179,10 +178,9 @@ class StorageManager:
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Triplets",
-            topk=topk if topk else get_hi_rag_config().default_query_top_k,
-            topn=topn if topn else get_hi_rag_config().default_query_top_n,
+            topk=topk if topk else TOPK,
+            topn=topn if topn else TOPN,
             columns_to_select=["source", "target", "description", "fileName"],
-            rerank=rerank,
         )
         return rows
 

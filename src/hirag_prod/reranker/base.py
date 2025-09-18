@@ -6,6 +6,10 @@ class Reranker(ABC):
 
     @abstractmethod
     async def rerank(
-        self, query: Union[str, List[str]], items: List[Dict], topn: int
+        self,
+        query: Union[str, List[str]],
+        items: List[Dict],
+        topn: int,
+        key: str = "text",
     ) -> List[Dict]:
         pass

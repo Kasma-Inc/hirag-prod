@@ -5,15 +5,15 @@ from typing import Any, Dict, List, Union
 from lancedb.query import AsyncQuery, AsyncVectorQuery, LanceQueryBuilder
 from lancedb.rerankers import VoyageAIReranker
 
-from hirag_prod.configs.functions import get_reranker_config
+from hirag_prod.configs.functions import get_init_config, get_reranker_config
 from hirag_prod.reranker import LocalReranker
 
 
 class BaseRetrievalStrategyProvider:
     """Implement this class"""
 
-    default_topk = 10
-    default_topn = 5
+    default_topk = get_init_config().default_query_top_k
+    default_topn = get_init_config().default_query_top_n
 
     def rerank_catalog_query(
         self,

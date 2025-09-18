@@ -9,7 +9,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.reranker.utils import apply_reranking
+from hirag_prod.configs.functions import get_init_config
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,
@@ -22,9 +22,9 @@ from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProv
 
 logger = logging.getLogger(__name__)
 
-THRESHOLD_DISTANCE = 0.8
-TOPK = 5
-TOPN = 4
+THRESHOLD_DISTANCE = get_init_config().default_distance_threshold
+TOPK = get_init_config().default_query_top_k
+TOPN = get_init_config().default_query_top_n
 
 
 # extends to implement PostgreSQL-based vdb with pgvector support
@@ -462,12 +462,11 @@ class PGVector(BaseVDB):
         knowledge_base_id: str,
         table_name: str,
         topk: Optional[int] = TOPK,
+        topn: Optional[int] = TOPN,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
-        topn: Optional[int] = TOPN,
-        rerank: bool = False,
     ) -> List[dict]:
 
         if columns_to_select is None:
@@ -519,10 +518,6 @@ class PGVector(BaseVDB):
                 payload["distance"] = dist
                 scored.append(payload)
 
-            scored = (
-                await apply_reranking(query, scored, topn, topk) if rerank else scored
-            )
-
             elapsed = time.perf_counter() - start
             logger.info(
                 f"[query] Retrieved {len(scored)} records from '{table_name}', elapsed={elapsed:.3f}s"
@@ -536,13 +531,12 @@ class PGVector(BaseVDB):
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,
+        topn: Optional[int] = TOPN,
         topk: Optional[int] = TOPK,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
-        topn: Optional[int] = TOPN,
-        rerank: bool = False,
     ) -> List[dict]:
         if columns_to_select is None:
             columns_to_select = ["text", "uri", "fileName", "private"]
@@ -602,11 +596,6 @@ class PGVector(BaseVDB):
                 }
                 payload["distance"] = dist
                 scored.append(payload)
-
-            # Convert list of query strings to single string for reranking
-            scored = (
-                await apply_reranking(query, scored, topn, topk) if rerank else scored
-            )
 
             elapsed = time.perf_counter() - start
             logger.info(

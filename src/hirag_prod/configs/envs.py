@@ -8,9 +8,13 @@ class InitEnvs(BaseSettings):
     model_config = ConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
+
     EMBEDDING_DIMENSION: int
     USE_HALF_VEC: bool = True
     HIRAG_QUERY_TIMEOUT: int = 100  # seconds
+    default_query_top_k: int = 10  # Query potential results to rerank
+    default_query_top_n: int = 5  # Final results to return after reranking
+    default_distance_threshold: float = 0.8  # Similarity threshold for vector search
 
 
 class Envs(BaseSettings):
