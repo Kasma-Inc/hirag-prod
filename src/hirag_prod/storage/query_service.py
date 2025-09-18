@@ -302,8 +302,8 @@ class QueryService:
                 reranked_chunks = await apply_reranking(
                     query=query,
                     results=query_chunks,
-                    topn=topn,
                     topk=topk,
+                    topn=topn,
                 )
                 query_chunks = reranked_chunks
             except Exception as e:
@@ -319,10 +319,14 @@ class QueryService:
         knowledge_base_id: str,
         query: Union[str, List[str]],
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Query Strategy"""
         if strategy == "reranker":
             result = await self.dual_recall_with_rerank(
+                topk=topk,
+                topn=topn,
                 query=query,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
@@ -331,6 +335,8 @@ class QueryService:
             return result
         elif strategy == "pagerank":
             result = await self.dual_recall_with_pagerank(
+                topk=topk,
+                topn=topn,
                 query=query,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
@@ -344,6 +350,8 @@ class QueryService:
         elif strategy == "hybrid":
             # First get pagerank results
             pagerank_result = await self.dual_recall_with_pagerank(
+                topk=topk,
+                topn=topn,
                 query=query,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
@@ -359,12 +367,13 @@ class QueryService:
             # Apply reranking to the pagerank results
             if chunks_to_rerank:
                 try:
-                    topn = get_hi_rag_config().default_query_top_n
+                    topk = topk or get_hi_rag_config().default_query_top_k
+                    topn = topn or get_hi_rag_config().default_query_top_n
                     reranked_chunks = await apply_reranking(
                         query=query,
                         results=chunks_to_rerank,
+                        topk=topk,
                         topn=topn,
-                        topk=topn,
                     )
                     chunks_to_rerank = reranked_chunks
                 except Exception as e:

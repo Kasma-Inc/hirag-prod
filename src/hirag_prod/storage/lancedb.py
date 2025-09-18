@@ -260,7 +260,11 @@ class LanceDB(BaseVDB):
         q = q.select(columns_to_select).limit(topk)
 
         results = await q.to_list()
-        return await apply_reranking(query, results, topn, topk) if rerank else results
+        return (
+            await apply_reranking(query=query, results=results, topn=topn, topk=topk)
+            if rerank
+            else results
+        )
 
     async def query_by_keys(
         self,

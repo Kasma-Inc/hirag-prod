@@ -9,7 +9,6 @@ class Reranker(ABC):
         self,
         query: Union[str, List[str]],
         items: List[Dict],
-        topn: int,
         key: str = "text",
     ) -> List[Dict]:
         pass

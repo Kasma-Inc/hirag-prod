@@ -15,13 +15,11 @@ class ApiReranker(Reranker):
         self,
         query: Union[str, List[str]],
         items: List[Dict],
-        topn: int,
         key: str = "text",
     ) -> List[Dict]:
-        if not items or topn <= 0:
+        if not items:
             return []
 
-        topn = min(topn, len(items))
         documents = [item.get(key, "") for item in items]
 
         # Handle single query case
@@ -34,7 +32,6 @@ class ApiReranker(Reranker):
                         "query": query,
                         "documents": documents,
                         "model": self.model,
-                        "top_k": topn,
                     },
                 )
                 response.raise_for_status()
@@ -64,7 +61,6 @@ class ApiReranker(Reranker):
                             "query": single_query,
                             "documents": documents,
                             "model": self.model,
-                            "top_k": len(items),  # Get scores for all items
                         },
                     )
                     response.raise_for_status()
@@ -87,4 +83,4 @@ class ApiReranker(Reranker):
 
             # Sort by score descending and return top n
             reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-            return reranked[:topn]
+            return reranked
