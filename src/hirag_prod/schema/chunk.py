@@ -1,20 +1,11 @@
-import os
 from datetime import datetime
 from typing import List, Optional
 
-import dotenv
-from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.types import ARRAY
 
 from hirag_prod.schema.base import Base
-
-# read halfvec and dim from env
-dotenv.load_dotenv()
-dim = int(os.getenv("EMBEDDING_DIMENSION", 1536))
-use_halfvec = bool(os.getenv("USE_HALF_VEC", True))
-
-vec_type = HALFVEC(dim) if use_halfvec else Vector(dim)
+from hirag_prod.schema.vector_config import vec_type
 
 
 class Chunk(Base):
@@ -22,13 +13,13 @@ class Chunk(Base):
 
     # Chunk Data
     documentKey: str = Column(String, primary_key=True, nullable=False)
+    knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
+    workspaceId: str = Column(String, primary_key=True, nullable=False)
     text: str = Column(Text, nullable=False)
     # From FileMetadata
     fileName: str = Column(String, nullable=False)
     uri: str = Column(String, nullable=False)
     private: bool = Column(Boolean, default=False, nullable=False)
-    knowledgeBaseId: str = Column(String, nullable=False)
-    workspaceId: str = Column(String, nullable=False)
     type: Optional[str] = Column(String, nullable=True)
     pageNumber: Optional[List[int]] = Column(ARRAY(Integer), nullable=True)
     uploadedAt: Optional[datetime] = Column(DateTime, nullable=True)

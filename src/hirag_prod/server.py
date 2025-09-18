@@ -2,12 +2,12 @@
 
 import asyncio
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Union
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from hirag_prod.configs.functions import get_init_config
 from hirag_prod.hirag import HiRAG
 
 logging.basicConfig(
@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("hirag_mcp.server")
 
-DEFAULT_TIMEOUT = int(os.getenv("HIRAG_QUERY_TIMEOUT", "100"))
+DEFAULT_TIMEOUT = get_init_config().HIRAG_QUERY_TIMEOUT
 
 
 @asynccontextmanager

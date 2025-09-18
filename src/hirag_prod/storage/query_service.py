@@ -1,9 +1,10 @@
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
@@ -112,7 +113,7 @@ class QueryService:
 
     async def dual_recall_with_pagerank(
         self,
-        query: str,
+        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
         topk: Optional[int] = None,
@@ -273,21 +274,117 @@ class QueryService:
             "query_top": query_chunks,
         }
 
+    async def dual_recall_with_rerank(
+        self,
+        query: Union[str, List[str]],
+        workspace_id: str,
+        knowledge_base_id: str,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Two-path retrieval + Reranking fusion."""
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+
+        # Path 1: chunk recall
+        chunk_recall = await self.recall_chunks(
+            query,
+            topk=topk,
+            topn=topn,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
+        query_chunks = chunk_recall["chunks"]
+
+        # rerank
+        if query_chunks:
+            try:
+                reranked_chunks = await apply_reranking(
+                    query=query,
+                    results=query_chunks,
+                    topk=topk,
+                    topn=topn,
+                )
+                query_chunks = reranked_chunks
+            except Exception as e:
+                log_error_info(logging.ERROR, "Failed to rerank chunks", e)
+
+        return {
+            "query_top": query_chunks,
+        }
+
     async def query(
         self,
         workspace_id: str,
         knowledge_base_id: str,
-        query: str,
+        query: Union[str, List[str]],
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Query Strategy (default: dual_recall_with_pagerank)"""
-        result = await self.dual_recall_with_pagerank(
-            query=query,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-        )
-        result["chunks"] = (
-            result.get("pagerank")
-            if result.get("pagerank")
-            else result.get("query_top", [])
-        )
-        return result
+        """Query Strategy"""
+        if strategy == "reranker":
+            result = await self.dual_recall_with_rerank(
+                topk=topk,
+                topn=topn,
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+            result["chunks"] = result.get("query_top", [])
+            return result
+        elif strategy == "pagerank":
+            result = await self.dual_recall_with_pagerank(
+                topk=topk,
+                topn=topn,
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+            result["chunks"] = (
+                result.get("pagerank")
+                if result.get("pagerank")
+                else result.get("query_top", [])
+            )
+            return result
+        elif strategy == "hybrid":
+            # First get pagerank results
+            pagerank_result = await self.dual_recall_with_pagerank(
+                topk=topk,
+                topn=topn,
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+
+            # Use pagerank results if available, otherwise fall back to query_top
+            chunks_to_rerank = (
+                pagerank_result.get("pagerank")
+                if pagerank_result.get("pagerank")
+                else pagerank_result.get("query_top", [])
+            )
+
+            # Apply reranking to the pagerank results
+            if chunks_to_rerank:
+                try:
+                    topk = topk or get_hi_rag_config().default_query_top_k
+                    topn = topn or get_hi_rag_config().default_query_top_n
+                    reranked_chunks = await apply_reranking(
+                        query=query,
+                        results=chunks_to_rerank,
+                        topk=topk,
+                        topn=topn,
+                    )
+                    chunks_to_rerank = reranked_chunks
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR, "Failed to rerank chunks in hybrid strategy", e
+                    )
+
+            return {
+                "chunks": chunks_to_rerank,
+                "pagerank": pagerank_result.get("pagerank", []),
+                "query_top": pagerank_result.get("query_top", []),
+            }
+        else:
+            raise ValueError(f"Unknown query strategy: {strategy}")

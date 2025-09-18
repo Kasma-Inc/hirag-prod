@@ -6,6 +6,7 @@ from typing import List, Literal, Optional
 import lancedb
 
 from hirag_prod._utils import AsyncEmbeddingFunction
+from hirag_prod.configs.functions import get_init_config
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.lance_schema import get_chunks_schema, get_relations_schema
@@ -13,9 +14,9 @@ from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProv
 
 logger = logging.getLogger(__name__)
 
-THRESHOLD_DISTANCE = 0.8
-TOPK = 5
-TOPN = 4
+THRESHOLD_DISTANCE = get_init_config().default_distance_threshold
+TOPK = get_init_config().default_query_top_k
+TOPN = get_init_config().default_query_top_n
 
 
 @dataclass
@@ -189,11 +190,11 @@ class LanceDB(BaseVDB):
         knowledge_base_id: str,
         table_name: str,
         topk: Optional[int] = TOPK,
+        topn: Optional[int] = TOPN,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = ["filename", "text"],
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
-        topn: Optional[int] = TOPN,
         rerank: bool = False,
     ) -> List[dict]:
         """Search the chunk table by text and return the topk results
@@ -259,7 +260,11 @@ class LanceDB(BaseVDB):
         q = q.select(columns_to_select).limit(topk)
 
         results = await q.to_list()
-        return await apply_reranking(query, results, topn, topk) if rerank else results
+        return (
+            await apply_reranking(query=query, results=results, topn=topn, topk=topk)
+            if rerank
+            else results
+        )
 
     async def query_by_keys(
         self,

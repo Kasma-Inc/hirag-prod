@@ -4,6 +4,19 @@ from pydantic import ConfigDict, model_validator
 from pydantic_settings import BaseSettings
 
 
+class InitEnvs(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    EMBEDDING_DIMENSION: int
+    USE_HALF_VEC: bool = True
+    HIRAG_QUERY_TIMEOUT: int = 100  # seconds
+    default_query_top_k: int = 10  # Query potential results to rerank
+    default_query_top_n: int = 5  # Final results to return after reranking
+    default_distance_threshold: float = 0.8  # Similarity threshold for vector search
+
+
 class Envs(BaseSettings):
     model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", extra="allow")
 
@@ -17,6 +30,7 @@ class Envs(BaseSettings):
     REDIS_KEY_PREFIX: str = "hirag"
     REDIS_EXPIRE_TTL: int = 3600 * 24
     EMBEDDING_DIMENSION: int
+    USE_HALF_VEC: bool = True
 
     EMBEDDING_SERVICE_TYPE: Literal["openai", "local"] = "openai"
     EMBEDDING_BASE_URL: Optional[str] = None
@@ -34,7 +48,20 @@ class Envs(BaseSettings):
     LOCAL_LLM_BASE_URL: Optional[str] = None
     LOCAL_LLM_API_KEY: Optional[str] = None
 
-    CONTEXTUAL_API_KEY: Optional[str] = None
+    SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
+
+    RERANKER_TYPE: Literal["api", "local"] = "api"
+
+    # API reranker (Voyage AI) settings
+    VOYAGE_API_KEY: Optional[str] = None
+    VOYAGE_RERANKER_MODEL_NAME: str = "rerank-2"
+    VOYAGE_RERANKER_MODEL_BASE_URL: str = "https://api.voyageai.com/v1/rerank"
+
+    # Local reranker settings
+    LOCAL_RERANKER_MODEL_BASE_URL: Optional[str] = None
+    LOCAL_RERANKER_MODEL_NAME: str = "Qwen3-Reranker-8B"
+    LOCAL_RERANKER_MODEL_ENTRY_POINT: str = "/rerank"
+    LOCAL_RERANKER_MODEL_AUTHORIZATION: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":

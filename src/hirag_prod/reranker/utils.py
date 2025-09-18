@@ -1,17 +1,23 @@
-from typing import Dict, List
+from typing import Dict, List, Union
 
-from .factory import create_reranker
+from hirag_prod.resources.functions import get_reranker
 
 
 async def apply_reranking(
-    query: str, results: List[Dict], topn: int, topk: int
+    query: Union[str, List[str]],
+    results: List[Dict],
+    topk: int,
+    topn: int,
+    key: str = "text",
 ) -> List[Dict]:
     if not results:
         return results
-
-    reranker = create_reranker()
-    items_to_rerank = results[:topn]
-    reranked_items = await reranker.rerank(query, items_to_rerank, topn)
-    remaining_items = results[topn:]
-    final_results = reranked_items + remaining_items
-    return final_results[:topk]
+    # Top k is the number of items to rerank, and top n is the final number of items to return
+    topn = min(topn, len(results))
+    topk = min(topk, len(results))
+    if topn > topk:
+        raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
+    reranker = get_reranker()
+    items_to_rerank = results[:topk]
+    reranked_items = await reranker.rerank(query=query, items=items_to_rerank, key=key)
+    return reranked_items[:topn]

@@ -4,9 +4,12 @@ from hirag_prod.configs.cloud_storage_config import AWSConfig, OSSConfig
 from hirag_prod.configs.config_manager import ConfigManager
 from hirag_prod.configs.document_loader_config import DoclingCloudConfig, DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
-from hirag_prod.configs.envs import Envs
+from hirag_prod.configs.envs import Envs, InitEnvs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.reranker_config import RerankConfig
+
+INIT_CONFIG = InitEnvs()
 
 
 def initialize_config_manager(
@@ -29,6 +32,14 @@ def get_embedding_config() -> EmbeddingConfig:
 
 def get_llm_config() -> LLMConfig:
     return ConfigManager().llm_config
+
+
+def get_reranker_config() -> RerankConfig:
+    return ConfigManager().reranker_config
+
+
+def get_init_config() -> InitEnvs:
+    return INIT_CONFIG
 
 
 def get_document_converter_config(

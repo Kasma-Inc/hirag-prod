@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
+from hirag_prod.configs.functions import get_init_config
 from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.resources.functions import (
@@ -24,9 +25,9 @@ from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProv
 
 logger = logging.getLogger(__name__)
 
-THRESHOLD_DISTANCE = 0.8
-TOPK = 5
-TOPN = 4
+THRESHOLD_DISTANCE = get_init_config().default_distance_threshold
+TOPK = get_init_config().default_query_top_k
+TOPN = get_init_config().default_query_top_n
 
 
 # extends to implement PostgreSQL-based vdb with pgvector support
@@ -483,13 +484,13 @@ class PGVector(BaseVDB):
         knowledge_base_id: str,
         table_name: str,
         topk: Optional[int] = TOPK,
+        topn: Optional[int] = TOPN,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
-        topn: Optional[int] = TOPN,
-        rerank: bool = False,
     ) -> List[dict]:
+
         if columns_to_select is None:
             columns_to_select = ["text", "uri", "fileName", "private"]
 
@@ -539,9 +540,84 @@ class PGVector(BaseVDB):
                 payload["distance"] = dist
                 scored.append(payload)
 
-            scored = (
-                await apply_reranking(query, scored, topn, topk) if rerank else scored
+            elapsed = time.perf_counter() - start
+            logger.info(
+                f"[query] Retrieved {len(scored)} records from '{table_name}', elapsed={elapsed:.3f}s"
             )
+            return scored
+
+    # Function overload to handle list of queries
+    async def query(
+        self,
+        query: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        topn: Optional[int] = TOPN,
+        topk: Optional[int] = TOPK,
+        uri_list: Optional[List[str]] = None,
+        require_access: Optional[Literal["private", "public"]] = None,
+        columns_to_select: Optional[List[str]] = None,
+        distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
+    ) -> List[dict]:
+        if columns_to_select is None:
+            columns_to_select = ["text", "uri", "fileName", "private"]
+
+        if topk is None:
+            topk = self.strategy_provider.default_topk
+        if topn is None:
+            topn = self.strategy_provider.default_topn
+
+        if topn > topk:
+            raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
+
+        model = self.get_model(table_name)
+
+        start = time.perf_counter()
+        async with get_db_session_maker()() as session:
+            # Generate embeddings for all query strings
+            q_embs = await self.embedding_func(query)
+            q_embs = [self._to_list(emb) for emb in q_embs]
+
+            # Calculate cosine distance for each query embedding and take the minimum
+            distance_expressions = [
+                model.vector.cosine_distance(q_emb) for q_emb in q_embs
+            ]
+
+            # Use func.least to get the minimum distance among all query embeddings
+            if len(distance_expressions) == 1:
+                distance_expr = distance_expressions[0].label("distance")
+            else:
+                distance_expr = func.least(*distance_expressions).label("distance")
+
+            stmt = select(model, distance_expr)
+
+            if uri_list and hasattr(model, "uri"):
+                stmt = stmt.where(model.uri.in_(uri_list))
+            if require_access is not None and hasattr(model, "private"):
+                stmt = stmt.where(model.private == (require_access == "private"))
+            if workspace_id and hasattr(model, "workspaceId"):
+                stmt = stmt.where(model.workspaceId == workspace_id)
+            if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
+                stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
+
+            if distance_threshold is not None:
+                stmt = stmt.where(distance_expr < float(distance_threshold))
+
+            stmt = stmt.order_by(distance_expr.asc()).limit(topk)
+
+            result = await session.execute(stmt)
+            rows = result.all()
+
+            scored = []
+            for row, dist in rows:
+                payload = {
+                    col: getattr(row, col)
+                    for col in columns_to_select
+                    if hasattr(row, col)
+                }
+                payload["distance"] = dist
+                scored.append(payload)
 
             elapsed = time.perf_counter() - start
             logger.info(

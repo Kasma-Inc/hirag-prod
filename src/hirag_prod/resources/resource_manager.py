@@ -26,6 +26,7 @@ from hirag_prod.configs.functions import (
     get_envs,
     get_hi_rag_config,
 )
+from hirag_prod.reranker import Reranker, create_reranker
 from hirag_prod.resources.functions import timing_logger
 
 
@@ -88,6 +89,11 @@ class ResourceManager:
             resource_dict.get("translator", None) if resource_dict else None
         )
 
+        # Reranker
+        self._reranker: Optional[Reranker] = (
+            resource_dict.get("reranker", None) if resource_dict else None
+        )
+
         # Cleanup operation list
         self._cleanup_operation_list: List[Tuple[str, Any]] = []
 
@@ -129,6 +135,9 @@ class ResourceManager:
             logging.info(f"🔄 Initializing ResourceManager...")
 
             try:
+                # Download nltk data
+                nltk.download("wordnet")
+
                 # Initialize database engine with connection pool
                 if (not self._db_engine) or (not self._session_maker):
                     await self._initialize_database()
@@ -164,6 +173,10 @@ class ResourceManager:
                 # Initialize Translator
                 if not self._translator:
                     self._translator = Translator()
+
+                # Initialize Reranker
+                if not self._reranker:
+                    self._reranker = create_reranker()
 
                 # Reverse the cleanup operation list to ensure proper cleanup
                 self._cleanup_operation_list.reverse()
@@ -329,6 +342,12 @@ class ResourceManager:
         if self._translator is None:
             raise RuntimeError("Translator not initialized. Call initialize() first.")
         return self._translator
+
+    def get_reranker(self) -> Reranker:
+        """Get the reranker instance."""
+        if self._reranker is None:
+            raise RuntimeError("Reranker not initialized. Call initialize() first.")
+        return self._reranker
 
     async def cleanup(self, ensure_init_lock: bool = True) -> None:
         try:

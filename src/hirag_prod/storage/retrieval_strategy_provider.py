@@ -1,19 +1,19 @@
 #! /usr/bin/env python3
 import logging
-import os
 from typing import Any, Dict, List, Union
 
 from lancedb.query import AsyncQuery, AsyncVectorQuery, LanceQueryBuilder
 from lancedb.rerankers import VoyageAIReranker
 
+from hirag_prod.configs.functions import get_init_config, get_reranker_config
 from hirag_prod.reranker import LocalReranker
 
 
 class BaseRetrievalStrategyProvider:
     """Implement this class"""
 
-    default_topk = 10
-    default_topn = 5
+    default_topk = get_init_config().default_query_top_k
+    default_topn = get_init_config().default_query_top_n
 
     def rerank_catalog_query(
         self,
@@ -52,7 +52,8 @@ class RetrievalStrategyProvider(BaseRetrievalStrategyProvider):
         """
         Rerank chunk query using either API-based or local reranker
         """
-        reranker_type = os.getenv("RERANKER_TYPE", "api")
+        reranker_config = get_reranker_config()
+        reranker_type = reranker_config.reranker_type
 
         if reranker_type == "local":
             # Use deployed reranker
@@ -61,9 +62,10 @@ class RetrievalStrategyProvider(BaseRetrievalStrategyProvider):
             return reranked_query
         else:
             # Use API-based reranker (VoyageAI)
+
             reranker = VoyageAIReranker(
-                api_key=os.getenv("VOYAGE_API_KEY"),
-                model_name=os.getenv("API_RERANKER_MODEL", "rerank-2"),
+                api_key=reranker_config.voyage_api_key,
+                model_name=reranker_config.voyage_reranker_model_name,
                 top_n=topn,
                 return_score="relevance",
             )

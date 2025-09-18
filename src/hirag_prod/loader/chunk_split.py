@@ -1,12 +1,12 @@
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.chunk import DotsHierarchicalChunker, DotsRecursiveChunker
+from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.schema import Chunk, File, Item
 
 CHUNK_SIZE = 1200
@@ -68,6 +68,132 @@ LABEL_TO_CHUNK_TYPE = {
     DocItemLabel.EMPTY_VALUE: ChunkType.EMPTY_VALUE,
     DocItemLabel.REFERENCE: ChunkType.REFERENCE,
 }
+
+
+# ======================== Helper Functions ========================
+
+
+def _inherit_file_metadata(source_file: File) -> Dict[str, Any]:
+    """Extract inheritable metadata from a File object."""
+    return {
+        "type": source_file.type,
+        "fileName": source_file.fileName,
+        "uri": source_file.uri,
+        "private": source_file.private,
+        "uploadedAt": source_file.uploadedAt,
+        "knowledgeBaseId": source_file.knowledgeBaseId,
+        "workspaceId": source_file.workspaceId,
+    }
+
+
+def _create_bbox_from_coords(
+    x_0: float, y_0: float, x_1: float, y_1: float
+) -> Optional[List[float]]:
+    """Create bbox list from coordinates if all are not None."""
+    if all(coord is not None for coord in [x_0, y_0, x_1, y_1]):
+        return [x_0, y_0, x_1, y_1]
+    return None
+
+
+def _extract_page_dimensions(
+    page_info: Dict[str, Any],
+) -> tuple[Optional[float], Optional[float]]:
+    """Extract page width and height from page info dictionary."""
+    page_width = page_info.get("width")
+    page_height = page_info.get("height")
+    return (
+        float(page_width) if page_width is not None else None,
+        float(page_height) if page_height is not None else None,
+    )
+
+
+def _create_item_base(
+    text: str,
+    chunk_idx: int,
+    document_id: str,
+    chunk_type: str,
+    source_file: File,
+    page_number: Optional[int] = None,
+    page_width: Optional[float] = None,
+    page_height: Optional[float] = None,
+    bbox: Optional[List[float]] = None,
+    caption: Optional[str] = None,
+    headers: Optional[List[str]] = None,
+    children: Optional[List[str]] = None,
+) -> Item:
+    """Create an Item object with standard fields and inherited metadata."""
+    file_metadata = _inherit_file_metadata(source_file)
+
+    return Item(
+        documentKey=compute_mdhash_id(text, prefix="item-"),
+        text=text,
+        chunkIdx=chunk_idx,
+        documentId=document_id,
+        chunkType=chunk_type,
+        pageNumber=page_number,
+        pageImageUrl=None,
+        pageWidth=page_width,
+        pageHeight=page_height,
+        bbox=bbox,
+        caption=caption,
+        headers=headers,
+        children=children,
+        **file_metadata,
+    )
+
+
+def _create_chunk_base(
+    text: str,
+    chunk_idx: int,
+    document_id: str,
+    chunk_type: str,
+    file_metadata: Dict[str, Any],
+    page_number: Optional[Union[int, List[int]]] = None,
+    page_width: Optional[float] = None,
+    page_height: Optional[float] = None,
+    bbox: Optional[List[List[float]]] = None,
+    caption: Optional[str] = None,
+    headers: Optional[List[str]] = None,
+    children: Optional[List[str]] = None,
+) -> Chunk:
+    """Create a Chunk object with standard fields and provided metadata."""
+    return Chunk(
+        documentKey=compute_mdhash_id(text, prefix="chunk-"),
+        text=text,
+        chunkIdx=chunk_idx,
+        documentId=document_id,
+        chunkType=chunk_type,
+        pageNumber=page_number,
+        pageImageUrl=None,
+        pageWidth=page_width,
+        pageHeight=page_height,
+        bbox=bbox,
+        caption=caption,
+        headers=headers,
+        children=children,
+        **file_metadata,
+    )
+
+
+def _find_text_positions(
+    texts: List[str], original_text: str, chunk_overlap: int = 0
+) -> Dict[int, Optional[tuple[int, int]]]:
+    """Find character positions of text chunks in original content."""
+    id2pos = {}
+    search_start = 0
+
+    for idx, chunk_text in enumerate(texts):
+        start_pos = original_text.find(chunk_text, search_start)
+
+        if start_pos == -1:
+            id2pos[idx] = None
+            continue
+
+        end_pos = start_pos + len(chunk_text)
+        id2pos[idx] = (start_pos, end_pos)
+        search_start = start_pos + len(chunk_text) - chunk_overlap
+
+    return id2pos
 
 
 # ======================== docling chunker ========================
@@ -145,7 +271,9 @@ def determine_docling_chunk_type(chunk) -> ChunkType:
     return ChunkType.MIXED
 
 
-def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[Item]:
+def chunk_docling_document(
+    docling_doc: DoclingDocument, doc_md: File
+) -> tuple[List[Item], set[str]]:
     """
     Split a docling document into chunks and return a list of Item objects.
     Each chunk will inherit metadata from the original document.
@@ -176,55 +304,39 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
         docling_chunk_meta = _extract_docling_chunk_meta(chunk)
 
         page_number = docling_chunk_meta["page_number"]
-        page_width = None
-        page_height = None
+        page_width, page_height = None, None
         if page_number is not None:
             page_size = doc_pages_map.get(page_number)
             if page_size is not None:
-                page_width, page_height = page_size
+                page_width, page_height = _extract_page_dimensions(
+                    {"width": page_size[0], "height": page_size[1]}
+                )
 
         # Convert x_0, y_0, x_1, y_1 to bbox format if coordinates are available
-        bbox = None
-        if all(
-            coord is not None
-            for coord in [
-                docling_chunk_meta["x_0"],
-                docling_chunk_meta["y_0"],
-                docling_chunk_meta["x_1"],
-                docling_chunk_meta["y_1"],
-            ]
-        ):
-            bbox = [
-                docling_chunk_meta["x_0"],
-                docling_chunk_meta["y_0"],
-                docling_chunk_meta["x_1"],
-                docling_chunk_meta["y_1"],
-            ]
+        bbox = _create_bbox_from_coords(
+            docling_chunk_meta["x_0"],
+            docling_chunk_meta["y_0"],
+            docling_chunk_meta["x_1"],
+            docling_chunk_meta["y_1"],
+        )
+
         text = chunk.text
-        chunk_obj = Item(
-            documentKey=compute_mdhash_id(text, prefix="chunk-"),
+        chunk_obj = _create_item_base(
             text=text,
-            chunkIdx=docling_chunk_meta["chunk_idx"],
-            documentId=doc_md.documentKey,
-            chunkType=chunk_type.value,
-            pageNumber=page_number,
-            pageImageUrl=None,
-            pageWidth=float(page_width) if page_width is not None else None,
-            pageHeight=float(page_height) if page_height is not None else None,
+            chunk_idx=docling_chunk_meta["chunk_idx"],
+            document_id=doc_md.documentKey,
+            chunk_type=chunk_type.value,
+            source_file=doc_md,
+            page_number=(
+                page_number - 1 if page_number is not None else None
+            ),  # Convert to 0-based index
+            page_width=page_width,
+            page_height=page_height,
             bbox=bbox,
             caption=None,
-            # TODO: If using docling in the future, may need to do indexing for headers
             headers=(
                 docling_chunk_meta["headers"] if docling_chunk_meta["headers"] else None
             ),
-            # inherit file metadata
-            type=doc_md.type,
-            fileName=doc_md.fileName,
-            uri=doc_md.uri,
-            private=doc_md.private,
-            uploadedAt=doc_md.uploadedAt,
-            knowledgeBaseId=doc_md.knowledgeBaseId,
-            workspaceId=doc_md.workspaceId,
             children=(
                 docling_chunk_meta["children"]
                 if docling_chunk_meta["children"]
@@ -236,11 +348,14 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
         chunk_id_mapping[chunk_obj.chunkIdx] = chunk_obj.documentKey
 
     # Translate all chunk IDs to their document keys
+    header_set = set()
+
     for chunk in chunks:
         if chunk.headers:
             chunk.headers = [
                 chunk_id_mapping.get(header_id) for header_id in chunk.headers
             ]
+            header_set.update([h for h in chunk.headers if h is not None])
         if chunk.children:
             chunk.children = [
                 chunk_id_mapping.get(child_id) for child_id in chunk.children
@@ -248,7 +363,7 @@ def chunk_docling_document(docling_doc: DoclingDocument, doc_md: File) -> List[I
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
-    return chunks
+    return chunks, header_set
 
 
 def obtain_docling_md_bbox(
@@ -320,138 +435,6 @@ def obtain_docling_md_bbox(
     # Sort by chunk index to maintain order
     updated_items.sort(key=lambda c: c.chunkIdx)
     return updated_items
-
-
-def group_docling_items_by_header(items: List[Item]) -> List[Chunk]:
-    """
-    Group items by their headers and combine items within the same group into chunks.
-    Items are grouped consecutively under the same header context.
-
-    Example: [text, text, header, text, text] -> 2 chunks: [text, text] and [text, text]
-
-    Args:
-        items: List of Item objects to be grouped
-
-    Returns:
-        List of Chunk objects with combined text, bboxes, and page numbers
-    """
-    if not items:
-        return []
-
-    # Build a lookup from documentKey to Item
-    id2item = {
-        item.documentKey: item for item in items if getattr(item, "documentKey", None)
-    }
-
-    chunks: List[Chunk] = []
-    current_group: List[Item] = []
-    current_headers: Optional[List[str]] = None
-
-    def _create_chunk_from_group(
-        group: List[Item], headers: Optional[List[str]]
-    ) -> Chunk:
-        """Create a chunk from a group of items."""
-        if not group:
-            return None
-
-        # Combine texts
-        combined_text_parts = []
-
-        # Add header texts first if available
-        if headers:
-            for h in headers:
-                header_item = id2item.get(h)
-                if header_item and header_item.text:
-                    combined_text_parts.append(header_item.text)
-
-        # Add item texts
-        for item in group:
-            if item.text:
-                combined_text_parts.append(item.text)
-
-        combined_text = "\n".join(combined_text_parts)
-
-        # Combine bboxes into a list
-        combined_bboxes = []
-        for item in group:
-            if item.bbox:
-                combined_bboxes.append(item.bbox)
-
-        # Combine page numbers into a list (unique)
-        page_numbers = []
-        for item in group:
-            if item.pageNumber is not None and item.pageNumber not in page_numbers:
-                page_numbers.append(item.pageNumber)
-
-        # Use properties from first item as base
-        first_item = group[0]
-
-        # Determine chunk type - use "mixed" if multiple types, otherwise use the common type
-        chunk_types = {item.chunkType for item in group}
-        if len(chunk_types) == 1:
-            chunk_type = chunk_types.pop()
-        else:
-            chunk_type = ChunkType.MIXED.value
-
-        return Chunk(
-            documentKey=compute_mdhash_id(combined_text, prefix="chunk-"),
-            text=combined_text,
-            chunkIdx=first_item.chunkIdx,  # Use first item's index
-            documentId=first_item.documentId,
-            chunkType=chunk_type,
-            pageNumber=page_numbers if page_numbers else None,
-            pageImageUrl=first_item.pageImageUrl,
-            pageWidth=first_item.pageWidth,
-            pageHeight=first_item.pageHeight,
-            bbox=combined_bboxes if combined_bboxes else None,
-            caption=None,  # Could combine captions if needed
-            headers=headers,
-            children=None,
-            type=first_item.type,
-            fileName=first_item.fileName,
-            uri=first_item.uri,
-            private=first_item.private,
-            uploadedAt=first_item.uploadedAt,
-            knowledgeBaseId=first_item.knowledgeBaseId,
-            workspaceId=first_item.workspaceId,
-        )
-
-    for item in items:
-        # Skip headers/titles as they will be merged into text
-        if item.chunkType in [ChunkType.TITLE.value, ChunkType.SECTION_HEADER.value]:
-            # If we have a current group, create a chunk and start new group
-            if current_group:
-                chunk = _create_chunk_from_group(current_group, current_headers)
-                if chunk:
-                    chunks.append(chunk)
-                current_group = []
-
-            # Update current headers context
-            current_headers = [item.documentKey] if item.documentKey else None
-            continue
-
-        # Check if this item has different headers than current context
-        item_headers = item.headers if item.headers else None
-
-        # If headers changed, finalize current group and start new one
-        if current_headers != item_headers:
-            if current_group:
-                chunk = _create_chunk_from_group(current_group, current_headers)
-                if chunk:
-                    chunks.append(chunk)
-                current_group = []
-            current_headers = item_headers
-
-        # Add item to current group
-        current_group.append(item)
-
-    # Handle the last group
-    if current_group:
-        chunk = _create_chunk_from_group(current_group, current_headers)
-        if chunk:
-            chunks.append(chunk)
-
-    return chunks
 
 
 # ======================== Dots OCR chunker ========================
@@ -528,7 +511,7 @@ def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
         if item.children:
             for child_id in item.children:
                 child_idx = item_to_index.get(child_id)
-                if child_id in vis_items:
+                if child_id in vis_items or child_idx is None:
                     continue
                 vis_items.add(child_id)
                 extracted_child = _extract_term(items[child_idx])
@@ -610,7 +593,7 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
-    left_bottom_origin: bool = True,
+    dots_left_bottom_origin: bool = True,
 ) -> tuple[List[Item], set[str]]:
     """
     Split a dots document into chunks and return a list of Chunk objects.
@@ -642,46 +625,31 @@ def chunk_dots_document(
         # Convert dots category to chunk type
         chunk_type = _dots_category_to_chunk_type(dots_chunk.category)
         page_size = page_dimensions.get(dots_chunk.page_no, {})
-        page_width = page_size.get("width", None)
-        page_height = page_size.get("height", None)
+        page_width, page_height = _extract_page_dimensions(page_size)
 
         bbox = dots_chunk.bbox
-
-        if left_bottom_origin and page_height is not None:
+        if dots_left_bottom_origin and page_height is not None:
             bbox = _transform_bbox_dims(bbox, page_height)
 
         # Create the chunk content, including caption if available
         content = dots_chunk.text
 
-        chunk_id = compute_mdhash_id(content, prefix="chunk-")
-
-        chunk_obj = Item(
-            documentKey=chunk_id,
+        chunk_obj = _create_item_base(
             text=content,
-            chunkIdx=tmp_chunk_idx,
-            documentId=md_doc.documentKey,
-            chunkType=chunk_type.value,
-            pageNumber=dots_chunk.page_no,
-            pageImageUrl=None,
-            pageWidth=page_width,
-            pageHeight=page_height,
+            chunk_idx=tmp_chunk_idx,
+            document_id=md_doc.documentKey,
+            chunk_type=chunk_type.value,
+            source_file=md_doc,
+            page_number=dots_chunk.page_no,
+            page_width=page_width,
+            page_height=page_height,
             bbox=bbox,
             caption=dots_chunk.caption,
-            # Terms using temporary idx, would be filled later after chunks created
-            headers=None,
+            headers=None,  # Will be filled later after chunks created
             children=None,
-            # inherit file metadata
-            type=md_doc.type,
-            fileName=md_doc.fileName,
-            uri=md_doc.uri,
-            private=md_doc.private,
-            uploadedAt=md_doc.uploadedAt,
-            knowledgeBaseId=md_doc.knowledgeBaseId,
-            workspaceId=md_doc.workspaceId,
         )
 
-        chunk_id_mapping[tmp_chunk_idx] = chunk_id
-
+        chunk_id_mapping[tmp_chunk_idx] = chunk_obj.documentKey
         chunks.append(chunk_obj)
 
     chunks.sort(key=lambda c: c.chunkIdx)
@@ -704,53 +672,6 @@ def chunk_dots_document(
             chunk.children = child_ids
 
     return chunks, header_set
-
-
-def chunk_dots_document_recursive(
-    left_bottom_origin: bool = True,
-    items: Optional[List[Item]] = None,
-    header_set: Optional[set[str]] = None,
-) -> List[Chunk]:
-    """
-    Split a dots document into chunks using DotsRecursiveChunker and return a list of Chunk objects.
-    This produces aggregated chunks that may span multiple pages, with pageNumber and bbox aligned by page.
-    """
-    chunker = DotsRecursiveChunker()
-    dense_chunks = chunker.chunk(items, header_set)
-
-    chunks: List[Chunk] = []
-    for dchunk in dense_chunks:
-
-        tbbox_list = dchunk.bbox
-        if left_bottom_origin:
-            tbbox_list = _transform_bbox_dims_list(tbbox_list, dchunk.page_height)
-
-        chunk_obj = Chunk(
-            documentKey=compute_mdhash_id(dchunk.text, prefix="chunk-"),
-            text=dchunk.text,
-            chunkIdx=dchunk.chunk_idx,
-            documentId=dchunk.document_id,
-            chunkType=dchunk.category,
-            pageNumber=dchunk.pages_span,
-            pageImageUrl=None,
-            pageWidth=dchunk.page_width,
-            pageHeight=dchunk.page_height,
-            bbox=tbbox_list if tbbox_list else None,
-            caption=dchunk.caption,
-            headers=dchunk.headings,
-            children=None,
-            type=dchunk.document_type,
-            fileName=dchunk.file_name,
-            uri=dchunk.uri,
-            private=dchunk.private,
-            uploadedAt=dchunk.uploaded_at,
-            knowledgeBaseId=dchunk.knowledge_base_id,
-            workspaceId=dchunk.workspace_id,
-        )
-        chunks.append(chunk_obj)
-
-    chunks.sort(key=lambda c: c.chunkIdx)
-    return chunks
 
 
 # ======================== langchain chunker ========================
@@ -776,54 +697,72 @@ def chunk_langchain_document(
     chunk_texts = text_splitter.split_text(langchain_doc.text)
 
     chunks = []
-
     original_text = langchain_doc.text
-    id2pos = {}
     print("Original text length:", len(original_text))
 
-    search_start = 0
-    for idx, chunk_text in enumerate(chunk_texts):
-        # Find start position of chunk_text in original_text
-        start_pos = original_text.find(chunk_text, search_start)
-
-        if start_pos == -1:
-            id2pos[idx] = None
-            continue  # Skip if not found
-
-        end_pos = start_pos + len(chunk_text)
-
-        id2pos[idx] = (start_pos, end_pos)
-        search_start = (
-            start_pos + len(chunk_text) - chunk_overlap
-        )  # Move search start forward
+    # Find text positions for all chunks
+    id2pos = _find_text_positions(chunk_texts, original_text, chunk_overlap)
 
     for idx, chunk in enumerate(chunk_texts):
-        bbox = id2pos.get(idx, None)
-        chunk_obj = Item(
-            documentKey=compute_mdhash_id(chunk, prefix="chunk-"),
+        bbox = list(id2pos.get(idx)) if id2pos.get(idx) else None
+
+        chunk_obj = _create_item_base(
             text=chunk,
-            chunkIdx=idx,
-            documentId=langchain_doc.documentKey,
-            chunkType="text",
-            # Inherit file metadata from doc_md
-            type=langchain_doc.type,
-            fileName=langchain_doc.fileName,
-            pageNumber=langchain_doc.pageNumber,
-            uri=langchain_doc.uri,
-            private=langchain_doc.private,
-            uploadedAt=langchain_doc.uploadedAt,
-            # Fields required by ChunkMetadata but not applicable for langchain chunks
-            pageImageUrl=None,
-            pageWidth=None,
-            pageHeight=None,
+            chunk_idx=idx,
+            document_id=langchain_doc.documentKey,
+            chunk_type="text",
+            source_file=langchain_doc,
+            page_number=langchain_doc.pageNumber,
             bbox=bbox,
-            caption=None,
-            headers=None,
-            knowledgeBaseId=langchain_doc.knowledgeBaseId,
-            workspaceId=langchain_doc.workspaceId,
-            children=None,
         )
 
         chunks.append(chunk_obj)
 
+    return chunks
+
+
+# ======================== Unified Chunkers ========================
+
+
+def items_to_chunks_recursive(
+    items: Optional[List[Item]] = None,
+    header_set: Optional[set[str]] = None,
+) -> List[Chunk]:
+    """
+    Split a dots document into chunks using UnifiedRecursiveChunker and return a list of Chunk objects.
+    This produces aggregated chunks that may span multiple pages, with pageNumber and bbox aligned by page.
+    """
+    chunker = UnifiedRecursiveChunker()
+    dense_chunks = chunker.chunk(items, header_set)
+
+    chunks: List[Chunk] = []
+    for dchunk in dense_chunks:
+        tbbox_list = dchunk.bbox
+
+        file_metadata = {
+            "type": dchunk.document_type,
+            "fileName": dchunk.file_name,
+            "uri": dchunk.uri,
+            "private": dchunk.private,
+            "uploadedAt": dchunk.uploaded_at,
+            "knowledgeBaseId": dchunk.knowledge_base_id,
+            "workspaceId": dchunk.workspace_id,
+        }
+
+        chunk_obj = _create_chunk_base(
+            text=dchunk.text,
+            chunk_idx=dchunk.chunk_idx,
+            document_id=dchunk.document_id,
+            chunk_type=dchunk.category,
+            file_metadata=file_metadata,
+            page_number=dchunk.pages_span,
+            page_width=dchunk.page_width,
+            page_height=dchunk.page_height,
+            bbox=tbbox_list if tbbox_list else None,
+            caption=dchunk.caption,
+            headers=dchunk.headings,
+        )
+        chunks.append(chunk_obj)
+
+    chunks.sort(key=lambda c: c.chunkIdx)
     return chunks

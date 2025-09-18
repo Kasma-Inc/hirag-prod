@@ -3,11 +3,10 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
-from dotenv import load_dotenv
 
 from hirag_prod._utils import (
     compute_mdhash_id,
@@ -32,9 +31,8 @@ from hirag_prod.loader.chunk_split import (
     build_rich_toc,
     chunk_docling_document,
     chunk_dots_document,
-    chunk_dots_document_recursive,
     chunk_langchain_document,
-    group_docling_items_by_header,
+    items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
@@ -43,6 +41,7 @@ from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_embedding_service,
+    get_translator,
     initialize_resource_manager,
 )
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
@@ -57,8 +56,6 @@ from hirag_prod.storage import (
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
-
-load_dotenv("/chatbot/.env")
 
 # Configure Logging
 logging.basicConfig(
@@ -125,7 +122,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        loader_type: LoaderType = "docling_cloud",
+        loader_type: LoaderType = "dots_ocr",
     ) -> ProcessingMetrics:
         """Process a single document"""
         # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
@@ -295,28 +292,29 @@ class DocumentProcessor:
                         items, header_set = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
                         )
-                        chunks = chunk_dots_document_recursive(
-                            items=items, header_set=header_set
-                        )
-                        if generated_md:
-                            generated_md.tableOfContents = build_rich_toc(
-                                items, generated_md
-                            )
+
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
-                        items = chunk_docling_document(json_doc, generated_md)
+                        items, header_set = chunk_docling_document(
+                            json_doc, generated_md
+                        )
                         if content_type == "text/markdown":
                             raw_md = generated_md.text
                             items = obtain_docling_md_bbox(json_doc, raw_md, items)
 
-                        chunks = group_docling_items_by_header(items)
-                        if generated_md:
-                            generated_md.tableOfContents = build_rich_toc(
-                                items, generated_md
-                            )
                     else:
                         raise DocumentProcessingError(
                             "Invalid document format returned by loader"
+                        )
+
+                    # Unified chunking method :)
+                    chunks = items_to_chunks_recursive(
+                        items=items,
+                        header_set=header_set,
+                    )
+                    if generated_md:
+                        generated_md.tableOfContents = build_rich_toc(
+                            items, generated_md
                         )
 
                 logger.info(
@@ -682,7 +680,6 @@ class HiRAG:
         chunks: List[Dict[str, Any]],
     ) -> str:
         """Generate summary from chunks"""
-        DEBUG = False  # Set to True for debugging output
 
         logger.info("🚀 Starting summary generation")
         start_time = time.perf_counter()
@@ -725,16 +722,10 @@ class HiRAG:
                     new_error_class=HiRAGException,
                 )
 
-            if DEBUG:
-                print("\n\n\nGenerated Summary:\n", summary)
-
             # Find all sentences that contain the placeholder
             ref_parser = ReferenceParser()
 
             ref_sentences = await ref_parser.parse_references(summary, placeholder)
-
-            if DEBUG:
-                print("\n\n\nReference Sentences:\n", "\n".join(ref_sentences))
 
             # for each sentence, do a query and find the best matching document key to find the referenced chunk
             result = []
@@ -782,14 +773,6 @@ class HiRAG:
                     sentence_embedding, chunk_embeddings
                 )
 
-                if DEBUG:
-                    print(
-                        "\n\n\nSimilar Chunks for Sentence:",
-                        sentence,
-                        "\n",
-                        similar_chunks,
-                    )
-
                 # Sort by similarity
                 reference_list = similar_chunks
                 reference_list.sort(key=lambda x: x["similarity"], reverse=True)
@@ -834,15 +817,6 @@ class HiRAG:
                     key=lambda x: (x["documentKey"].split("_")[0], -x["similarity"])
                 )
 
-                # Append the document keys to the result
-                if DEBUG:
-                    print(
-                        "\n\n\nFiltered References for Sentence:",
-                        sentence,
-                        "\n",
-                        filtered_references,
-                    )
-
                 if len(filtered_references) == 1:
                     result.append([filtered_references[0]["documentKey"]])
                 else:
@@ -858,9 +832,6 @@ class HiRAG:
                 reference_placeholder=placeholder,
                 format_prompt=format_prompt,
             )
-
-            if DEBUG:
-                print("\n\n\nFormatted Summary:\n", summary)
 
             total_time = time.perf_counter() - start_time
             logger.info(f"✅ Summary generation completed in {total_time:.3f}s")
@@ -891,7 +862,7 @@ class HiRAG:
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
         overwrite: Optional[bool] = False,
-        loader_type: LoaderType = "docling_cloud",
+        loader_type: LoaderType = "dots_ocr",
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
@@ -1040,7 +1011,9 @@ class HiRAG:
         workspace_id: str,
         knowledge_base_id: str,
         summary: bool = False,
-        threshold: float = 0.001,
+        threshold: float = 0.0,
+        translation: Optional[List[str]] = None,
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1049,33 +1022,65 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        original_query = query
+        query_list = [original_query]
+
+        if translation:
+            # Get translator from resource manager
+            translator = get_translator()
+
+            # Translate to each specified language
+            for target_language in translation:
+                try:
+                    # Following the same pattern as cross_language_search
+                    translated_result = await translator.translate(
+                        original_query, dest=target_language
+                    )
+                    if (
+                        translated_result.text
+                        and translated_result.text != original_query
+                    ):
+                        query_list.append(translated_result.text)
+                        logger.info(
+                            f"🌐 Translated query to {target_language}: {translated_result.text}"
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+
+        query_results = await self._query_service.query(
+            query=query_list if len(query_list) > 1 else original_query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            strategy=strategy,
+        )
+
+        # Filter chunks by threshold on relevance score
+        if threshold > 0.0 and query_results.get("chunks"):
+            # If relevance_score missing for any chunk, show warning
+            filtered_chunks = []
+            warning_logged = False
+            for chunk in query_results["chunks"]:
+                if "relevance_score" not in chunk:
+                    if not warning_logged:
+                        logger.warning(
+                            "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
+                        )
+                        warning_logged = True
+                if chunk.get("relevance_score", 1.0) >= threshold:
+                    filtered_chunks.append(chunk)
+
+            query_results["chunks"] = filtered_chunks
+
         if summary:
-            query_results = await self._query_service.query(
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-            )
             text_summary = await self.generate_summary(
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                query=query,
+                query=original_query,
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
-        else:
-            query_results = await self._query_service.query(
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-            )
-        # Filter chunks by threshold on relevance score
-        if threshold > 0.0 and query_results.get("chunks"):
-            filtered_chunks = [
-                chunk
-                for chunk in query_results["chunks"]
-                if chunk.get("pagerank_score", 0.0) >= threshold
-            ]
-            query_results["chunks"] = filtered_chunks
+
         return query_results
 
     async def get_health_status(self) -> Dict[str, Any]:
@@ -1171,7 +1176,6 @@ class HiRAG:
             query=query,
             topk=pool_size,
             topn=None,
-            rerank=False,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
         )

@@ -26,17 +26,30 @@ class CliOptions:
             choices=["T", "F", "True", "False", "true", "false"],
             help="Whether to generate a summary of the query results (default: T). Options: T/F, True/False, true/false",
         )
+        parser.add_argument(
+            "--loader-type",
+            type=str,
+            default="dots_ocr",
+            help="Loader type to use for document processing (default: dots_ocr)",
+        )
 
         try:
             args: Namespace = parser.parse_known_args()[0]
         except SystemExit:
             # Fallback if argument parsing fails (e.g., when called from other scripts)
-            args = argparse.Namespace(debug=False, test="2", overwrite="T", summary="T")
+            args = argparse.Namespace(
+                debug=False,
+                test="2",
+                overwrite="T",
+                summary="T",
+                loader_type="dots_ocr",
+            )
 
         self.debug: bool = args.debug
         self.test: str = args.test
         self.overwrite: bool = self._parse_bool_string(args.overwrite)
         self.summary: bool = self._parse_bool_string(args.summary)
+        self.loader_type: str = args.loader_type
 
     def _parse_bool_string(self, value: str) -> bool:
         """Convert string representation to boolean."""
