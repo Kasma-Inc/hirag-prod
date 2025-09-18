@@ -319,7 +319,7 @@ class QueryService:
         workspace_id: str,
         knowledge_base_id: str,
         query: Union[str, List[str]],
-        strategy: Literal["pagerank", "reranker"] = "reranker",
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
     ) -> Dict[str, Any]:
         """Query Strategy"""
         if strategy == "reranker":
@@ -342,5 +342,40 @@ class QueryService:
                 else result.get("query_top", [])
             )
             return result
+        elif strategy == "hybrid":
+            # First get pagerank results
+            pagerank_result = await self.dual_recall_with_pagerank(
+                query=query,
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+            )
+
+            # Use pagerank results if available, otherwise fall back to query_top
+            chunks_to_rerank = (
+                pagerank_result.get("pagerank")
+                if pagerank_result.get("pagerank")
+                else pagerank_result.get("query_top", [])
+            )
+
+            # Apply reranking to the pagerank results
+            if self.reranker and chunks_to_rerank:
+                try:
+                    topn = get_hi_rag_config().default_query_top_n
+                    reranked_chunks = await self.reranker.rerank(
+                        query=query,
+                        items=chunks_to_rerank,
+                        topn=topn,
+                    )
+                    chunks_to_rerank = reranked_chunks
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR, "Failed to rerank chunks in hybrid strategy", e
+                    )
+
+            return {
+                "chunks": chunks_to_rerank,
+                "pagerank": pagerank_result.get("pagerank", []),
+                "query_top": pagerank_result.get("query_top", []),
+            }
         else:
             raise ValueError(f"Unknown query strategy: {strategy}")

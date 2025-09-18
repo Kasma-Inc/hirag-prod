@@ -1013,7 +1013,7 @@ class HiRAG:
         summary: bool = False,
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
-        strategy: Literal["pagerank", "reranker"] = "pagerank",
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:

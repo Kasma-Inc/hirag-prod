@@ -1,5 +1,5 @@
-from typing import Tuple
 from pgvector.sqlalchemy import HALFVEC, Vector
+
 from hirag_prod.configs.functions import get_init_config
 
 INIT_ENVS = get_init_config()

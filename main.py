@@ -138,6 +138,8 @@ def print_chunks_user_friendly(chunks):
         print(f"   Source: {chunk.get('fileName', 'Unknown')}")
         if "relevance_score" in chunk:
             print(f"   Relevance Score: {chunk['relevance_score']:.4f}")
+        if "pagerank_score" in chunk:
+            print(f"   PageRank Score: {chunk['pagerank_score']:.4f}")
 
         # Clean up the text content
         text = chunk.get("text", "")
@@ -188,7 +190,7 @@ async def index(test_id="2", overwrite=True, summary=True, loader_type="dots_ocr
         workspace_id="test_workspace",
         knowledge_base_id="test_pg",
         threshold=0.001,
-        strategy="reranker",
+        strategy="hybrid",
         translation=["en", "zh-TW", "zh"],
     )
 

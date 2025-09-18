@@ -33,8 +33,12 @@ class RerankConfig(BaseSettings):
                 raise ValueError("VOYAGE_API_KEY is required when RERANKER_TYPE is api")
         elif self.reranker_type == "local":
             if not self.local_reranker_model_base_url:
-                raise ValueError("LOCAL_RERANKER_MODEL_BASE_URL is required when RERANKER_TYPE is local")
+                raise ValueError(
+                    "LOCAL_RERANKER_MODEL_BASE_URL is required when RERANKER_TYPE is local"
+                )
             if not self.local_reranker_model_authorization:
-                raise ValueError("LOCAL_RERANKER_MODEL_AUTHORIZATION is required when RERANKER_TYPE is local")
+                raise ValueError(
+                    "LOCAL_RERANKER_MODEL_AUTHORIZATION is required when RERANKER_TYPE is local"
+                )
 
         return self
