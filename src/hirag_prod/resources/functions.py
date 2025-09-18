@@ -76,6 +76,10 @@ def get_translator():
     return get_resource_manager().get_translator()
 
 
+def get_reranker():
+    return get_resource_manager().get_reranker()
+
+
 def get_chat_service():
     return get_resource_manager().get_chat_service()
 

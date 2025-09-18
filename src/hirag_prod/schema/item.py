@@ -1,20 +1,11 @@
-import os
 from datetime import datetime
 from typing import List, Optional
 
-import dotenv
-from pgvector.sqlalchemy import HALFVEC, Vector
 from sqlalchemy import Boolean, Column, DateTime, Float, Integer, String, Text
 from sqlalchemy.types import ARRAY
 
 from hirag_prod.schema.base import Base
-
-# read halfvec and dim from env
-dotenv.load_dotenv()
-dim = int(os.getenv("EMBEDDING_DIMENSION", 1536))
-use_halfvec = bool(os.getenv("USE_HALF_VEC", True))
-
-vec_type = HALFVEC(dim) if use_halfvec else Vector(dim)
+from hirag_prod.schema.vector_config import vec_type
 
 
 class Item(Base):

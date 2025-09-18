@@ -4,7 +4,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
-from hirag_prod.reranker import Reranker, create_reranker
+from hirag_prod.reranker import Reranker
+from hirag_prod.resources.functions import get_reranker
 from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
@@ -15,7 +16,7 @@ class QueryService:
 
     def __init__(self, storage: StorageManager):
         self.storage = storage
-        self.reranker: Optional[Reranker] = create_reranker()
+        self.reranker: Optional[Reranker] = get_reranker()
 
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query chunks via unified storage"""

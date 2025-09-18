@@ -7,6 +7,7 @@ from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.reranker_config import RerankConfig
 
 
 class ConfigManager:
@@ -35,6 +36,7 @@ class ConfigManager:
             **self.envs.model_dump()
         )
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
+        self.reranker_config: RerankConfig = RerankConfig(**self.envs.model_dump())
         self._docling_cloud_config: Optional[DoclingCloudConfig] = None
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._aws_config: Optional[AWSConfig] = None

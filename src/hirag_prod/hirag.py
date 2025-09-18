@@ -1055,6 +1055,23 @@ class HiRAG:
             strategy=strategy,
         )
 
+        # Filter chunks by threshold on relevance score
+        if threshold > 0.0 and query_results.get("chunks"):
+            # If relevance_score missing for any chunk, show warning
+            filtered_chunks = []
+            warning_logged = False
+            for chunk in query_results["chunks"]:
+                if "relevance_score" not in chunk:
+                    if not warning_logged:
+                        logger.warning(
+                            "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
+                        )
+                        warning_logged = True
+                if chunk.get("relevance_score", 1.0) >= threshold:
+                    filtered_chunks.append(chunk)
+
+            query_results["chunks"] = filtered_chunks
+
         if summary:
             text_summary = await self.generate_summary(
                 workspace_id=workspace_id,
@@ -1063,15 +1080,6 @@ class HiRAG:
                 chunks=query_results["chunks"],
             )
             query_results["summary"] = text_summary
-
-        # Filter chunks by threshold on relevance score
-        if threshold > 0.0 and query_results.get("chunks"):
-            filtered_chunks = [
-                chunk
-                for chunk in query_results["chunks"]
-                if chunk.get("relevance_score", 0.0) >= threshold
-            ]
-            query_results["chunks"] = filtered_chunks
 
         return query_results
 

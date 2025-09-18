@@ -4,6 +4,15 @@ from pydantic import ConfigDict, model_validator
 from pydantic_settings import BaseSettings
 
 
+class InitEnvs(BaseSettings):
+    model_config = ConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+    EMBEDDING_DIMENSION: int
+    USE_HALF_VEC: bool = True
+    HIRAG_QUERY_TIMEOUT: int = 100  # seconds
+
+
 class Envs(BaseSettings):
     model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8", extra="allow")
 
@@ -36,6 +45,19 @@ class Envs(BaseSettings):
     LOCAL_LLM_API_KEY: Optional[str] = None
 
     SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
+
+    RERANKER_TYPE: Literal["api", "local"] = "api"
+
+    # API reranker (Voyage AI) settings
+    VOYAGE_API_KEY: Optional[str] = None
+    VOYAGE_RERANKER_MODEL_NAME: str = "rerank-2"
+    VOYAGE_RERANKER_MODEL_BASE_URL: str = "https://api.voyageai.com/v1/rerank"
+
+    # Local reranker settings
+    LOCAL_RERANKER_MODEL_BASE_URL: Optional[str] = None
+    LOCAL_RERANKER_MODEL_NAME: str = "Qwen3-Reranker-8B"
+    LOCAL_RERANKER_MODEL_ENTRY_POINT: str = "/rerank"
+    LOCAL_RERANKER_MODEL_AUTHORIZATION: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":
