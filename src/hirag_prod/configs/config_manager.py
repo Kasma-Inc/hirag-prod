@@ -7,6 +7,7 @@ from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.qwen_translator_config import QwenTranslatorConfig
 from hirag_prod.configs.reranker_config import RerankConfig
 
 
@@ -37,6 +38,7 @@ class ConfigManager:
         )
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
         self.reranker_config: RerankConfig = RerankConfig(**self.envs.model_dump())
+        self._qwen_translator_config: Optional[QwenTranslatorConfig] = None
         self._docling_cloud_config: Optional[DoclingCloudConfig] = None
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._aws_config: Optional[AWSConfig] = None
@@ -85,6 +87,15 @@ class ConfigManager:
             )
 
         self._created: bool = True
+
+    @property
+    def qwen_translator_config(self) -> QwenTranslatorConfig:
+        """Getter for qwen_translator_config"""
+        if not self._qwen_translator_config:
+            self._qwen_translator_config = QwenTranslatorConfig(
+                **self.envs.model_dump()
+            )
+        return self._qwen_translator_config
 
     @property
     def docling_cloud_config(self) -> DoclingCloudConfig:

@@ -28,6 +28,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.reranker import Reranker, create_reranker
 from hirag_prod.resources.functions import timing_logger
+from hirag_prod.translator.qwen_translator import QwenTranslator
 
 
 class ResourceManager:
@@ -87,6 +88,9 @@ class ResourceManager:
         # Translator
         self._translator: Optional[Translator] = (
             resource_dict.get("translator", None) if resource_dict else None
+        )
+        self._qwen_translator: Optional[QwenTranslator] = (
+            resource_dict.get("qwen_translator", None) if resource_dict else None
         )
 
         # Reranker
@@ -170,6 +174,10 @@ class ResourceManager:
                 # Initialize Translator
                 if not self._translator:
                     self._translator = Translator()
+
+                # Initialize Qwen Translator
+                if not self._qwen_translator:
+                    self._qwen_translator = QwenTranslator()
 
                 # Initialize Reranker
                 if not self._reranker:
@@ -339,6 +347,14 @@ class ResourceManager:
         if self._translator is None:
             raise RuntimeError("Translator not initialized. Call initialize() first.")
         return self._translator
+
+    def get_qwen_translator(self) -> QwenTranslator:
+        """Get the Qwen translator instance."""
+        if self._qwen_translator is None:
+            raise RuntimeError(
+                "Qwen translator not initialized. Call initialize() first."
+            )
+        return self._qwen_translator
 
     def get_reranker(self) -> Reranker:
         """Get the reranker instance."""

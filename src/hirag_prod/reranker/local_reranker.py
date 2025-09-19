@@ -93,6 +93,7 @@ class LocalReranker(Reranker):
                     item = items[idx].copy()
                     item["relevance_score"] = r.get("relevance_score", 0.0)
                     reranked.append(item)
+            reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
             return reranked
 
         # Handle list of queries case - find max relevance score among all queries

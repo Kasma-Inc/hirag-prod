@@ -157,7 +157,7 @@ class PGVector(BaseVDB):
 
             # Compute a safe batch size based on parameter budget to avoid exceeding
             # PostgreSQL's 65535 bind parameter limit for a single statement.
-            # We conservatively cap at 60000 total parameters per statement.
+            # We conservatively cap at 30000 total parameters per statement.
             param_budget = 30000
             max_batch_size = max(1, param_budget // cols_per_row)
 
@@ -254,7 +254,7 @@ class PGVector(BaseVDB):
                 graph_table = GraphModel.__table__
                 pk_cols = [c.name for c in graph_table.primary_key.columns]
                 cols_per_row = len(edge_rows[0])
-                param_budget = 60000
+                param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
                 for i in range(0, len(edge_rows), max_batch_size):
                     batch = [
@@ -274,7 +274,7 @@ class PGVector(BaseVDB):
                     if nr.get("chunkIds"):
                         nr["chunkIds"] = list(dict.fromkeys(nr["chunkIds"]))
                 cols_per_row = len(node_rows[0])
-                param_budget = 60000
+                param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
                 for i in range(0, len(node_rows), max_batch_size):
                     batch = [

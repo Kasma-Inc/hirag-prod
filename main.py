@@ -4,6 +4,7 @@ import logging
 
 from hirag_prod import HiRAG
 from hirag_prod.configs.cli_options import CliOptions
+from hirag_prod.resources.functions import get_qwen_translator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -106,7 +107,25 @@ def get_test(id: str):
             }
             for fn in filenames
         ]
-        query = "部屬人員或員佐級成員潛逃時，應如何處理？"
+        query = [
+            "What is the short title of Cap. 95?",
+            "According to Cap. 95, what are the duties of the Fire Services Department under Section 7?",
+            "In Cap. 95, what powers does the Director have under Section 9 regarding fire hazards?",
+            "What is the punishment for subordinate officers and members of other ranks for offences against discipline in Cap. 95's Third Schedule?",
+            "In Cap. 95 Part IV, what does the Fire Services Department Welfare Fund consist of under Section 19B?",
+            "What are the ranks in the Fire Services Department as per the Sixth Schedule of Cap. 95?",
+            "In Cap. 123, what is required for the commencement of building works under Section 14?",
+            "According to Cap. 123 Section 16, on what grounds may approval or consent be refused?",
+            "What is a Closure Order under Section 27 of Cap. 123?",
+            "In Cap. 123, what are the powers of the Building Authority under Section 22?",
+            "What is the citation for Cap. 95B regulations?",
+            "Under Cap. 95B Regulation 3, who approves portable equipment and what is the appeal process?",
+            "In Cap. 95B, what is the definition of 'portable equipment'?",
+            "According to Cap. 95B Regulation 6, who is allowed to install fire service installations or equipment?",
+            "What are the duties of owners under Cap. 95B Regulation 8 regarding maintenance and inspection?",
+            "In Cap. 95B Regulation 9, what must a certificate issued by a registered contractor include?",
+            "What is the penalty under Cap. 95B Regulation 12 for contraventions?",
+        ]
         return document_paths, content_type, document_metas, query
     else:
         # Default to small.pdf if test not found
@@ -136,6 +155,7 @@ def print_chunks_user_friendly(chunks):
     for i, chunk in enumerate(chunks, 1):
         print(f"📄 Chunk {i}")
         print(f"   Source: {chunk.get('fileName', 'Unknown')}")
+        print(f"   Chunk ID: {chunk.get('documentKey', 'Unknown')}")
         if "relevance_score" in chunk:
             print(f"   Relevance Score: {chunk['relevance_score']:.4f}")
         if "pagerank_score" in chunk:
@@ -162,43 +182,45 @@ async def index(test_id="2", overwrite=True, summary=True, loader_type="dots_ocr
 
     document_path, content_type, document_meta, query = get_test(test_id)
 
-    if isinstance(document_path, list):
-        for dp, dm in zip(document_path, document_meta):
-            await index.insert_to_kb(
-                document_path=dp,
-                content_type=content_type,
-                document_meta=dm,
-                workspace_id="test_workspace",
-                knowledge_base_id="test_pg",
-                loader_type=loader_type,
-                overwrite=overwrite,
-            )
-    else:
+    if isinstance(document_path, str):
+        document_path = [document_path]
+        document_meta = [document_meta]
+
+    for dp, dm in zip(document_path, document_meta):
         await index.insert_to_kb(
-            document_path=document_path,
+            document_path=dp,
             content_type=content_type,
-            document_meta=document_meta,
+            document_meta=dm,
             workspace_id="test_workspace",
             knowledge_base_id="test_pg",
             loader_type=loader_type,
             overwrite=overwrite,
         )
 
-    ret = await index.query(
-        query=query,
-        summary=summary,
-        workspace_id="test_workspace",
-        knowledge_base_id="test_pg",
-        threshold=0.001,
-        strategy="hybrid",
-        translation=["en", "zh-TW", "zh"],
-    )
+    if isinstance(query, str):
+        query = [query]
 
-    print("———————————————————— Chunks ————————————————————\n")
-    print_chunks_user_friendly(ret["chunks"])
-    if summary:
-        print("———————————————————— Summary ————————————————————\n")
-        print(ret["summary"])
+    if isinstance(query, list):
+        for q in query:
+            ret = await index.query(
+                query=q,
+                summary=summary,
+                workspace_id="test_workspace",
+                knowledge_base_id="test_pg",
+                threshold=0.001,
+                strategy="hybrid",
+                translation=["en", "zh-TW", "zh"],
+                translator="qwen",
+            )
+
+            print("———————————————————— Query ————————————————————\n")
+            print(f"Query: {q}\n")
+            print("———————————————————— Chunks ————————————————————\n")
+            print_chunks_user_friendly(ret["chunks"])
+            if summary:
+                print("———————————————————— Summary ————————————————————\n")
+                print(ret["summary"])
+            print("\n\n")
 
 
 def main():

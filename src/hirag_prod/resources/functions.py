@@ -117,6 +117,10 @@ def get_translator():
     return get_resource_manager().get_translator()
 
 
+def get_qwen_translator():
+    return get_resource_manager().get_qwen_translator()
+
+
 def get_reranker():
     return get_resource_manager().get_reranker()
 

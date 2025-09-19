@@ -41,6 +41,7 @@ from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_embedding_service,
+    get_qwen_translator,
     get_translator,
     initialize_resource_manager,
 )
@@ -1013,6 +1014,7 @@ class HiRAG:
         summary: bool = False,
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
+        translator: Literal["google", "qwen"] = "qwen",
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
     ) -> Dict[str, Any]:
         """Query all types of data"""
@@ -1028,7 +1030,13 @@ class HiRAG:
 
         if translation:
             # Get translator from resource manager
-            translator = get_translator()
+            if translator == "qwen":
+                translator = get_qwen_translator()
+            elif translator == "google":
+                translator = get_translator()
+
+            if not translator:
+                raise HiRAGException("Translator service not properly initialized")
 
             # Translate to each specified language
             for target_language in translation:
