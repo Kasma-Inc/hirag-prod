@@ -35,7 +35,15 @@ class Item(Base):
     caption: Optional[str] = Column(String, nullable=True)
     bbox: Optional[List[float]] = Column(ARRAY(Float), nullable=True)
     # Computed Data
+    token_list: List[str] = Column(ARRAY(String), nullable=False)
+    token_start_index_list: List[int] = Column(ARRAY(Integer), nullable=False)
+    token_end_index_list: List[int] = Column(ARRAY(Integer), nullable=False)
     translation: str = Column(Text, nullable=False)
+    translation_token_list: List[str] = Column(ARRAY(String), nullable=False)
+    translation_token_start_index_list: List[int] = Column(
+        ARRAY(Integer), nullable=False
+    )
+    translation_token_end_index_list: List[int] = Column(ARRAY(Integer), nullable=False)
     vector: List[float] = Column(vec_type, nullable=False)
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
 

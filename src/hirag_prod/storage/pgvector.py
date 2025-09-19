@@ -7,9 +7,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import networkx as nx
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.configs.functions import get_init_config
+from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,
@@ -86,6 +88,7 @@ class PGVector(BaseVDB):
         texts_to_upsert: List[str],
         properties_list: List[dict],
         table_name: str,
+        with_tokenization: bool = False,
         with_translation: bool = False,
         mode: Literal["append", "overwrite"] = "append",
     ):
@@ -101,16 +104,34 @@ class PGVector(BaseVDB):
             embs = await self.embedding_func(texts_to_upsert)
             now = datetime.now()
             rows = []
-            for i in range(len(properties_list)):
-                row = dict(properties_list[i] or {})
-                if with_translation:
-                    row["translation"] = (
-                        await get_translator().translate(texts_to_upsert[i], dest="en")
-                    ).text
-                vec = self._to_list(embs[i])
-                row["vector"] = vec
-                row["updatedAt"] = now
-                rows.append(row)
+            with tqdm(
+                total=len(properties_list), desc="Processing texts", leave=False
+            ) as progress_bar:
+                for i in range(len(properties_list)):
+                    row = dict(properties_list[i] or {})
+                    if with_tokenization:
+                        (
+                            row["token_list"],
+                            row["token_start_index_list"],
+                            row["token_end_index_list"],
+                        ) = normalize_tokenize_text(texts_to_upsert[i])
+                    if with_translation:
+                        row["translation"] = (
+                            await get_translator().translate(
+                                texts_to_upsert[i], dest="en"
+                            )
+                        ).text
+                        if with_tokenization:
+                            (
+                                row["translation_token_list"],
+                                row["translation_token_start_index_list"],
+                                row["translation_token_end_index_list"],
+                            ) = normalize_tokenize_text(row["translation"])
+                    vec = self._to_list(embs[i])
+                    row["vector"] = vec
+                    row["updatedAt"] = now
+                    rows.append(row)
+                    progress_bar.update(1)
 
             table = model.__table__
             pk_cols = [c.name for c in table.primary_key.columns]

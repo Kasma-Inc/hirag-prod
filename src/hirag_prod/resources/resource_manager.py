@@ -4,8 +4,10 @@ import os
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import nltk
+import hanlp
 from googletrans import Translator
+from hanlp.components.tokenizers.transformer import TransformerTaggingTokenizer
+from opencc import OpenCC
 from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -66,6 +68,23 @@ class ResourceManager:
             Union[EmbeddingService, LocalEmbeddingService]
         ] = None
 
+        # Chinese convertor
+        self._chinese_convertor_simplified_to_hk_traditional: Optional[OpenCC] = (
+            resource_dict.get("chinese_convertor_simplified_to_hk_traditional", None)
+            if resource_dict
+            else None
+        )
+        self._chinese_convertor_hk_traditional_to_simplified: Optional[OpenCC] = (
+            resource_dict.get("chinese_convertor_hk_traditional_to_simplified", None)
+            if resource_dict
+            else None
+        )
+
+        # Sentence tokenizer
+        self._sentence_tokenizer: Optional[TransformerTaggingTokenizer] = (
+            resource_dict.get("sentence_tokenizer", None) if resource_dict else None
+        )
+
         # Translator
         self._translator: Optional[Translator] = (
             resource_dict.get("translator", None) if resource_dict else None
@@ -120,9 +139,6 @@ class ResourceManager:
             logging.info(f"🔄 Initializing ResourceManager...")
 
             try:
-                # Download nltk data
-                nltk.download("wordnet")
-
                 # Initialize database engine with connection pool
                 if (not self._db_engine) or (not self._session_maker):
                     await self._initialize_database()
@@ -137,6 +153,22 @@ class ResourceManager:
                 if not self._embedding_service:
                     self._embedding_service = create_embedding_service(
                         default_batch_size=get_hi_rag_config().embedding_batch_size
+                    )
+
+                # Chinese convertor
+                if not self._chinese_convertor_simplified_to_hk_traditional:
+                    self._chinese_convertor_simplified_to_hk_traditional = OpenCC(
+                        "s2hk.json"
+                    )
+                if not self._chinese_convertor_hk_traditional_to_simplified:
+                    self._chinese_convertor_hk_traditional_to_simplified = OpenCC(
+                        "hk2s.json"
+                    )
+
+                # Sentence tokenizer
+                if not self._sentence_tokenizer:
+                    self._sentence_tokenizer = hanlp.load(
+                        hanlp.pretrained.tok.UD_TOK_MMINILMV2L12
                     )
 
                 # Initialize Translator
@@ -286,6 +318,29 @@ class ResourceManager:
                 "Embedding service not initialized. Call initialize() first."
             )
         return self._embedding_service
+
+    def get_chinese_convertor(self, convertor_type: str = "s2hk") -> OpenCC:
+        """Get the Chinese convertor instance."""
+        if convertor_type == "s2hk":
+            if self._chinese_convertor_simplified_to_hk_traditional is None:
+                raise RuntimeError(
+                    "Chinese convertor simplified to Hong Kong traditional not initialized. Call initialize() first."
+                )
+            return self._chinese_convertor_simplified_to_hk_traditional
+        else:
+            if self._chinese_convertor_hk_traditional_to_simplified is None:
+                raise RuntimeError(
+                    "Chinese convertor Hong Kong traditional to simplified not initialized. Call initialize() first."
+                )
+            return self._chinese_convertor_hk_traditional_to_simplified
+
+    def get_sentence_tokenizer(self) -> TransformerTaggingTokenizer:
+        """Get the sentence tokenizer instance."""
+        if self._sentence_tokenizer is None:
+            raise RuntimeError(
+                "Sentence tokenizer not initialized. Call initialize() first."
+            )
+        return self._sentence_tokenizer
 
     def get_translator(self) -> Translator:
         """Get the translator instance."""

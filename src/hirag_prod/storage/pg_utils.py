@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from sqlalchemy import text
-from sqlmodel import JSON, Field, SQLModel, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from hirag_prod._utils import log_error_info
