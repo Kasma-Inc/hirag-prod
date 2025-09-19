@@ -365,7 +365,10 @@ class DocumentProcessor:
                         chunks.append(chunk)
 
                 else:
-                    if content_type in ["application/pdf", "multimodal/image"] or loader_type == "dots_ocr":
+                    if (
+                        content_type in ["application/pdf", "multimodal/image"]
+                        or loader_type == "dots_ocr"
+                    ):
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path=document_path,
