@@ -27,13 +27,9 @@ class QwenTranslatorConfig(BaseSettings):
     def validate_translator_config(self) -> "QwenTranslatorConfig":
         """Validate that required fields are present for Qwen translator"""
         if not self.api_key:
-            raise ValueError(
-                "api_key is required for Qwen translator"
-            )
+            raise ValueError("api_key is required for Qwen translator")
         if not self.base_url:
-            raise ValueError(
-                "base_url is required for Qwen translator"
-            )
+            raise ValueError("base_url is required for Qwen translator")
         return self
 
     # Remove the property methods since we're using direct field names now
