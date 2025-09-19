@@ -3,9 +3,7 @@ from typing import List
 from pydantic import BaseModel
 
 
-class TranslationResponse(BaseModel):
-    translation_list: List[str]
-
-
-class SynonymResponse(BaseModel):
+class ProcessSearchResponse(BaseModel):
     synonym_list: List[str]
+    is_english: bool
+    translation_list: List[str]

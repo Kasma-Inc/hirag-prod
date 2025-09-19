@@ -1,20 +1,21 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from hirag_prod.configs.functions import get_llm_config
+import numpy as np
+
 from hirag_prod.cross_language_search.functions import (
     build_search_result,
     classify_search,
-    get_synonyms_and_validate,
+    create_embeddings_batch,
+    embedding_search_by_search_sentence_list,
+    get_synonyms_and_validate_and_translate,
     has_traditional_chinese,
     normalize_text,
+    precise_search_by_search_sentence_list,
     search_by_search_keyword_list,
-    search_by_search_sentence_list,
+    validate_similarity,
 )
-from hirag_prod.cross_language_search.types import TranslationResponse
 from hirag_prod.resources.functions import (
-    get_chat_service,
     get_chinese_convertor,
-    get_translator,
 )
 from hirag_prod.storage.vdb_utils import get_item_info_by_scope
 
@@ -22,28 +23,25 @@ from hirag_prod.storage.vdb_utils import get_item_info_by_scope
 async def cross_language_search(
     knowledge_base_id: str, workspace_id: str, search_content: str
 ) -> List[Dict[str, Any]]:
-    language: str = (await get_translator().detect(search_content)).lang
-    is_english: bool = language == "en"
-
-    search_list_original_language: List[str] = []
-    search_list: List[str] = []
+    synonym_list, is_english, translation_list = (
+        await get_synonyms_and_validate_and_translate(search_content)
+    )
     if is_english:
-        search_list = await get_synonyms_and_validate(search_content)
+        search_list_original_language: List[str] = []
+        search_list: List[str] = synonym_list
     else:
-        search_list_original_language = await get_synonyms_and_validate(search_content)
-        translation_response: TranslationResponse = await get_chat_service().complete(
-            prompt=f"Please translate the following search keyword or sentence into English. Please translate as briefly as possible. Please give at least 6 different possible translations and output them as a JSON list. The search to translate is {search_content}",
-            model=get_llm_config().model_name,
-            max_tokens=get_llm_config().max_tokens,
-            response_format=TranslationResponse,
-            timeout=get_llm_config().timeout,
-        )
-        search_list.extend(translation_response.translation_list)
+        search_list_original_language: List[str] = synonym_list
+        search_list: List[str] = translation_list
 
     search_keyword_list_original, search_sentence_list_original = classify_search(
         search_list_original_language
     )
     search_keyword_list, search_sentence_list = classify_search(search_list)
+
+    print(search_keyword_list_original)
+    print(search_sentence_list_original)
+    print(search_keyword_list)
+    print(search_sentence_list)
 
     chunk_list = await get_item_info_by_scope(
         knowledge_base_id=knowledge_base_id,
@@ -51,6 +49,19 @@ async def cross_language_search(
     )
     if len(chunk_list) == 0:
         return []
+
+    str_list_dict_to_embed: Dict[str, List[str]] = {}
+
+    if len(search_keyword_list_original + search_keyword_list) > 0:
+        str_list_dict_to_embed["search_keyword"] = (
+            search_keyword_list_original + search_keyword_list
+        )
+
+    if len(search_sentence_list_original + search_sentence_list) > 0:
+        str_list_dict_to_embed["search_sentence"] = (
+            search_sentence_list_original + search_sentence_list
+        )
+
     processed_chunk_list: List[Dict[str, Any]] = [
         {
             "original_normalized": normalize_text(chunk["text"]),
@@ -70,20 +81,52 @@ async def cross_language_search(
         }
         for chunk in chunk_list
     ]
-    matched_keyword_index_list_dict_batch: List[
-        Dict[str, Optional[List[Optional[int]]]]
-    ] = await search_by_search_keyword_list(
-        processed_chunk_list, search_keyword_list_original, search_keyword_list
+
+    matched_keyword_list_to_embed, matched_keyword_index_list_dict_batch = (
+        await search_by_search_keyword_list(
+            processed_chunk_list, search_keyword_list_original, search_keyword_list
+        )
     )
-    matched_sentence_index_list_dict_batch: List[
-        Dict[str, Optional[List[Optional[Tuple[int, int]]]]]
-    ]
-    embedding_similar_chunk_info_dict: Dict[int, float]
-    matched_sentence_index_list_dict_batch, embedding_similar_chunk_info_dict = (
-        await search_by_search_sentence_list(
+    if len(matched_keyword_list_to_embed) > 0:
+        str_list_dict_to_embed["matched_keyword"] = matched_keyword_list_to_embed
+
+    matched_sentence_list_to_embed, matched_sentence_index_list_dict_batch = (
+        await precise_search_by_search_sentence_list(
             processed_chunk_list, search_sentence_list_original, search_sentence_list
         )
     )
+    if len(matched_sentence_list_to_embed) > 0:
+        str_list_dict_to_embed["matched_sentence"] = matched_sentence_list_to_embed
+
+    str_embedding_np_array_dict: Dict[str, np.ndarray] = await create_embeddings_batch(
+        str_list_dict_to_embed
+    )
+
+    if ("matched_keyword" in str_list_dict_to_embed) and (
+        "search_keyword" in str_list_dict_to_embed
+    ):
+        await validate_similarity(
+            str_embedding_np_array_dict["matched_keyword"],
+            str_embedding_np_array_dict["search_keyword"],
+            matched_keyword_index_list_dict_batch,
+        )
+
+    if ("matched_sentence" in str_list_dict_to_embed) and (
+        "search_sentence" in str_list_dict_to_embed
+    ):
+        await validate_similarity(
+            str_embedding_np_array_dict["matched_sentence"],
+            str_embedding_np_array_dict["search_sentence"],
+            matched_sentence_index_list_dict_batch,
+        )
+
+    embedding_similar_chunk_info_dict: Dict[int, float] = {}
+    if "search_sentence" in str_list_dict_to_embed:
+        embedding_similar_chunk_info_dict = (
+            await embedding_search_by_search_sentence_list(
+                processed_chunk_list, str_embedding_np_array_dict["search_sentence"]
+            )
+        )
 
     build_search_result(
         processed_chunk_list,
