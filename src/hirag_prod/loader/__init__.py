@@ -66,7 +66,7 @@ DEFAULT_LOADER_CONFIGS = {
 
 
 def check_cloud_health(
-    document_converter_type: Literal["dots_ocr", "docling_cloud"],
+    document_converter_type: Literal["dots_ocr"],
 ) -> bool:
     """Check the health of the cloud service"""
     try:
@@ -154,11 +154,7 @@ def load_document(
             f"Unexpected error in route_file_path, using original path",
             e,
         )
-
-    if loader_type == "docling_cloud":
-        docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)
-        return docling_doc, doc_md
-    elif loader_type == "dots_ocr":
+    if loader_type == "dots_ocr":
         json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
         return json_doc, doc_md
     elif loader_type == "docling":

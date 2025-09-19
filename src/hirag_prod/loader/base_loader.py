@@ -17,39 +17,6 @@ class BaseLoader(ABC):
     loader_docling: Type[DocumentConverter]
     loader_langchain: Type[LangchainBaseLoader]
 
-    def load_docling_cloud(
-        self, document_path: str, document_meta: Optional[dict] = None, **loader_args
-    ) -> Tuple[DoclingDocument, File]:
-        """Load document and set the metadata of the split chunks
-
-        Args:
-            document_path (str): The document path for loader to use.
-            document_meta (Optional[dict]): The document metadata to set to the output.
-            loader_args (dict): The arguments for the loader.
-
-        Returns:
-            File: the loaded document
-        """
-        assert document_meta.get("private") is not None, "private is required"
-        docling_doc: DoclingDocument = document_converter.convert(
-            "docling_cloud", document_path
-        )
-        md_str: str = docling_doc.export_to_markdown()
-        doc_md = File(
-            documentKey=document_meta.get(
-                "documentKey", compute_mdhash_id(md_str, prefix="doc-")
-            ),
-            text=md_str,
-            type=document_meta.get("type", "pdf"),  # Default to pdf
-            fileName=document_meta.get("fileName", ""),
-            uri=document_meta.get("uri", ""),
-            private=document_meta.get("private"),
-            uploadedAt=document_meta.get("uploadedAt"),
-            knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
-            workspaceId=document_meta.get("workspaceId", ""),
-        )
-        return docling_doc, doc_md
-
     def load_dots_ocr(
         self, document_path: str, document_meta: Optional[dict] = None
     ) -> Tuple[File, File]:

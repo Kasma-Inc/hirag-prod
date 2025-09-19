@@ -181,7 +181,7 @@ def route_file_path(loader_type: LoaderType, url_path: str) -> str:
     """
     Parse a url path to a located file path
     """
-    if loader_type == "docling_cloud" or loader_type == "dots_ocr":
+    if loader_type == "dots_ocr":
         return url_path
 
     parsed_url = urlparse(url_path)
