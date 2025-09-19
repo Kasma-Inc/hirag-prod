@@ -2,6 +2,7 @@ from typing import Optional, Union
 
 from openai import AsyncOpenAI
 
+from hirag_prod._utils import logger
 from hirag_prod.configs.functions import get_qwen_translator_config
 
 LANGUAGE_MAPPING = {
@@ -47,6 +48,7 @@ class QwenTranslator:
             self._client = AsyncOpenAI(
                 api_key=config.api_key, base_url=config.base_url, timeout=config.timeout
             )
+            logger.info(f"🌐 Using Qwen Translator with model: {config.model_name}")
         return self._client
 
     def _validate_language(self, lang: str) -> None:
