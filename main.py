@@ -4,7 +4,6 @@ import logging
 
 from hirag_prod import HiRAG
 from hirag_prod.configs.cli_options import CliOptions
-from hirag_prod.resources.functions import get_qwen_translator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

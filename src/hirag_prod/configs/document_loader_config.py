@@ -1,4 +1,6 @@
 from pydantic_settings import BaseSettings
+
+
 class DotsOCRConfig(BaseSettings):
     """Dots OCR configuration"""
 

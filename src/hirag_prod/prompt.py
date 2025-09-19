@@ -255,7 +255,9 @@ Data:
 **Output:**
 """
 
-PROMPTS["summary_excel_en"] = """
+PROMPTS[
+    "summary_excel_en"
+] = """
 You are an expert assistant in interpreting Excel tables rendered in LaTeX tabular format. 
 Given a sheet name and its LaTeX content, generate a concise, keyword-rich description that captures the table's structure, key columns, data themes, and essential details. 
 This description should be optimized for embedding-based semantic search, enabling precise and efficient retrieval when queried. 

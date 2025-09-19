@@ -1,14 +1,13 @@
-import os
-import pandas as pd
-from hirag_prod.loader.utils import route_file_path, validate_document_path
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
+import pandas as pd
 from docling_core.types.doc import DoclingDocument
 
 from hirag_prod._utils import (
@@ -38,6 +37,7 @@ from hirag_prod.loader.chunk_split import (
     items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
+from hirag_prod.loader.utils import route_file_path, validate_document_path
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
 from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
@@ -49,7 +49,7 @@ from hirag_prod.resources.functions import (
     initialize_resource_manager,
 )
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
-from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk, file_to_item
+from hirag_prod.schema import Chunk, File, Item, LoaderType, file_to_item, item_to_chunk
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -267,21 +267,33 @@ class DocumentProcessor:
                     chunks = [
                         item_to_chunk(item) for item in items
                     ]  # Convert items to chunks
-                elif content_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+                elif (
+                    content_type
+                    == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ):
                     try:
                         local_path = route_file_path("excel_loader", document_path)
                     except Exception:
                         local_path = document_path
                     validate_document_path(local_path)
-                    
-                    all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(local_path, sheet_name = None)
-                    
+
+                    all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(
+                        local_path, sheet_name=None
+                    )
+
                     def keep_sheet(name: str) -> bool:
                         s = (name or "").lower()
                         return ("cache" not in s) and ("detail" not in s)
-                    filtered_sheets = [(name, df) for name, df in all_sheets.items() if keep_sheet(name)]
+
+                    filtered_sheets = [
+                        (name, df)
+                        for name, df in all_sheets.items()
+                        if keep_sheet(name)
+                    ]
                     document_id = document_meta.get("documentKey", "")
-                    file_name = document_meta.get("fileName", os.path.basename(local_path))
+                    file_name = document_meta.get(
+                        "fileName", os.path.basename(local_path)
+                    )
                     generated_md = File(
                         documentKey=document_id,
                         text=file_name,
@@ -294,7 +306,7 @@ class DocumentProcessor:
                         knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
                         workspaceId=document_meta.get("workspaceId", ""),
                     )
-                    
+
                     latex_list = []
                     sheet_names = []
                     for sheet_name, df in filtered_sheets:
@@ -303,42 +315,55 @@ class DocumentProcessor:
                         except Exception:
                             latex_list.append(df.to_string(index=False))
                         sheet_names.append(sheet_name)
-                    
+
                     # summarize each sheet latex into a concise caption using LLM
                     async def summarize_excel_sheet(sheet_name: str, latex: str) -> str:
-                        system_prompt = PROMPTS["summary_excel_en"].format(sheet_name=sheet_name, latex=latex)
+                        system_prompt = PROMPTS["summary_excel_en"].format(
+                            sheet_name=sheet_name, latex=latex
+                        )
                         try:
                             return await get_chat_service().complete(
-                                prompt = system_prompt,
+                                prompt=system_prompt,
                                 model=get_llm_config().model_name,
                             )
                         except Exception as e:
-                            raise HiRAGException(f"Failed to summarize excel sheet {sheet_name}")
-                    
-                    captions = await asyncio.gather(*[summarize_excel_sheet(sheet_name, latex) for sheet_name, latex in zip(sheet_names, latex_list)])
+                            raise HiRAGException(
+                                f"Failed to summarize excel sheet {sheet_name}"
+                            )
+
+                    captions = await asyncio.gather(
+                        *[
+                            summarize_excel_sheet(sheet_name, latex)
+                            for sheet_name, latex in zip(sheet_names, latex_list)
+                        ]
+                    )
                     items = []
                     chunks = []
-                    
-                    for idx, (name, latex, caption) in enumerate(zip(sheet_names, latex_list, captions), start=1):
-                        sheet_key = compute_mdhash_id(f"{document_id}:{name}", prefix="chunk-")
+
+                    for idx, (name, latex, caption) in enumerate(
+                        zip(sheet_names, latex_list, captions), start=1
+                    ):
+                        sheet_key = compute_mdhash_id(
+                            f"{document_id}:{name}", prefix="chunk-"
+                        )
                         item = file_to_item(
                             generated_md,
-                            documentKey = sheet_key,
+                            documentKey=sheet_key,
                             text=(latex or "").strip(),
                             documentId=document_id,
-                            chunkIdx = idx,
+                            chunkIdx=idx,
                         )
                         item.caption = (caption or "None").strip()
                         item.chunkType = "excel_sheet"
-                        
+
                         chunk = item_to_chunk(item)
                         chunk.text = (latex or "None").strip()
                         chunk.caption = (caption or "None").strip()
                         chunk.chunkType = "excel_sheet"
-                        
+
                         items.append(item)
                         chunks.append(chunk)
-                    
+
                 else:
                     if content_type == "text/markdown" or loader_type == "docling":
                         json_doc, generated_md = await asyncio.to_thread(
