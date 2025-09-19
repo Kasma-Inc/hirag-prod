@@ -255,6 +255,23 @@ Data:
 **Output:**
 """
 
+PROMPTS[
+    "summary_excel_en"
+] = """
+You are an expert assistant in interpreting Excel tables rendered in LaTeX tabular format. 
+Given a sheet name and its LaTeX content, generate a concise, keyword-rich description that captures the table's structure, key columns, data themes, and essential details. 
+This description should be optimized for embedding-based semantic search, enabling precise and efficient retrieval when queried. 
+Prefix the description with the sheet name for clear identification. 
+
+**Input:**
+Sheet name:
+{sheet_name}
+LaTeX content:
+{latex}
+
+**Output:**
+"""
+
 # ===============================
 # Prompt(CN-Simplified): 简体中文提示词
 # ===============================

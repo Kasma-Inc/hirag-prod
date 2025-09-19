@@ -66,7 +66,7 @@ DEFAULT_LOADER_CONFIGS = {
 
 
 def check_cloud_health(
-    document_converter_type: Literal["dots_ocr", "docling_cloud"],
+    document_converter_type: Literal["dots_ocr"],
 ) -> bool:
     """Check the health of the cloud service"""
     try:
@@ -107,18 +107,18 @@ def check_cloud_health(
 def load_document(
     document_path: str,
     content_type: str,
+    loader_type: LoaderType,
     document_meta: Optional[dict] = None,
     loader_configs: Optional[dict] = None,
-    loader_type: LoaderType = "dots_ocr",
 ) -> Tuple[Any, File]:
     """Load a document from the given path and content type
 
     Args:
         document_path (str): The path to the document.
         content_type (str): The content type of the document.
+        loader_type (LoaderType): The loader type to use.
         document_meta (Optional[dict]): The metadata of the document.
         loader_configs (Optional[dict]): If unspecified, use DEFAULT_LOADER_CONFIGS.
-        loader_type (LoaderType): The loader type to use.
 
     Raises:
         ValueError: If the content type is not supported.
@@ -126,18 +126,9 @@ def load_document(
     Returns:
         Tuple[Any, File]: The loaded document.
     """
-    # TODO: Optimize loader selection logic - consolidate loader types and reduce branching
-    # TODO: Add async support for concurrent document loading
-    if content_type == "text/plain":
-        loader_type = "langchain"
-    elif content_type == "text/markdown":  # Prefer local modified docling for markdown
-        loader_type = "docling"
-
-    if loader_type in ["docling_cloud", "dots_ocr"]:
+    if loader_type in ["dots_ocr"]:
         cloud_check = False
-        if loader_type == "docling_cloud":
-            cloud_check = check_cloud_health("docling_cloud")
-        elif loader_type == "dots_ocr":
+        if loader_type == "dots_ocr":
             cloud_check = check_cloud_health("dots_ocr")
 
         if not cloud_check:
@@ -163,11 +154,7 @@ def load_document(
             f"Unexpected error in route_file_path, using original path",
             e,
         )
-
-    if loader_type == "docling_cloud":
-        docling_doc, doc_md = loader.load_docling_cloud(document_path, document_meta)
-        return docling_doc, doc_md
-    elif loader_type == "dots_ocr":
+    if loader_type == "dots_ocr":
         json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
         return json_doc, doc_md
     elif loader_type == "docling":

@@ -21,7 +21,7 @@ OUTPUT_DIR_PREFIX = "docling_cloud/output"
 
 
 def convert(
-    converter_type: Literal["dots_ocr", "docling_cloud"], input_file_path: str
+    converter_type: Literal["dots_ocr"], input_file_path: str
 ) -> Optional[Union[Dict[str, Any], DoclingDocument]]:
     """
     Convert a document using Dots OCR Service and return Parsed Document.

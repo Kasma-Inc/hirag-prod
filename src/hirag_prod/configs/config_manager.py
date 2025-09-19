@@ -2,7 +2,7 @@ import threading
 from typing import Dict, List, Optional
 
 from hirag_prod.configs.cloud_storage_config import AWSConfig, OSSConfig
-from hirag_prod.configs.document_loader_config import DoclingCloudConfig, DotsOCRConfig
+from hirag_prod.configs.document_loader_config import DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
@@ -39,7 +39,6 @@ class ConfigManager:
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
         self.reranker_config: RerankConfig = RerankConfig(**self.envs.model_dump())
         self._qwen_translator_config: Optional[QwenTranslatorConfig] = None
-        self._docling_cloud_config: Optional[DoclingCloudConfig] = None
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._aws_config: Optional[AWSConfig] = None
         self._oss_config: Optional[OSSConfig] = None
@@ -96,13 +95,6 @@ class ConfigManager:
                 **self.envs.model_dump()
             )
         return self._qwen_translator_config
-
-    @property
-    def docling_cloud_config(self) -> DoclingCloudConfig:
-        """Getter for docling_cloud_config"""
-        if not self._docling_cloud_config:
-            self._docling_cloud_config = DoclingCloudConfig(**self.envs.model_dump())
-        return self._docling_cloud_config
 
     @property
     def dots_ocr_config(self) -> DotsOCRConfig:

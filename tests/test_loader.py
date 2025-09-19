@@ -1,4 +1,3 @@
-import json
 import os
 from typing import Any, Dict, Optional, Tuple
 
@@ -158,69 +157,6 @@ class TestLangchainLoader:
     def test_load_document_langchain(self, doc_type: str, test_files_dir: str):
         """Test loading text files with Langchain loader"""
         self._load_and_assert_document(doc_type, test_files_dir)
-
-
-# ================================ Test Docling Cloud Loader ================================
-class TestDoclingCloudLoader:
-    """Test suite for Docling Cloud document loader with PDF files"""
-
-    def _create_document_meta(
-        self, doc_type: str, filename: str, uri: str
-    ) -> Dict[str, Any]:
-        """Create document metadata dictionary"""
-        return {
-            "type": doc_type,
-            "filename": filename,
-            "uri": uri,
-            "private": False,
-        }
-
-    def _assert_docling_document_loaded(self, docling_doc: Any, doc_md: Any) -> None:
-        """Assert that docling document was loaded successfully"""
-        assert isinstance(docling_doc, DoclingDocument)
-        assert isinstance(doc_md, File)
-        assert doc_md.page_content is not None
-        assert doc_md.metadata is not None
-        assert doc_md.id.startswith("doc-")
-
-    def test_load_pdf_docling_cloud_s3(self):
-        """Test loading PDF with Docling Cloud loader from S3"""
-        # s3_path = "s3://monkeyocr/test/input/test_pdf/small.pdf"
-        # filename = "small.pdf"
-        s3_path = "s3://monkeyocr/test/input/test_pdf/"
-        filename = "PGhandbook2025.pdf"
-
-        s3_path = f"{s3_path}{filename}"
-
-        document_meta = self._create_document_meta(
-            doc_type="pdf", filename=filename, uri=s3_path
-        )
-
-        docling_doc, doc_md = load_document(
-            document_path=s3_path,
-            content_type="application/pdf",
-            document_meta=document_meta,
-            loader_configs=None,
-            loader_type="docling_cloud",
-        )
-
-        self._assert_docling_document_loaded(docling_doc, doc_md)
-        assert doc_md.metadata.filename == filename
-        assert doc_md.metadata.type == "pdf"
-        assert doc_md.metadata.uri == s3_path
-
-        if not os.path.exists("./tmp"):
-            os.makedirs("./tmp")
-
-        # Save docling file & md
-        with open(f"./tmp/{filename}.json", "w") as f:
-            json.dump(docling_doc.model_dump(), f, ensure_ascii=False, indent=4)
-
-        with open(f"./tmp/{filename}.md", "w") as f:
-            f.write(doc_md.page_content)
-
-        assert os.path.exists(f"./tmp/{filename}.json")
-        assert os.path.exists(f"./tmp/{filename}.md")
 
 
 # ================================ Test Dots OCR Loader ================================

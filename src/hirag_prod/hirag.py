@@ -1,11 +1,13 @@
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
+import pandas as pd
 from docling_core.types.doc import DoclingDocument
 
 from hirag_prod._utils import (
@@ -35,6 +37,7 @@ from hirag_prod.loader.chunk_split import (
     items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
+from hirag_prod.loader.utils import route_file_path, validate_document_path
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
 from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
@@ -46,7 +49,7 @@ from hirag_prod.resources.functions import (
     initialize_resource_manager,
 )
 from hirag_prod.resume_tracker import JobStatus, ResumeTracker
-from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
+from hirag_prod.schema import Chunk, File, Item, LoaderType, file_to_item, item_to_chunk
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -123,11 +126,9 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        loader_type: LoaderType = "dots_ocr",
+        loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
-        # TODO: Add document preprocessing pipeline for better quality - OCR, cleanup, etc.
-
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
             chunks, file, items = await self._load_and_chunk_document(
@@ -246,10 +247,9 @@ class DocumentProcessor:
         content_type: str,
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
-        loader_type: Optional[str],
-    ) -> (List[Chunk], File):  # type: ignore
+        loader_type: Optional[LoaderType],
+    ) -> (List[Chunk], File):
         """Load and chunk document"""
-        # TODO: Add parallel processing for multi-file documents and large files
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None
             items = None
@@ -257,34 +257,135 @@ class DocumentProcessor:
                 if content_type == "text/plain":
                     _, generated_md = await asyncio.to_thread(
                         load_document,
-                        document_path,
-                        content_type,
-                        document_meta,
-                        loader_configs,
+                        document_path=document_path,
+                        content_type=content_type,
+                        document_meta=document_meta,
+                        loader_configs=loader_configs,
                         loader_type="langchain",
                     )
                     items = chunk_langchain_document(generated_md)
                     chunks = [
                         item_to_chunk(item) for item in items
                     ]  # Convert items to chunks
-                else:
-                    if loader_type == "docling_cloud" or loader_type == "docling":
-                        json_doc, generated_md = await asyncio.to_thread(
-                            load_document,
-                            document_path,
-                            content_type,
-                            document_meta,
-                            loader_configs,
-                            loader_type=loader_type,
+                elif (
+                    content_type
+                    == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ):
+                    try:
+                        local_path = route_file_path("excel_loader", document_path)
+                    except Exception:
+                        local_path = document_path
+                    validate_document_path(local_path)
+
+                    all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(
+                        local_path, sheet_name=None
+                    )
+
+                    def keep_sheet(name: str) -> bool:
+                        s = (name or "").lower()
+                        return ("cache" not in s) and ("detail" not in s)
+
+                    filtered_sheets = [
+                        (name, df)
+                        for name, df in all_sheets.items()
+                        if keep_sheet(name)
+                    ]
+                    document_id = document_meta.get("documentKey", "")
+                    file_name = document_meta.get(
+                        "fileName", os.path.basename(local_path)
+                    )
+                    generated_md = File(
+                        documentKey=document_id,
+                        text=file_name,
+                        type=document_meta.get("type", "xlsx"),
+                        pageNumber=len(filtered_sheets),
+                        fileName=file_name,
+                        uri=document_meta.get("uri", document_path),
+                        private=bool(document_meta.get("private", False)),
+                        uploadedAt=document_meta.get("uploadedAt", datetime.now()),
+                        knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
+                        workspaceId=document_meta.get("workspaceId", ""),
+                    )
+
+                    latex_list = []
+                    sheet_names = []
+                    for sheet_name, df in filtered_sheets:
+                        try:
+                            latex_list.append(df.to_latex(index=False))
+                        except Exception:
+                            latex_list.append(df.to_string(index=False))
+                        sheet_names.append(sheet_name)
+
+                    # summarize each sheet latex into a concise caption using LLM
+                    async def summarize_excel_sheet(sheet_name: str, latex: str) -> str:
+                        system_prompt = PROMPTS["summary_excel_en"].format(
+                            sheet_name=sheet_name, latex=latex
                         )
-                    elif loader_type == "dots_ocr":
+                        try:
+                            return await get_chat_service().complete(
+                                prompt=system_prompt,
+                                model=get_llm_config().model_name,
+                            )
+                        except Exception as e:
+                            raise HiRAGException(
+                                f"Failed to summarize excel sheet {sheet_name}"
+                            )
+
+                    captions = await asyncio.gather(
+                        *[
+                            summarize_excel_sheet(sheet_name, latex)
+                            for sheet_name, latex in zip(sheet_names, latex_list)
+                        ]
+                    )
+                    items = []
+                    chunks = []
+
+                    for idx, (name, latex, caption) in enumerate(
+                        zip(sheet_names, latex_list, captions), start=1
+                    ):
+                        sheet_key = compute_mdhash_id(
+                            f"{document_id}:{name}", prefix="chunk-"
+                        )
+                        item = file_to_item(
+                            generated_md,
+                            documentKey=sheet_key,
+                            text=(latex or "").strip(),
+                            documentId=document_id,
+                            chunkIdx=idx,
+                        )
+                        item.caption = (caption or "None").strip()
+                        item.chunkType = "excel_sheet"
+
+                        chunk = item_to_chunk(item)
+                        chunk.text = (latex or "None").strip()
+                        chunk.caption = (caption or "None").strip()
+                        chunk.chunkType = "excel_sheet"
+
+                        items.append(item)
+                        chunks.append(chunk)
+
+                else:
+                    if (
+                        content_type in ["application/pdf", "multimodal/image"]
+                        or loader_type == "dots_ocr"
+                    ):
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
-                            document_path,
-                            content_type,
-                            document_meta,
-                            loader_configs,
+                            document_path=document_path,
+                            content_type=content_type,
+                            document_meta=document_meta,
+                            loader_configs=loader_configs,
                             loader_type="dots_ocr",
+                        )
+
+                    else:
+                        json_doc, generated_md = await asyncio.to_thread(
+                            load_document,
+                            document_path=document_path,
+                            content_type=content_type,
+                            document_meta=document_meta,
+                            loader_configs=loader_configs,
+                            loader_type="docling",
                         )
 
                     # Validate instance, as it may fall back to docling if cloud service unavailable
@@ -863,18 +964,22 @@ class HiRAG:
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
         overwrite: Optional[bool] = False,
-        loader_type: LoaderType = "dots_ocr",
+        loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
 
         Args:
             document_path: document path
+            workspace_id: workspace id
+            knowledge_base_id: knowledge base id
             content_type: document type
             with_graph: whether to process graph data (entities and relations)
             document_meta: document metadata
             loader_configs: loader configurations
-
+            job_id: job id
+            overwrite: whether to overwrite the document
+            loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
         """

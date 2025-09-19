@@ -20,6 +20,7 @@ def file_to_chunk(
             # Only copy if attr is none in new_chunk
             if getattr(new_chunk, col) is None:
                 setattr(new_chunk, col, getattr(file, col))
+    return new_chunk
 
 
 def item_to_chunk(item: Item) -> Chunk:
@@ -51,3 +52,4 @@ def file_to_item(
             # Only copy if attr is none in new_item
             if getattr(new_item, col) is None:
                 setattr(new_item, col, getattr(file, col))
+    return new_item
