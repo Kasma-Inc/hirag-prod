@@ -8,7 +8,7 @@ from rapidfuzz.distance import ScoreAlignment
 from sklearn.metrics.pairwise import cosine_similarity
 
 from hirag_prod.configs.functions import get_llm_config
-from hirag_prod.cross_language_search.types import SynonymResponse
+from hirag_prod.cross_language_search.types import ProcessSearchResponse
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_chinese_convertor,
@@ -47,21 +47,38 @@ def normalize_tokenize_text(text: str) -> Tuple[List[str], List[int], List[int]]
     return tokenize_sentence(normalized_text)
 
 
+async def create_embeddings_batch(
+    str_list_dict: Dict[str, List[str]],
+) -> Dict[str, np.ndarray]:
+    item_list: List[Tuple[str, List[str]]] = list(str_list_dict.items())
+    input_str_list: List[str] = []
+    for item in item_list:
+        input_str_list.extend(item[1])
+    embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
+        input_str_list
+    )
+    embedding_np_array_dict: Dict[str, np.ndarray] = {}
+    current_index: int = 0
+    for item in item_list:
+        embedding_np_array_dict[item[0]] = embedding_np_array[
+            current_index : current_index + len(item[1])
+        ]
+        current_index += len(item[1])
+    return embedding_np_array_dict
+
+
 async def validate_similarity(
-    str_list_to_embed: List[str],
-    search_list: List[str],
+    str_embedding_np_array: np.ndarray,
+    search_embedding_np_array: np.ndarray,
     matched_list_dict_batch: List[
         Dict[str, Optional[List[Optional[Union[int, Tuple[int, int]]]]]]
     ],
     threshold: float = 0.8,
 ) -> None:
-    embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
-        str_list_to_embed + search_list
-    )
     cosine_similarity_list: List[float] = (
         cosine_similarity(
-            embedding_np_array[: -len(search_list)],
-            embedding_np_array[-len(search_list) :],
+            str_embedding_np_array,
+            search_embedding_np_array,
         )
         .max(axis=1)
         .tolist()
@@ -81,21 +98,37 @@ async def validate_similarity(
                 current_index += 1
 
 
-async def get_synonyms_and_validate(search: str) -> List[str]:
+async def get_synonyms_and_validate_and_translate(
+    search: str,
+) -> Tuple[List[str], bool, List[str]]:
     synonym_set: Set[str] = set()
     synonym_set.add(search)
 
-    synonym_response: SynonymResponse = await get_chat_service().complete(
-        prompt=f"Please provide some synonyms for the search keyword or sentence. The synonyms need to be **in the same language with the searches**. Please give at least 5 different synonyms and output them as a JSON list. The search is {search}",
+    process_search_response: ProcessSearchResponse = await get_chat_service().complete(
+        prompt=f"""Please complete the following two tasks according to the search keyword or sentence **{search}**, then output the final result according to the format provided below:
+Task 1: Please provide some synonyms for the search keyword or sentence **{search}**. The synonyms need to be **in the same language with the search**. Please give at least 5 different synonyms and output them as a JSON list.
+Task 2: Please identify if the search only includes English, return a JSON value of **true** or **false**.
+Task 3: Please translate **{search}** into English ** only if it is not in English**, return **an empty JSON list** if the search is in English. Please translate as briefly as possible. Please give at least 6 different possible translations and output them as a JSON list.
+The final result need to be **a JSON object with the following structure**:
+{{
+  "synonym_list": ["synonym1", "synonym2", "synonym3", "synonym4", "synonym5", ...],
+  "is_english": true or false,
+  "translation_list": ["translation1", "translation2", "translation3", "translation4", "translation5", "translation6", ...]
+}}""",
         model=get_llm_config().model_name,
         max_tokens=get_llm_config().max_tokens,
-        response_format=SynonymResponse,
+        response_format=ProcessSearchResponse,
         timeout=get_llm_config().timeout,
     )
+    print(process_search_response)
 
-    synonym_set.update(synonym_response.synonym_list)
+    synonym_set.update(process_search_response.synonym_list)
     if len(synonym_set) == 1:
-        return [search]
+        return (
+            [search],
+            process_search_response.is_english,
+            process_search_response.translation_list,
+        )
     synonym_list: List[str] = list(synonym_set)
     embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
         synonym_list + [search]
@@ -115,7 +148,11 @@ async def get_synonyms_and_validate(search: str) -> List[str]:
     ]
     synonym_tuple_list.sort(key=lambda x: x[1], reverse=True)
 
-    return [synonym_tuple[0] for synonym_tuple in synonym_tuple_list]
+    return (
+        [synonym_tuple[0] for synonym_tuple in synonym_tuple_list],
+        process_search_response.is_english,
+        process_search_response.translation_list,
+    )
 
 
 def find_keyword_matches(
@@ -140,7 +177,7 @@ async def search_by_search_keyword_list(
     processed_chunk_list: List[Dict[str, Any]],
     search_list_original: List[str],
     search_list: List[str],
-) -> List[Dict[str, Optional[List[Optional[int]]]]]:
+) -> Tuple[List[str], List[Dict[str, Optional[List[Optional[int]]]]]]:
     matched_index_list_dict_batch: List[Dict[str, Optional[List[Optional[int]]]]] = [
         {"original": None, "translation": None} for _ in processed_chunk_list
     ]
@@ -169,15 +206,7 @@ async def search_by_search_keyword_list(
                     processed_chunk["translation_token_list"][matched_index]
                 )
 
-    if len(word_list_to_embed) == 0:
-        return matched_index_list_dict_batch
-    await validate_similarity(
-        word_list_to_embed,
-        search_list_original + search_list,
-        matched_index_list_dict_batch,
-    )
-
-    return matched_index_list_dict_batch
+    return word_list_to_embed, matched_index_list_dict_batch
 
 
 def find_sentence_matches(
@@ -222,17 +251,14 @@ def find_sentence_matches(
         return None
 
 
-async def search_by_search_sentence_list(
+async def precise_search_by_search_sentence_list(
     processed_chunk_list: List[Dict[str, Any]],
     search_list_original: List[str],
     search_list: List[str],
-) -> Tuple[
-    List[Dict[str, Optional[List[Optional[Tuple[int, int]]]]]], Dict[int, float]
-]:
+) -> Tuple[List[str], List[Dict[str, Optional[List[Optional[Tuple[int, int]]]]]]]:
     fuzzy_match_list_dict_batch: List[
         Dict[str, Optional[List[Optional[Tuple[int, int]]]]]
     ] = [{"original": None, "translation": None} for _ in processed_chunk_list]
-    embedding_similar_chunk_info_dict: Dict[int, float] = {}
 
     for i, processed_chunk in enumerate(processed_chunk_list):
         fuzzy_match_list_dict_batch[i]["original"] = find_sentence_matches(
@@ -260,35 +286,31 @@ async def search_by_search_sentence_list(
                     ]
                 )
 
-    if len(sentence_list_to_embed) > 0:
-        await validate_similarity(
-            sentence_list_to_embed,
-            search_list_original + search_list,
-            fuzzy_match_list_dict_batch,
-        )
+    return sentence_list_to_embed, fuzzy_match_list_dict_batch
 
-    if len(search_list_original + search_list) > 0:
-        search_sentence_embedding_np_array: (
-            np.ndarray
-        ) = await get_embedding_service().create_embeddings(
-            search_list_original + search_list
-        )
-        cosine_similarity_list: List[float] = (
-            cosine_similarity(
-                [
-                    processed_chunk["original_embedding"]
-                    for processed_chunk in processed_chunk_list
-                ],
-                search_sentence_embedding_np_array,
-            )
-            .max(axis=1)
-            .tolist()
-        )
-        for i, similarity in enumerate(cosine_similarity_list):
-            if similarity > 0.6:
-                embedding_similar_chunk_info_dict[i] = similarity
 
-    return fuzzy_match_list_dict_batch, embedding_similar_chunk_info_dict
+async def embedding_search_by_search_sentence_list(
+    processed_chunk_list: List[Dict[str, Any]],
+    search_embedding_np_array: np.ndarray,
+) -> Dict[int, float]:
+    embedding_similar_chunk_info_dict: Dict[int, float] = {}
+
+    cosine_similarity_list: List[float] = (
+        cosine_similarity(
+            [
+                processed_chunk["original_embedding"]
+                for processed_chunk in processed_chunk_list
+            ],
+            search_embedding_np_array,
+        )
+        .max(axis=1)
+        .tolist()
+    )
+    for i, similarity in enumerate(cosine_similarity_list):
+        if similarity > 0.6:
+            embedding_similar_chunk_info_dict[i] = similarity
+
+    return embedding_similar_chunk_info_dict
 
 
 def get_token_index(
@@ -322,7 +344,7 @@ def bold_matched_text(
             if matched_keyword_index is not None:
                 processed_chunk[f"{text_type}_token_list"][
                     matched_keyword_index
-                ] = f"**{processed_chunk[f"{text_type}_token_list"][matched_keyword_index]}**"
+                ] = f"<mark>{processed_chunk[f"{text_type}_token_list"][matched_keyword_index]}</mark>"
 
     if matched_sentence_index_list_dict[text_type] is not None:
         for matched_sentence_index in matched_sentence_index_list_dict[text_type]:
@@ -340,21 +362,21 @@ def bold_matched_text(
                 if in_token:
                     end += 1
                 for j in range(start, end):
-                    if "**" not in processed_chunk[f"{text_type}_token_list"][j]:
+                    if "<mark>" not in processed_chunk[f"{text_type}_token_list"][j]:
                         processed_chunk[f"{text_type}_token_list"][
                             j
-                        ] = f"**{processed_chunk[f"{text_type}_token_list"][j]}**"
+                        ] = f"<mark>{processed_chunk[f"{text_type}_token_list"][j]}</mark>"
 
     for j in range(len(processed_chunk[f"{text_type}_token_list"]) - 1):
         if processed_chunk[f"{text_type}_token_list"][j].endswith(
-            "**"
-        ) and processed_chunk[f"{text_type}_token_list"][j + 1].startswith("**"):
+            "</mark>"
+        ) and processed_chunk[f"{text_type}_token_list"][j + 1].startswith("<mark>"):
             processed_chunk[f"{text_type}_token_list"][j] = processed_chunk[
                 f"{text_type}_token_list"
-            ][j][:-2]
+            ][j][:-7]
             processed_chunk[f"{text_type}_token_list"][j + 1] = processed_chunk[
                 f"{text_type}_token_list"
-            ][j + 1][2:]
+            ][j + 1][6:]
 
 
 def simplify_search_result(
@@ -364,13 +386,13 @@ def simplify_search_result(
 ) -> None:
     matched_index_tuple_list: List[Tuple[int, int]] = []
     for j, word in enumerate(processed_chunk[f"{text_type}_token_list"]):
-        if word.startswith("**") and word.endswith("**"):
+        if word.startswith("<mark>") and word.endswith("</mark>"):
             matched_index_tuple_list.append((j, j + 1))
-        elif word.startswith("**"):
+        elif word.startswith("<mark>"):
             matched_index_tuple_list.append(
                 (j, len(processed_chunk[f"{text_type}_token_list"]))
             )
-        elif word.endswith("**"):
+        elif word.endswith("</mark>"):
             matched_index_tuple_list[-1] = (matched_index_tuple_list[-1][0], j + 1)
 
     output: str = ""
@@ -402,7 +424,7 @@ def simplify_search_result(
             output = output[: start - last_end]
         output += (
             processed_chunk[f"{text_type}_normalized"][start:match_start]
-            + f"**{processed_chunk[f"{text_type}_normalized"][match_start:match_end]}**"
+            + f"<mark>{processed_chunk[f"{text_type}_normalized"][match_start:match_end]}</mark>"
             + processed_chunk[f"{text_type}_normalized"][match_end:end]
         )
         last_match_end = match_end
