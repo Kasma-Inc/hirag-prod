@@ -365,16 +365,7 @@ class DocumentProcessor:
                         chunks.append(chunk)
 
                 else:
-                    if content_type == "text/markdown" or loader_type == "docling":
-                        json_doc, generated_md = await asyncio.to_thread(
-                            load_document,
-                            document_path=document_path,
-                            content_type=content_type,
-                            document_meta=document_meta,
-                            loader_configs=loader_configs,
-                            loader_type=loader_type,
-                        )
-                    elif loader_type == "dots_ocr":
+                    if content_type in ["application/pdf", "multimodal/image"] or loader_type == "dots_ocr":
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path=document_path,
@@ -382,6 +373,16 @@ class DocumentProcessor:
                             document_meta=document_meta,
                             loader_configs=loader_configs,
                             loader_type="dots_ocr",
+                        )
+
+                    else:
+                        json_doc, generated_md = await asyncio.to_thread(
+                            load_document,
+                            document_path=document_path,
+                            content_type=content_type,
+                            document_meta=document_meta,
+                            loader_configs=loader_configs,
+                            loader_type="docling",
                         )
 
                     # Validate instance, as it may fall back to docling if cloud service unavailable
@@ -960,18 +961,22 @@ class HiRAG:
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
         overwrite: Optional[bool] = False,
-        loader_type: LoaderType = "dots_ocr",
+        loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
 
         Args:
             document_path: document path
+            workspace_id: workspace id
+            knowledge_base_id: knowledge base id
             content_type: document type
             with_graph: whether to process graph data (entities and relations)
             document_meta: document metadata
             loader_configs: loader configurations
-
+            job_id: job id
+            overwrite: whether to overwrite the document
+            loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
         """

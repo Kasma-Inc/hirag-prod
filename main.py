@@ -174,7 +174,7 @@ def print_chunks_user_friendly(chunks):
         print()
 
 
-async def index(test_id="2", overwrite=True, summary=True, loader_type="dots_ocr"):
+async def index(test_id="2", overwrite=True, summary=True):
     index = await HiRAG.create()
 
     await index.set_language("en")  # en | cn
@@ -192,7 +192,6 @@ async def index(test_id="2", overwrite=True, summary=True, loader_type="dots_ocr
             document_meta=dm,
             workspace_id="test_workspace",
             knowledge_base_id="test_pg",
-            loader_type=loader_type,
             overwrite=overwrite,
         )
 
@@ -236,14 +235,12 @@ def main():
     print(f"\nRunning test: {cli_options.test}")
     print(f"Overwrite: {cli_options.overwrite}")
     print(f"Summary: {cli_options.summary}\n")
-    print(f"Loader Type: {cli_options.loader_type}\n")
 
     asyncio.run(
         index(
             cli_options.test,
             cli_options.overwrite,
             cli_options.summary,
-            cli_options.loader_type,
         )
     )
 
