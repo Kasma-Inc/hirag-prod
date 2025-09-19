@@ -7,6 +7,7 @@ from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs, InitEnvs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.qwen_translator_config import QwenTranslatorConfig
 from hirag_prod.configs.reranker_config import RerankConfig
 
 INIT_CONFIG = InitEnvs()
@@ -36,6 +37,10 @@ def get_llm_config() -> LLMConfig:
 
 def get_reranker_config() -> RerankConfig:
     return ConfigManager().reranker_config
+
+
+def get_qwen_translator_config() -> QwenTranslatorConfig:
+    return ConfigManager().qwen_translator_config
 
 
 def get_init_config() -> InitEnvs:

@@ -48,6 +48,11 @@ class Envs(BaseSettings):
     LOCAL_LLM_BASE_URL: Optional[str] = None
     LOCAL_LLM_API_KEY: Optional[str] = None
 
+    # Qwen Translator Configuration
+    DASHSCOPE_TRANSLATOR_API_KEY: Optional[str] = None
+    DASHSCOPE_TRANSLATOR_BASE_URL: Optional[str] = None
+    DASHSCOPE_TRANSLATOR_MODEL_NAME: str = "qwen-mt-plus"
+
     SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
 
     RERANKER_TYPE: Literal["api", "local"] = "api"
