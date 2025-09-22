@@ -382,6 +382,47 @@ async def get_chunk_info(
             return []
 
 
+async def get_file_info(
+    knowledge_base_id: str,
+    workspace_id: str,
+    uri: str,
+) -> list[dict]:
+    """Get file rows from 'Files' by scope (knowledgeBaseId, workspaceId) and uri."""
+    if not knowledge_base_id or not workspace_id:
+        raise ValueError("knowledge_base_id and workspace_id are required")
+
+    if not uri:
+        raise ValueError("uri is required")
+
+    if get_hi_rag_config().vdb_type == "lancedb":
+        raise NotImplementedError("Lancedb is not supported yet")
+
+    elif get_hi_rag_config().vdb_type == "pgvector":
+        try:
+            vdb = PGVector.create(
+                embedding_func=None,
+                strategy_provider=RetrievalStrategyProvider(),
+                vector_type="halfvec",
+            )
+            results = await vdb.query_by_keys(
+                key_value=[uri],
+                workspace_id=workspace_id,
+                knowledge_base_id=knowledge_base_id,
+                table_name="Files",
+                key_column="uri",
+                columns_to_select=None,
+                limit=None,
+            )
+            return results
+        except Exception as e:
+            log_error_info(
+                logging.ERROR,
+                f"Failed to get file info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}, uri={uri}",
+                e,
+            )
+            return []
+
+
 async def get_table_info_by_scope(
     table_name: str,
     knowledge_base_id: str,
