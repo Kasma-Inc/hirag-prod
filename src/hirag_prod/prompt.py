@@ -272,6 +272,20 @@ LaTeX content:
 **Output:**
 """
 
+PROMPTS[
+    "summary_table_en"
+] = """
+You are an expert assistant in interpreting tables rendered in html or markdown format. 
+Given a table content, generate a concise, keyword-rich description that captures the table's structure, key columns, data themes, and essential details. 
+This description should be optimized for embedding-based semantic search, enabling precise and efficient retrieval when queried.
+
+**Input:**
+Table content:
+{table_content}
+
+**Output:**
+"""
+
 # ===============================
 # Prompt(CN-Simplified): 简体中文提示词
 # ===============================

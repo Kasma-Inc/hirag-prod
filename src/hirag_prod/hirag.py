@@ -388,18 +388,44 @@ class DocumentProcessor:
                             loader_type="docling",
                         )
 
+                    # summarize each table into a concise caption using LLM
+                    async def summarize_table(idx: int):
+                        table_item = items[idx]
+                        system_prompt = PROMPTS["summary_table_en"].format(
+                            table_content=table_item.text
+                        )
+                        try:
+                            caption = await get_chat_service().complete(
+                                prompt=system_prompt,
+                                model=get_llm_config().model_name,
+                            )
+                            items[idx].caption = caption
+                        except Exception as e:
+                            raise HiRAGException(
+                                f"Failed to summarize table {table_item.documentKey}"
+                            )
+
                     # Validate instance, as it may fall back to docling if cloud service unavailable
                     if isinstance(json_doc, list):
                         # Chunk the Dots OCR document
-                        items, header_set = chunk_dots_document(
+                        items, header_set, table_items_idx = chunk_dots_document(
                             json_doc=json_doc, md_doc=generated_md
+                        )
+
+                        await asyncio.gather(
+                            *[summarize_table(i) for i in table_items_idx]
                         )
 
                     elif isinstance(json_doc, DoclingDocument):
                         # Chunk the Docling document
-                        items, header_set = chunk_docling_document(
+                        items, header_set, table_items_idx = chunk_docling_document(
                             json_doc, generated_md
                         )
+
+                        await asyncio.gather(
+                            *[summarize_table(i) for i in table_items_idx]
+                        )
+
                         if content_type == "text/markdown":
                             raw_md = generated_md.text
                             items = obtain_docling_md_bbox(json_doc, raw_md, items)
