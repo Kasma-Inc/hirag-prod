@@ -386,6 +386,9 @@ async def get_table_info_by_scope(
     table_name: str,
     knowledge_base_id: str,
     workspace_id: str,
+    columns_to_select: Optional[List[str]] = None,
+    additional_data_to_select: Optional[Dict[str, Any]] = None,
+    order_by: Optional[List[Any]] = None,
 ) -> list[dict[str, Any]]:
     """Get table info by scope (knowledgeBaseId and workspaceId).
 
@@ -393,6 +396,9 @@ async def get_table_info_by_scope(
         table_name: The name of the table to get info for
         knowledge_base_id: The id of the knowledge base that the table is from
         workspace_id: The id of the workspace that the table is from
+        columns_to_select: The columns to select from the table
+        additional_data_to_select: Additional data to select from the table
+        order_by: The order by clause to use
 
     Returns:
         A list of dicts of the table rows if found, otherwise an empty list.
@@ -402,33 +408,31 @@ async def get_table_info_by_scope(
 
     results: list[dict[str, Any]] = []
 
-    if get_hi_rag_config().vdb_type == "lancedb":
-        raise NotImplementedError("Lancedb is not supported yet")
-
-    elif get_hi_rag_config().vdb_type == "pgvector":
-        try:
-            vdb = PGVector.create(
-                embedding_func=None,
-                strategy_provider=RetrievalStrategyProvider(),
-                vector_type="halfvec",
-            )
-            results = await vdb.query_by_keys(
-                key_value=[],
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                table_name=table_name,
-                key_column="documentKey",
-                columns_to_select=None,
-                limit=None,
-            )
-            return results
-        except Exception as e:
-            log_error_info(
-                logging.ERROR,
-                f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}",
-                e,
-            )
-            return results
+    try:
+        vdb = PGVector.create(
+            embedding_func=None,
+            strategy_provider=RetrievalStrategyProvider(),
+            vector_type="halfvec",
+        )
+        results = await vdb.query_by_keys(
+            key_value=[],
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            key_column="documentKey",
+            columns_to_select=columns_to_select,
+            additional_data_to_select=additional_data_to_select,
+            order_by=order_by,
+            limit=None,
+        )
+        return results
+    except Exception as e:
+        log_error_info(
+            logging.ERROR,
+            f"Failed to get chunk info by scope (pgvector) kb={knowledge_base_id}, ws={workspace_id}",
+            e,
+        )
+        return results
 
 
 async def get_chunk_info_by_scope(
@@ -454,12 +458,18 @@ async def get_chunk_info_by_scope(
 async def get_item_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
+    columns_to_select: Optional[List[str]] = None,
+    additional_data_to_select: Optional[Dict[str, Any]] = None,
+    order_by: Optional[List[Any]] = None,
 ) -> list[dict[str, Any]]:
     """Get item info by scope (knowledgeBaseId and workspaceId)."""
     return await get_table_info_by_scope(
         table_name="Items",
         knowledge_base_id=knowledge_base_id,
         workspace_id=workspace_id,
+        columns_to_select=columns_to_select,
+        additional_data_to_select=additional_data_to_select,
+        order_by=order_by,
     )
 
 

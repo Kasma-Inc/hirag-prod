@@ -68,7 +68,6 @@ class QueryService:
                 chunk_ids=chunk_ids,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                columns_to_select=["documentKey", "vector"],
             )
             for row in rows:
                 key = row.get("documentKey")

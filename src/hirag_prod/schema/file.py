@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
 
 from hirag_prod.schema.base import Base
 
@@ -26,21 +27,29 @@ class File(Base):
     __tablename__ = "Files"
 
     # File Data
-    documentKey: str = Column(String, primary_key=True, nullable=False)
-    knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
-    workspaceId: str = Column(String, primary_key=True, nullable=False)
-    text: str = Column(Text, nullable=False)
+    documentKey: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    knowledgeBaseId: Mapped[str] = mapped_column(
+        String, primary_key=True, nullable=False
+    )
+    workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
     # FileMetadata
-    fileName: str = Column(String, nullable=False)
-    uri: Optional[str] = Column(String, nullable=True)
-    private: Optional[bool] = Column(Boolean, default=False, nullable=True)
-    type: Optional[file_types] = Column(String, nullable=True)
-    pageNumber: Optional[int] = Column(Integer, nullable=True)
-    uploadedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
-    tableOfContents: Optional[list] = Column(JSON, nullable=True)
+    fileName: Mapped[str] = mapped_column(String, nullable=False)
+    uri: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    private: Mapped[Optional[bool]] = mapped_column(
+        Boolean, default=False, nullable=True
+    )
+    type: Mapped[Optional[file_types]] = mapped_column(String, nullable=True)
+    pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    uploadedAt: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, nullable=False
+    )
+    tableOfContents: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     # Computed Data
-    updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
+    updatedAt: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, nullable=False
+    )
 
     def __iter__(self):
-        for column in self.__table__.columns:
-            yield column.name, getattr(self, column.name)
+        for column_name in self.__table__.columns.keys():
+            yield column_name, getattr(self, column_name)

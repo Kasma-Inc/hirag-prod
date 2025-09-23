@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import networkx as nx
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import load_only
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
@@ -632,40 +633,46 @@ class PGVector(BaseVDB):
         table_name: str,
         key_column: str = "documentKey",
         columns_to_select: Optional[List[str]] = None,
+        additional_data_to_select: Optional[Dict[str, Any]] = None,
+        order_by: Optional[List[Any]] = None,
         limit: Optional[int] = None,
     ) -> List[dict]:
         model = self.get_model(table_name)
+        entity_to_select_list: List[Any] = [model]
+        additional_data_key_list: List[str] = []
+        if additional_data_to_select is not None:
+            for k, v in additional_data_to_select.items():
+                additional_data_key_list.append(k)
+                entity_to_select_list.append(v)
+        if columns_to_select is None:  # query all if nothing provided
+            columns_to_select = [c.name for c in model.__table__.columns.keys()]
         async with get_db_session_maker()() as session:
-            stmt = select(model)
+            stmt = select(*entity_to_select_list).options(
+                load_only(*[getattr(model, column) for column in columns_to_select])
+            )
             if key_value:
                 stmt = stmt.where(getattr(model, key_column).in_(key_value))
             if workspace_id and hasattr(model, "workspaceId"):
                 stmt = stmt.where(model.workspaceId == workspace_id)
             if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
                 stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
+            if order_by is not None:
+                stmt = stmt.order_by(*order_by)
             if limit is not None:
                 stmt = stmt.limit(limit)
 
             result = await session.execute(stmt)
-            rows = list(result.scalars().all())
-
-            if columns_to_select is None:  # query all if nothing provided
-                columns_to_select = [c.name for c in model.__table__.columns]
+            rows = list(result.all())
 
             out: List[dict] = []
             for r in rows:
                 rec = {}
                 for col in columns_to_select:
-                    if not hasattr(r, col):
+                    if not hasattr(r[0], col):
                         continue
-                    val = getattr(r, col)
-                    # normalize HalfVector/Vector -> python list[float]
-                    if hasattr(val, "to_list"):
-                        rec[col] = val.to_list()
-                    elif hasattr(val, "tolist"):
-                        rec[col] = val.tolist()
-                    else:
-                        rec[col] = list(val) if isinstance(val, (list, tuple)) else val
+                    rec[col] = getattr(r[0], col)
+                for i in range(1, len(r)):
+                    rec[additional_data_key_list[i - 1]] = r[i]
                 out.append(rec)
             return out
 

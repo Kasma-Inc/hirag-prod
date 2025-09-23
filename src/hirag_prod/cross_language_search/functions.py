@@ -17,19 +17,32 @@ from hirag_prod.resources.functions import (
 )
 
 
-def classify_search(search_list: List[str]) -> Tuple[List[str], List[str]]:
+def classify_search(
+    search_list: List[str], embedding_np_array: np.ndarray
+) -> Tuple[List[str], np.ndarray, List[str], np.ndarray]:
     search_keyword_list: List[str] = []
+    keyword_embedding_list: List[np.ndarray] = []
+    keyword_embedding_np_array: np.ndarray = np.empty((0, embedding_np_array.shape[1]))
     search_sentence_list: List[str] = []
-    for search in search_list:
+    sentence_embedding_list: List[np.ndarray] = []
+    sentence_embedding_np_array: np.ndarray = np.empty((0, embedding_np_array.shape[1]))
+    for i, search in enumerate(search_list):
         search_normalized: str = get_chinese_convertor("hk2s").convert(
             re.sub(f"[{re.escape(string.punctuation)}]", "", search).lower()
         )
         token_list, _, _ = tokenize_sentence(search_normalized)
         if len(token_list) == 1:
             search_keyword_list.append(search_normalized)
+            keyword_embedding_list.append(embedding_np_array[i : i + 1])
         else:
             search_sentence_list.append(search_normalized)
-    return search_keyword_list, search_sentence_list
+            sentence_embedding_list.append(embedding_np_array[i : i + 1])
+    return (
+        search_keyword_list,
+        np.concatenate([keyword_embedding_np_array] + keyword_embedding_list, axis=0),
+        search_sentence_list,
+        np.concatenate([sentence_embedding_np_array] + sentence_embedding_list, axis=0),
+    )
 
 
 def has_traditional_chinese(text: str) -> bool:
@@ -100,7 +113,7 @@ async def validate_similarity(
 
 async def get_synonyms_and_validate_and_translate(
     search: str,
-) -> Tuple[List[str], bool, List[str]]:
+) -> Tuple[List[str], np.ndarray, bool, List[str], np.ndarray]:
     synonym_set: Set[str] = set()
     synonym_set.add(search)
 
@@ -120,38 +133,43 @@ The final result need to be **a JSON object with the following structure**:
         response_format=ProcessSearchResponse,
         timeout=get_llm_config().timeout,
     )
-    print(process_search_response)
 
     synonym_set.update(process_search_response.synonym_list)
-    if len(synonym_set) == 1:
-        return (
-            [search],
-            process_search_response.is_english,
-            process_search_response.translation_list,
-        )
     synonym_list: List[str] = list(synonym_set)
     embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
-        synonym_list + [search]
+        synonym_list + process_search_response.translation_list + [search]
     )
+    if len(synonym_list) == 1:
+        return (
+            [search],
+            embedding_np_array[:1],
+            process_search_response.is_english,
+            process_search_response.translation_list,
+            embedding_np_array[1:-1],
+        )
     cosine_similarity_list: List[float] = (
         cosine_similarity(
-            embedding_np_array[:-1],
+            embedding_np_array[: len(synonym_list)],
             embedding_np_array[-1:],
         )
-        .max(axis=1)
+        .flatten()
         .tolist()
     )
-    synonym_tuple_list: List[Tuple[str, float]] = [
-        (synonym_list[i], similarity)
+    synonym_tuple_list: List[Tuple[str, np.ndarray, float]] = [
+        (synonym_list[i], embedding_np_array[i : i + 1], similarity)
         for i, similarity in enumerate(cosine_similarity_list)
         if similarity > 0.75
     ]
-    synonym_tuple_list.sort(key=lambda x: x[1], reverse=True)
+    synonym_tuple_list.sort(key=lambda x: x[2], reverse=True)
 
     return (
         [synonym_tuple[0] for synonym_tuple in synonym_tuple_list],
+        np.concatenate(
+            [synonym_tuple[1] for synonym_tuple in synonym_tuple_list], axis=0
+        ),
         process_search_response.is_english,
         process_search_response.translation_list,
+        embedding_np_array[len(synonym_list) : -1],
     )
 
 
@@ -291,24 +309,13 @@ async def precise_search_by_search_sentence_list(
 
 async def embedding_search_by_search_sentence_list(
     processed_chunk_list: List[Dict[str, Any]],
-    search_embedding_np_array: np.ndarray,
 ) -> Dict[int, float]:
     embedding_similar_chunk_info_dict: Dict[int, float] = {}
-
-    cosine_similarity_list: List[float] = (
-        cosine_similarity(
-            [
-                processed_chunk["original_embedding"]
-                for processed_chunk in processed_chunk_list
-            ],
-            search_embedding_np_array,
-        )
-        .max(axis=1)
-        .tolist()
-    )
-    for i, similarity in enumerate(cosine_similarity_list):
-        if similarity > 0.6:
-            embedding_similar_chunk_info_dict[i] = similarity
+    for i, processed_chunk in enumerate(processed_chunk_list):
+        if processed_chunk["search_sentence_cosine_distance"] < 0.4:
+            embedding_similar_chunk_info_dict[i] = processed_chunk[
+                "search_sentence_cosine_distance"
+            ]
 
     return embedding_similar_chunk_info_dict
 
