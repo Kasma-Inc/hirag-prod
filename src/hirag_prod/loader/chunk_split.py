@@ -273,7 +273,7 @@ def determine_docling_chunk_type(chunk) -> ChunkType:
 
 def chunk_docling_document(
     docling_doc: DoclingDocument, doc_md: File
-) -> tuple[List[Item], set[str]]:
+) -> tuple[List[Item], set[str], List[int]]:
     """
     Split a docling document into chunks and return a list of Item objects.
     Each chunk will inherit metadata from the original document.
@@ -281,11 +281,10 @@ def chunk_docling_document(
     Args:
         docling_doc: The docling document to be chunked
         doc_md: File object containing file information
-               (type, filename, uri, etc.) that will be inherited by each chunk
+            (type, filename, uri, etc.) that will be inherited by each chunk
 
     Returns:
-        List[Item]: A list of Item objects with proper metadata including
-                    item-specific metadata and inherited file metadata
+        (items, header_set, table_items_idx)
     """
     # Initialize the chunker
     chunker = HierarchicalChunker()
@@ -298,6 +297,7 @@ def chunk_docling_document(
     # Convert to Chunk objects
     chunks = []
     chunk_id_mapping = {}
+    table_items_idx = []
 
     for _, chunk in enumerate(doc_chunks):
         chunk_type = determine_docling_chunk_type(chunk)
@@ -343,7 +343,8 @@ def chunk_docling_document(
                 else None
             ),
         )
-
+        if chunk_type == ChunkType.TABLE:
+            table_items_idx.append(chunk_obj.chunkIdx)
         chunks.append(chunk_obj)
         chunk_id_mapping[chunk_obj.chunkIdx] = chunk_obj.documentKey
 
@@ -363,7 +364,7 @@ def chunk_docling_document(
 
     chunks.sort(key=lambda c: c.chunkIdx)
 
-    return chunks, header_set
+    return chunks, header_set, table_items_idx
 
 
 def obtain_docling_md_bbox(
@@ -594,10 +595,13 @@ def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
     dots_left_bottom_origin: bool = True,
-) -> tuple[List[Item], set[str]]:
+) -> tuple[List[Item], set[str], List[int]]:
     """
     Split a dots document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
+
+    Returns:
+        (items, header_set, table_items_idx)
     """
 
     chunker = DotsHierarchicalChunker()
@@ -607,7 +611,7 @@ def chunk_dots_document(
 
     # Convert DotsChunk objects to Chunk objects
     chunks = []
-
+    table_items_idx = []
     # Mapping for tmp_chunk_idx to chunk_id
     chunk_id_mapping = {}
 
@@ -648,7 +652,8 @@ def chunk_dots_document(
             headers=None,  # Will be filled later after chunks created
             children=None,
         )
-
+        if chunk_type == ChunkType.TABLE:
+            table_items_idx.append(chunk_obj.chunkIdx)
         chunk_id_mapping[tmp_chunk_idx] = chunk_obj.documentKey
         chunks.append(chunk_obj)
 
@@ -671,7 +676,7 @@ def chunk_dots_document(
             child_ids = [chunk_id_mapping[c] for c in raw_children]
             chunk.children = child_ids
 
-    return chunks, header_set
+    return chunks, header_set, table_items_idx
 
 
 # ======================== langchain chunker ========================

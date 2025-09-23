@@ -68,7 +68,15 @@ class StorageManager:
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return
-        texts_to_embed = [c.text for c in chunks]
+
+        def _embed_text(c: Chunk) -> str:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+                cap = (getattr(c, "caption", "") or "").strip()
+                if cap:
+                    return cap
+            return (getattr(c, "text", "") or "").strip()
+
+        texts_to_embed = [_embed_text(c) for c in chunks]
         await self.vdb.upsert_texts(
             texts_to_upsert=texts_to_embed,
             properties_list=chunks,
@@ -80,7 +88,15 @@ class StorageManager:
     async def upsert_items_to_vdb(self, items: List[Item]) -> None:
         if not items:
             return
-        texts_to_embed = [c.text for c in items]
+
+        def _embed_text(c: Item) -> str:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+                cap = (getattr(c, "caption", "") or "").strip()
+                if cap:
+                    return cap
+            return (getattr(c, "text", "") or "").strip()
+
+        texts_to_embed = [_embed_text(c) for c in items]
         await self.vdb.upsert_texts(
             texts_to_upsert=texts_to_embed,
             properties_list=items,
@@ -113,6 +129,7 @@ class StorageManager:
                 "target": r.target,
                 "description": r.properties.get("description", ""),
                 "documentId": r.properties.get("document_id", ""),
+                "uri": r.properties.get("uri", ""),
                 "fileName": r.properties.get("file_name", ""),
                 "knowledgeBaseId": r.properties.get("knowledge_base_id", ""),
                 "workspaceId": r.properties.get("workspace_id", ""),

@@ -11,6 +11,7 @@ class Graph(Base):
 
     source: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     target: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    uri: Mapped[str] = mapped_column(String, nullable=False)
     workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(
         String, primary_key=True, nullable=False

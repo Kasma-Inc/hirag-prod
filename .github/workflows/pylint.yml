@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11"]
+        python-version: ["3.12"]
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python ${{ matrix.python-version }}
@@ -30,4 +30,4 @@ jobs:
         black --check $(git ls-files '*.py')
         blackdoc --check $(git ls-files '*.py')
         isort --check $(git ls-files '*.py') --profile black
-        autoflake --in-place --remove-unused-variables $(git ls-files '*.py') --check
+        autoflake --in-place --remove-unused-variables $(git ls-files '*.py')

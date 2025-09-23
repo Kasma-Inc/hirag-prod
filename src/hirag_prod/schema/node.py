@@ -26,6 +26,7 @@ class Node(Base):
     updatedAt: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False
     )
+    uri: Mapped[str] = mapped_column(String, nullable=False)
     documentId: Mapped[str] = mapped_column(
         String, nullable=False
     )  # For tracing back to the source document

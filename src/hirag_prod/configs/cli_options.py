@@ -42,14 +42,12 @@ class CliOptions:
                 test="2",
                 overwrite="T",
                 summary="T",
-                loader_type="dots_ocr",
             )
 
         self.debug: bool = args.debug
         self.test: str = args.test
         self.overwrite: bool = self._parse_bool_string(args.overwrite)
         self.summary: bool = self._parse_bool_string(args.summary)
-        self.loader_type: str = args.loader_type
 
     def _parse_bool_string(self, value: str) -> bool:
         """Convert string representation to boolean."""

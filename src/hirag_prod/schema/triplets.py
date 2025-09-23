@@ -19,6 +19,7 @@ class Triplets(Base):
     )
     workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     fileName: Mapped[str] = mapped_column(String, nullable=False)
+    uri: Mapped[str] = mapped_column(String, nullable=False)
     documentId: Mapped[str] = mapped_column(String, nullable=False)
     vector: Mapped[List[float]] = mapped_column(PGVECTOR, nullable=False)
     vector_float_array: Mapped[List[float]] = column_property(
