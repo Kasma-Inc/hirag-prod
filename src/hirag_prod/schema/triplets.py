@@ -16,6 +16,7 @@ class Triplets(Base):
     knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
     workspaceId: str = Column(String, primary_key=True, nullable=False)
     fileName: str = Column(String, nullable=False)
+    uri: str = Column(String, nullable=False)
     documentId: str = Column(String, nullable=False)
     vector: List[float] = Column(vec_type, nullable=False)
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)

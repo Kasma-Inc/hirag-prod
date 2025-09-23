@@ -10,6 +10,7 @@ class Graph(Base):
 
     source: str = Column(String, primary_key=True, nullable=False)
     target: str = Column(String, primary_key=True, nullable=False)
+    uri: str = Column(String, nullable=False)
     workspaceId: str = Column(String, primary_key=True, nullable=False)
     knowledgeBaseId: str = Column(String, primary_key=True, nullable=False)
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)

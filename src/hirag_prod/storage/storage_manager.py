@@ -129,6 +129,7 @@ class StorageManager:
                 "target": r.target,
                 "description": r.properties.get("description", ""),
                 "documentId": r.properties.get("document_id", ""),
+                "uri": r.properties.get("uri", ""),
                 "fileName": r.properties.get("file_name", ""),
                 "knowledgeBaseId": r.properties.get("knowledge_base_id", ""),
                 "workspaceId": r.properties.get("workspace_id", ""),

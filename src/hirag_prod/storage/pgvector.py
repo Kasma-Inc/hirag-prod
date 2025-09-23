@@ -210,11 +210,13 @@ class PGVector(BaseVDB):
             source_name = None if is_chunk(source_id) else props.get("source")
             target_name = None if is_chunk(target_id) else props.get("target")
             document_id = props.get("document_id", "")
+            uri = props.get("uri", "")
 
             edge_rows.append(
                 {
                     "source": source_id,
                     "target": target_id,
+                    "uri": uri,
                     "workspaceId": workspace_id,
                     "knowledgeBaseId": knowledge_base_id,
                     "documentId": document_id,
@@ -238,6 +240,7 @@ class PGVector(BaseVDB):
                         "entityType": "entity",
                         "chunkIds": [],
                         "documentId": document_id,
+                        "uri": uri,
                     }
                     node_map[key] = rec
                 if chunk_id and chunk_id not in rec["chunkIds"]:
@@ -305,6 +308,7 @@ class PGVector(BaseVDB):
                             "documentId": func.coalesce(
                                 ins.excluded.documentId, node_table.c.documentId
                             ),
+                            "uri": func.coalesce(ins.excluded.uri, node_table.c.uri),
                             "updatedAt": now,
                         },
                     )

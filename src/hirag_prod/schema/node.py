@@ -19,6 +19,7 @@ class Node(Base):
     chunkIds: Optional[List[str]] = Column(ARRAY(String), nullable=False)
 
     updatedAt: datetime = Column(DateTime, default=datetime.now, nullable=False)
+    uri: str = Column(String, nullable=False)
     documentId: str = Column(
         String, nullable=False
     )  # For tracing back to the source document
