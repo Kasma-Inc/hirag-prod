@@ -248,7 +248,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[LoaderType],
-    ) -> (List[Chunk], File):
+    ) -> (List[Chunk], File):  # type: ignore
         """Load and chunk document"""
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None
@@ -326,7 +326,7 @@ class DocumentProcessor:
                                 prompt=system_prompt,
                                 model=get_llm_config().model_name,
                             )
-                        except Exception as e:
+                        except Exception:
                             raise HiRAGException(
                                 f"Failed to summarize excel sheet {sheet_name}"
                             )
@@ -400,7 +400,7 @@ class DocumentProcessor:
                                 model=get_llm_config().model_name,
                             )
                             items[idx].caption = caption
-                        except Exception as e:
+                        except Exception:
                             raise HiRAGException(
                                 f"Failed to summarize table {table_item.documentKey}"
                             )

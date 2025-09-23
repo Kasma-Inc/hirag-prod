@@ -21,7 +21,10 @@ OUTPUT_DIR_PREFIX = "docling_cloud/output"
 
 
 def convert(
-    converter_type: Literal["dots_ocr"], input_file_path: str
+    converter_type: Literal["dots_ocr"],
+    input_file_path: str,
+    workspace_id: Optional[str] = None,
+    knowledge_base_id: Optional[str] = None,
 ) -> Optional[Union[Dict[str, Any], DoclingDocument]]:
     """
     Convert a document using Dots OCR Service and return Parsed Document.
@@ -29,6 +32,8 @@ def convert(
     Args:
         input_file_path: File path to the input document file
         converter_type: Type of converter to use.
+        knowledge_base_id: Knowledge Base ID for the document (required for /parse/file endpoint)
+        workspace_id: Workspace ID for the document (required for /parse/file endpoint)
 
     Returns:
         ParsedDocument: The processed document
@@ -51,16 +56,32 @@ def convert(
     output_relative_path = f"{OUTPUT_DIR_PREFIX}/{file_name_without_ext}"
     output_path = f"{parsed_url.scheme}://{bucket_name}/{OUTPUT_DIR_PREFIX}/{file_name_without_ext}"
 
+    entry_point = get_document_converter_config(converter_type).entry_point
+
     headers = {
         "Model-Name": get_document_converter_config(converter_type).model_name,
-        "Entry-Point": get_document_converter_config(converter_type).entry_point,
+        "Entry-Point": entry_point,
         "Authorization": f"Bearer {get_document_converter_config(converter_type).api_key}",
     }
 
-    files = {
-        "input_s3_path": (None, input_file_path),
-        "output_s3_path": (None, output_path),
-    }
+    if entry_point == "/parse/file":
+        if not workspace_id or not knowledge_base_id:
+            raise ValueError(
+                "workspace_id and knowledge_base_id are required for /parse/file endpoint"
+            )
+        files = {
+            "input_s3_path": (None, input_file_path),
+            "output_s3_path": (None, output_path),
+            "workspaceId": (None, workspace_id) if workspace_id else (None, ""),
+            "knowledgebaseId": (
+                (None, knowledge_base_id) if knowledge_base_id else (None, "")
+            ),
+        }
+    else:
+        files = {
+            "input_s3_path": (None, input_file_path),
+            "output_s3_path": (None, output_path),
+        }
 
     try:
         logger.info(f"Sending document conversion request for {input_file_path}")

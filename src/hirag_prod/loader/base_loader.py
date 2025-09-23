@@ -32,7 +32,14 @@ class BaseLoader(ABC):
         """
         assert document_meta.get("private") is not None, "private is required"
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
-        processed_doc = document_converter.convert("dots_ocr", document_path)
+        workspace_id = document_meta.get("workspaceId", None)
+        knowledge_base_id = document_meta.get("knowledgeBaseId", None)
+        processed_doc = document_converter.convert(
+            "dots_ocr",
+            document_path,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+        )
 
         assert processed_doc is not None, "Failed to receive parsed document."
 
