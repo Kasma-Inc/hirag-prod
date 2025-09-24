@@ -429,7 +429,9 @@ async def get_table_info_by_scope(
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[str, Any]] = None,
+    additional_where_clause_list: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
+    limit: Optional[int] = None,
 ) -> list[dict[str, Any]]:
     """Get table info by scope (knowledgeBaseId and workspaceId).
 
@@ -439,7 +441,9 @@ async def get_table_info_by_scope(
         workspace_id: The id of the workspace that the table is from
         columns_to_select: The columns to select from the table
         additional_data_to_select: Additional data to select from the table
+        additional_where_clause_list: Additional where clause list to use
         order_by: The order by clause to use
+        limit: The limit to use for pagination
 
     Returns:
         A list of dicts of the table rows if found, otherwise an empty list.
@@ -463,8 +467,9 @@ async def get_table_info_by_scope(
             key_column="documentKey",
             columns_to_select=columns_to_select,
             additional_data_to_select=additional_data_to_select,
+            additional_where_clause_list=additional_where_clause_list,
             order_by=order_by,
-            limit=None,
+            limit=limit,
         )
         return results
     except Exception as e:
@@ -501,7 +506,9 @@ async def get_item_info_by_scope(
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[str, Any]] = None,
+    additional_where_clause_list: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
+    limit: Optional[int] = None,
 ) -> list[dict[str, Any]]:
     """Get item info by scope (knowledgeBaseId and workspaceId)."""
     return await get_table_info_by_scope(
@@ -510,7 +517,9 @@ async def get_item_info_by_scope(
         workspace_id=workspace_id,
         columns_to_select=columns_to_select,
         additional_data_to_select=additional_data_to_select,
+        additional_where_clause_list=additional_where_clause_list,
         order_by=order_by,
+        limit=limit,
     )
 
 

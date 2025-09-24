@@ -81,7 +81,7 @@ async def update_job_status(
         UPDATE "{schema}"."{table_name}"
            SET "status" = '{status}',
                "updatedAt" = '{updated_at_value.isoformat()}'
-         WHERE "jobId" = '{job_id}'
+         WHERE "id" = '{job_id}'
     """
     )
     result = await session.exec(query)

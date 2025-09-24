@@ -63,6 +63,8 @@ def normalize_tokenize_text(text: str) -> Tuple[List[str], List[int], List[int]]
 async def create_embeddings_batch(
     str_list_dict: Dict[str, List[str]],
 ) -> Dict[str, np.ndarray]:
+    if len(str_list_dict) == 0:
+        return {}
     item_list: List[Tuple[str, List[str]]] = list(str_list_dict.items())
     input_str_list: List[str] = []
     for item in item_list:
@@ -174,9 +176,13 @@ The final result need to be **a JSON object with the following structure**:
 
 
 def find_keyword_matches(
-    word_list: List[str], search_list: List[str]
+    word_list: List[str],
+    search_list: List[str],
+    prev_matched_index_list: Optional[List[int]] = None,
 ) -> Optional[List[int]]:
     matched_index_set: Set[int] = set()
+    if prev_matched_index_list is not None:
+        matched_index_set.update(prev_matched_index_list)
     for j, word in enumerate(word_list):
         for search in search_list:
             if (fuzz.ratio(word, search) > 90) or (
@@ -204,10 +210,17 @@ async def search_by_search_keyword_list(
         matched_index_list_dict_batch[i]["original"] = find_keyword_matches(
             processed_chunk["original_token_list"], search_list_original
         )
-        if matched_index_list_dict_batch[i]["original"] is None:
-            matched_index_list_dict_batch[i]["translation"] = find_keyword_matches(
-                processed_chunk["translation_token_list"], search_list
-            )
+        if len(search_list) > 0:
+            if matched_index_list_dict_batch[i]["original"] is not None:
+                matched_index_list_dict_batch[i]["original"] = find_keyword_matches(
+                    processed_chunk["original_token_list"],
+                    search_list,
+                    matched_index_list_dict_batch[i]["original"],
+                )
+            else:
+                matched_index_list_dict_batch[i]["translation"] = find_keyword_matches(
+                    processed_chunk["translation_token_list"], search_list
+                )
 
     word_list_to_embed: List[str] = []
     for processed_chunk, matched_index_list_dict in zip(
@@ -282,10 +295,15 @@ async def precise_search_by_search_sentence_list(
         fuzzy_match_list_dict_batch[i]["original"] = find_sentence_matches(
             processed_chunk["original_normalized"], search_list_original
         )
-        if fuzzy_match_list_dict_batch[i]["original"] is None:
-            fuzzy_match_list_dict_batch[i]["translation"] = find_sentence_matches(
-                processed_chunk["translation_normalized"], search_list
-            )
+        if len(search_list) > 0:
+            if fuzzy_match_list_dict_batch[i]["original"] is not None:
+                fuzzy_match_list_dict_batch[i]["original"] += find_sentence_matches(
+                    processed_chunk["original_normalized"], search_list
+                )
+            else:
+                fuzzy_match_list_dict_batch[i]["translation"] = find_sentence_matches(
+                    processed_chunk["translation_normalized"], search_list
+                )
 
     sentence_list_to_embed: List[str] = []
     for i, fuzzy_match_list_dict in enumerate(fuzzy_match_list_dict_batch):
