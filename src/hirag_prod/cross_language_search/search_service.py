@@ -235,9 +235,10 @@ async def cross_language_search(
                     similar_block_tuple_list.append((block, result_tuple[1]))
         similar_block_tuple_list.sort(key=lambda x: x[1])
 
-        yield matched_blocks + [
-            block_tuple[0] for block_tuple in similar_block_tuple_list
-        ]
+        if (len(matched_blocks) > 0) or (len(similar_block_tuple_list) > 0):
+            yield matched_blocks + [
+                block_tuple[0] for block_tuple in similar_block_tuple_list
+            ]
 
         if len(chunk_list) < batch_size:
             break
