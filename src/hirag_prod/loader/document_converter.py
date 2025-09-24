@@ -4,6 +4,7 @@ Dots OCR Service
 
 import logging
 import os
+import time
 from typing import Any, Dict, Literal, Optional, Union
 from urllib.parse import urlparse
 
@@ -20,6 +21,106 @@ logger: logging.Logger = logging.getLogger(__name__)
 OUTPUT_DIR_PREFIX = "docling_cloud/output"
 
 
+def _poll_dots_job_status(
+    job_id: str,
+    timeout: int = 300,
+    retries: int = 3,
+    polling_interval: Optional[int] = None,
+) -> bool:
+    """
+    Poll job status until completion or timeout with retry logic.
+
+    Args:
+        job_id: Job ID to poll
+        timeout: Maximum time to wait in seconds
+        retries: Maximum number of consecutive failures before giving up
+        polling_interval: Time between polls in seconds (uses config default if None)
+
+    Returns:
+        bool: True if job completed successfully, False otherwise
+    """
+    config = get_document_converter_config("dots_ocr")
+    base_url = config.base_url
+    api_key = config.api_key
+
+    if polling_interval is None:
+        polling_interval = config.polling_interval
+
+    status_url = f"{base_url.rstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Model-Name": config.model_name,
+        "Entry-Point": "/status",
+    }
+    data = {
+        "OCRJobId": job_id,
+    }
+
+    start_time = time.time()
+    consecutive_failures = 0
+    max_consecutive_failures = retries
+
+    while time.time() - start_time < timeout:
+        try:
+            response = requests.post(status_url, headers=headers, data=data, timeout=10)
+            response.raise_for_status()
+
+            # Reset failure counter on successful request
+            consecutive_failures = 0
+
+            status_data = response.json()
+            status = status_data.get("status", "").lower()
+
+            logger.info(f"Job {job_id} status: {status}")
+
+            # "pending", "retrying", "processing", "completed", "failed", "canceled"
+            if status == "completed":
+                return True
+            elif status in ["failed", "error", "cancelled"]:
+                logger.error(f"Job {job_id} failed with status: {status}")
+                return False
+
+            # Job still running, wait before next poll
+            time.sleep(polling_interval)
+
+        # To avoid network issues causing immediate failure, but not a perfect solution
+        except requests.exceptions.RequestException as e:
+            consecutive_failures += 1
+            logger.warning(
+                f"Failed to check job status (attempt {consecutive_failures}/{max_consecutive_failures}): {e}"
+            )
+
+            if consecutive_failures >= max_consecutive_failures:
+                log_error_info(
+                    logging.ERROR,
+                    f"Max consecutive failures ({max_consecutive_failures}) reached, stopping polling",
+                    e,
+                    raise_error=True,
+                )
+                return False
+
+            time.sleep(polling_interval)
+        except Exception as e:
+            consecutive_failures += 1
+            logger.warning(
+                f"Unexpected error checking job status (attempt {consecutive_failures}/{max_consecutive_failures}): {e}"
+            )
+
+            if consecutive_failures >= max_consecutive_failures:
+                log_error_info(
+                    logging.ERROR,
+                    f"Max consecutive failures ({max_consecutive_failures}) reached, stopping polling",
+                    e,
+                    raise_error=True,
+                )
+                return False
+
+            time.sleep(polling_interval)
+
+    logger.error(f"Job {job_id} polling timed out after {timeout} seconds")
+    return False
+
+
 def convert(
     converter_type: Literal["dots_ocr"],
     input_file_path: str,
@@ -28,6 +129,10 @@ def convert(
 ) -> Optional[Union[Dict[str, Any], DoclingDocument]]:
     """
     Convert a document using Dots OCR Service and return Parsed Document.
+
+    Supports both synchronous and asynchronous processing:
+    - Synchronous: Direct response with processed document
+    - Asynchronous: Job submission with polling for completion
 
     Args:
         input_file_path: File path to the input document file
@@ -64,7 +169,7 @@ def convert(
         "Authorization": f"Bearer {get_document_converter_config(converter_type).api_key}",
     }
 
-    if entry_point == "/parse/file":
+    if entry_point == "/parse/file" or entry_point == "parse/file":
         if not workspace_id or not knowledge_base_id:
             raise ValueError(
                 "workspace_id and knowledge_base_id are required for /parse/file endpoint"
@@ -104,6 +209,30 @@ def convert(
         )
 
         response.raise_for_status()
+
+        if entry_point == "/parse/file" or entry_point == "parse/file":
+            response_data = response.json()
+            job_id = response_data.get("OCRJobId", None)
+
+            if job_id:
+                # Asynchronous processing - poll for completion
+                logger.info(f"Document conversion job submitted with ID: {job_id}")
+
+                # Poll job status with the configured timeout
+                if not _poll_dots_job_status(
+                    job_id,
+                    timeout=get_document_converter_config(converter_type).timeout,
+                    retries=get_document_converter_config(
+                        converter_type
+                    ).polling_retries,
+                ):
+                    logger.error(f"Job {job_id} did not complete successfully")
+                    return None
+
+                logger.info(f"Job {job_id} completed successfully")
+
+            else:
+                raise ValueError("No job ID found in the response for async processing")
 
         logger.info(
             f"Document conversion request successful. Output saved to {output_path}"
