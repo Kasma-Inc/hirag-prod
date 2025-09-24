@@ -53,8 +53,6 @@ class Envs(BaseSettings):
     DASHSCOPE_TRANSLATOR_BASE_URL: Optional[str] = None
     DASHSCOPE_TRANSLATOR_MODEL_NAME: str = "qwen-mt-plus"
 
-    SEARCH_TRANSLATOR_TYPE: Literal["google", "llm"] = "google"
-
     RERANKER_TYPE: Literal["api", "local"] = "api"
 
     # API reranker (Voyage AI) settings
@@ -67,6 +65,8 @@ class Envs(BaseSettings):
     LOCAL_RERANKER_MODEL_NAME: str = "Qwen3-Reranker-8B"
     LOCAL_RERANKER_MODEL_ENTRY_POINT: str = "/rerank"
     LOCAL_RERANKER_MODEL_AUTHORIZATION: Optional[str] = None
+
+    KNOWLEDGE_BASE_SEARCH_BATCH_SIZE: int = 10000
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":

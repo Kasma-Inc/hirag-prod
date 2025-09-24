@@ -4,6 +4,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 import numpy as np
 from sqlalchemy import desc, func, tuple_
 
+from hirag_prod.configs.functions import get_envs
 from hirag_prod.cross_language_search.functions import (
     build_search_result,
     classify_search,
@@ -66,7 +67,7 @@ async def cross_language_search(
     }
 
     last_cursor: Optional[Any] = None
-    page_size: int = 10
+    batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
     while True:
         chunk_list = await get_item_info_by_scope(
             knowledge_base_id=knowledge_base_id,
@@ -114,7 +115,7 @@ async def cross_language_search(
                 Item.bbox[3],
                 Item.chunkIdx,
             ],
-            limit=page_size,
+            limit=batch_size,
         )
         if len(chunk_list) == 0:
             break
@@ -238,7 +239,7 @@ async def cross_language_search(
             block_tuple[0] for block_tuple in similar_block_tuple_list
         ]
 
-        if len(chunk_list) < page_size:
+        if len(chunk_list) < batch_size:
             break
         else:
             last_cursor = tuple_(
