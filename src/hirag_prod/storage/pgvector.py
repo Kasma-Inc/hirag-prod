@@ -494,10 +494,6 @@ class PGVector(BaseVDB):
         columns_to_select: Optional[List[str]] = None,
         distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
     ) -> List[dict]:
-
-        if columns_to_select is None:
-            columns_to_select = ["text", "uri", "fileName", "private"]
-
         if topk is None:
             topk = self.strategy_provider.default_topk
         if topn is None:
@@ -507,6 +503,11 @@ class PGVector(BaseVDB):
             raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
 
         model = self.get_model(table_name)
+
+        if columns_to_select is None:  # query all except vector if nothing provided
+            columns_to_select = [
+                c.name for c in model.__table__.columns.keys() if c.name != "vector"
+            ]
 
         start = time.perf_counter()
         async with get_db_session_maker()() as session:
@@ -649,7 +650,9 @@ class PGVector(BaseVDB):
                 additional_data_key_list.append(k)
                 entity_to_select_list.append(v)
         if columns_to_select is None:  # query all if nothing provided
-            columns_to_select = [c.name for c in model.__table__.columns.keys()]
+            columns_to_select = [
+                c.name for c in model.__table__.columns.keys() if c.name != "vector"
+            ]
         async with get_db_session_maker()() as session:
             stmt = select(*entity_to_select_list).options(
                 load_only(*[getattr(model, column) for column in columns_to_select])
