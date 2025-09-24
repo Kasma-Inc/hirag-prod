@@ -68,7 +68,7 @@ async def update_job_status(
     table_name: Optional[str] = None,
     schema: Optional[str] = None,
 ) -> int:
-    """Update job status and updatedAt by primary key jobId."""
+    """Update job status and updatedAt by primary key id (jobId)."""
     # Format the datetime parameter if provided
 
     table_name = table_name or get_envs().POSTGRES_TABLE_NAME
@@ -81,7 +81,7 @@ async def update_job_status(
         UPDATE "{schema}"."{table_name}"
            SET "status" = '{status}',
                "updatedAt" = '{updated_at_value.isoformat()}'
-         WHERE "jobId" = '{job_id}'
+         WHERE "id" = '{job_id}'
     """
     )
     result = await session.exec(query)
@@ -99,7 +99,7 @@ async def insert_job(
     table_name: Optional[str] = None,
     schema: Optional[str] = None,
 ) -> int:
-    """Insert a job row with keys (jobId, workspaceId, status, updatedAt).
+    """Insert a job row with keys (id, workspaceId, status, updatedAt).
 
     Returns number of affected rows (1 on success).
     """
@@ -112,7 +112,7 @@ async def insert_job(
 
     query = text(
         f"""
-        INSERT INTO "{schema}"."{table_name}"("jobId", "workspaceId", "status", "updatedAt")
+        INSERT INTO "{schema}"."{table_name}"("id", "workspaceId", "status", "updatedAt")
         VALUES ('{job_id}', '{workspace_id}', '{status}', '{updated_at_value.isoformat()}')
     """
     )
@@ -128,7 +128,7 @@ async def delete_job(
     table_name: Optional[str] = None,
     schema: Optional[str] = None,
 ) -> int:
-    """Delete a job row by primary key jobId. Returns affected row count."""
+    """Delete a job row by primary key id. Returns affected row count."""
 
     table_name = table_name or get_envs().POSTGRES_TABLE_NAME
     schema = schema or get_envs().POSTGRES_SCHEMA
@@ -136,7 +136,7 @@ async def delete_job(
     query = text(
         f"""
         DELETE FROM "{schema}"."{table_name}"
-        WHERE "jobId" = '{job_id}'
+        WHERE "id" = '{job_id}'
     """
     )
 
