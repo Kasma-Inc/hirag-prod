@@ -6,7 +6,6 @@ import requests
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_document_converter_config
 from hirag_prod.loader.csv_loader import CSVLoader
-from hirag_prod.loader.excel_loader import ExcelLoader
 from hirag_prod.loader.html_loader import HTMLLoader
 from hirag_prod.loader.image_loader import ImageLoader
 from hirag_prod.loader.md_loader import MdLoader
@@ -36,10 +35,6 @@ DEFAULT_LOADER_CONFIGS = {
     },
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": {
         "loader": PowerPointLoader,
-        "args": {},
-    },
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
-        "loader": ExcelLoader,
         "args": {},
     },
     "text/html": {
@@ -171,7 +166,6 @@ __all__ = [
     "PowerPointLoader",
     "PDFLoader",
     "WordLoader",
-    "ExcelLoader",
     "load_document",
     "HTMLLoader",
     "CSVLoader",

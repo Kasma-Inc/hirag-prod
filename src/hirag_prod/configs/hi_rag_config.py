@@ -15,9 +15,7 @@ class HiRAGConfig(BaseSettings):
     vector_db_path: str = "kb/hirag.db"
     graph_db_path: str = "kb/hirag.gpickle"
     vdb_type: Literal["lancedb", "pgvector"] = "pgvector"
-    gdb_type: Literal["networkx", "neo4j"] = (
-        "networkx"  # TODO: neo4j not implemented yet
-    )
+    gdb_type: Literal["networkx"] = "networkx"
 
     # Chunking configuration
     chunk_size: int = 1200

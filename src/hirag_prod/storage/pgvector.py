@@ -717,7 +717,7 @@ class PGVector(BaseVDB):
             out = []
             for r in rows:
                 rec = {}
-                for col in r.__table__.columns.keys():  # type: ignore
+                for col in r.__table__.columns.keys():
                     val = getattr(r, col, None)
                     if hasattr(val, "to_list"):
                         rec[col] = val.to_list()
