@@ -650,7 +650,7 @@ class PGVector(BaseVDB):
                 additional_data_key_list.append(k)
                 entity_to_select_list.append(v)
         if columns_to_select is None:  # query all if nothing provided
-            columns_to_select = [c.name for c in model.__table__.columns.keys()]
+            columns_to_select = [c for c in model.__table__.columns.keys()]
         async with get_db_session_maker()() as session:
             stmt = select(*entity_to_select_list).options(
                 load_only(*[getattr(model, column) for column in columns_to_select])
