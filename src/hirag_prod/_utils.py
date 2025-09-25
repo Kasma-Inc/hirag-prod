@@ -392,3 +392,11 @@ async def _limited_gather_with_factory(
             progress_bar.close()
 
     return results
+
+
+# extract <ref>index</ref> tags in-order
+def extract_ref_indices(text: str) -> list[int]:
+    """Extract <ref>index</ref> tags in-order and return their integer indices."""
+    if not text:
+        return []
+    return [int(m) for m in re.findall(r"<ref>\s*(\d+)\s*</ref>", text)]

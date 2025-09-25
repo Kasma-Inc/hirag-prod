@@ -91,15 +91,6 @@ class QueryService:
         """Fetch chunk rows by document_key list, preserving input order where possible."""
         if not chunk_ids:
             return []
-        if columns_to_select is None:
-            columns_to_select = [
-                "text",
-                "uri",
-                "fileName",
-                "private",
-                "updatedAt",
-                "documentKey",
-            ]
         rows = await self.storage.query_by_keys(
             chunk_ids=chunk_ids,
             workspace_id=workspace_id,

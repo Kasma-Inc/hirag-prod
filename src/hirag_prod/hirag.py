@@ -975,6 +975,74 @@ class HiRAG:
                 raise_error=True,
             )
 
+    async def generate_summary_plus(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+        query: str,
+        chunks: List[Dict[str, Any]],
+        markdown_format: bool = True,
+    ) -> str:
+        """
+        Generate summary plus version with markdown format support and enhanced references support
+        """
+        logger.info(
+            f"🚀 Generating summary plus version with markdown format support and enhanced references support"
+        )
+        start_time = time.perf_counter()
+
+        try:
+            if markdown_format:
+                summary_prompt = PROMPTS[
+                    "summary_plus_markdown_" + get_config_manager().language
+                ]
+            else:
+                summary_prompt = PROMPTS[
+                    "summary_plus_" + get_config_manager().language
+                ]
+
+            data = "- Retrieved Chunks:\n" + "\n".join(
+                f"    [{i}]: {' '.join((c.get('text', '') or '').split())}"
+                for i, c in enumerate(chunks, start=1)
+            )
+
+            summary_prompt = summary_prompt.format(
+                data=data,
+                user_query=query,
+            )
+
+            try:
+                summary = await self.chat_complete(
+                    prompt=summary_prompt,
+                    max_tokens=get_llm_config().max_tokens,
+                    timeout=get_llm_config().timeout,
+                    model=get_llm_config().model_name,
+                )
+
+                total_time = time.perf_counter() - start_time
+                logger.info(
+                    f"✅ Summary plus generation completed in {total_time:.3f}s"
+                )
+                return summary
+
+            except Exception as e:
+                log_error_info(
+                    logging.ERROR,
+                    "Summary plus generation failed",
+                    e,
+                    raise_error=True,
+                    new_error_class=HiRAGException,
+                )
+
+        except Exception as e:
+            total_time = time.perf_counter() - start_time
+            log_error_info(
+                logging.ERROR,
+                f"❌ Summary plus generation failed after {total_time:.3f}s",
+                e,
+            )
+        return "None"
+
     # ========================================================================
     # Public interface methods
     # ========================================================================

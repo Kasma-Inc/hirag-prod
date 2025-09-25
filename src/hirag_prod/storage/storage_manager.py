@@ -215,7 +215,7 @@ class StorageManager:
             knowledge_base_id=knowledge_base_id,
             table_name="Chunks",
             key_column="documentKey",
-            columns_to_select=columns_to_select or ["documentKey", "vector"],
+            columns_to_select=columns_to_select,
         )
         return rows
 
