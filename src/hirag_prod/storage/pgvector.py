@@ -506,7 +506,7 @@ class PGVector(BaseVDB):
 
         if columns_to_select is None:  # query all except vector if nothing provided
             columns_to_select = [
-                c.name for c in model.__table__.columns.keys() if c.name != "vector"
+                c for c in model.__table__.columns.keys() if c != "vector"
             ]
 
         start = time.perf_counter()
@@ -651,7 +651,7 @@ class PGVector(BaseVDB):
                 entity_to_select_list.append(v)
         if columns_to_select is None:  # query all if nothing provided
             columns_to_select = [
-                c.name for c in model.__table__.columns.keys() if c.name != "vector"
+                c for c in model.__table__.columns.keys() if c != "vector"
             ]
         async with get_db_session_maker()() as session:
             stmt = select(*entity_to_select_list).options(
