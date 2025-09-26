@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from hirag_prod.schema.item import Item
 
@@ -34,6 +34,9 @@ class UnifiedRecursiveChunker:
 
     def _is_table(self, category: str) -> bool:
         return category == "table"
+
+    def _is_picture(self, category: str) -> bool:
+        return category == "picture"
 
     def _process_page_bboxes(
         self, page_bboxes: List[List[float]], page: int
@@ -107,15 +110,28 @@ class UnifiedRecursiveChunker:
             uploaded_at=reference_item.uploadedAt,
         )
 
-    def _build_table_chunk(self, item: Item, chunk_idx: int) -> DenseChunk:
+    def _build_separate_chunk(
+        self, id2item: Dict[str, Item], item: Item, chunk_idx: int, category: str
+    ) -> DenseChunk:
+        headers = item.headers or []
+        cap = item.caption or ""
+        header_texts = [id2item[h].text for h in headers if h in id2item]
+
+        if category == "picture":
+            merged_caption = "\n".join([*header_texts, cap, item.text]).strip()
+        elif category == "table":
+            merged_caption = "\n".join([*header_texts, cap]).strip()
+        else:
+            merged_caption = None
+
         return DenseChunk(
             chunk_idx=chunk_idx,
             text=item.text,
-            category="table",
+            category=category,
             bbox=[item.bbox],
             pages_span=[item.pageNumber],
             children=None,
-            caption=item.caption,
+            caption=merged_caption,
             headings=None,
             page_height=item.pageHeight,
             page_width=item.pageWidth,
@@ -146,8 +162,10 @@ class UnifiedRecursiveChunker:
             item = items[i]
             item_type = item.chunkType
 
-            if self._is_table(item_type):
-                merged_item = self._build_table_chunk(item, chunk_idx)
+            if self._is_table(item_type) or self._is_picture(item_type):
+                merged_item = self._build_separate_chunk(
+                    id2item=id2item, item=item, chunk_idx=chunk_idx, category=item_type
+                )
 
                 chunks.append(merged_item)
                 chunk_idx += 1
@@ -163,8 +181,15 @@ class UnifiedRecursiveChunker:
                 cur_item = items[i]
                 if cur_item.documentKey in header_set:
                     break
-                elif self._is_table(cur_item.chunkType):
-                    merged_item = self._build_table_chunk(cur_item, chunk_idx)
+                elif self._is_table(cur_item.chunkType) or self._is_picture(
+                    cur_item.chunkType
+                ):
+                    merged_item = self._build_separate_chunk(
+                        id2item=id2item,
+                        item=cur_item,
+                        chunk_idx=chunk_idx,
+                        category=cur_item.chunkType,
+                    )
                     chunks.append(merged_item)
                     chunk_idx += 1
                     i += 1
@@ -197,7 +222,6 @@ class UnifiedRecursiveChunker:
 
                 chunks.append(merged_item)
                 chunk_idx += 1
-                i += 1
                 continue
 
             header_items = [id2item[hid] for hid in header_ids if hid in id2item]
