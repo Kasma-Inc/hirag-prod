@@ -3,7 +3,7 @@ import logging
 import os
 import pickle
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import networkx as nx
 
@@ -154,9 +154,9 @@ class NetworkXGDB(BaseGDB):
     async def upsert_relation(self, relation: Relation):
         try:
             props = relation.properties or {}
-            workspace_id = props.get("workspace_id")
-            knowledge_base_id = props.get("knowledge_base_id")
-            chunk_id = props.get("chunk_id")
+            workspace_id = props.get("workspaceId")
+            knowledge_base_id = props.get("knowledgeBaseId")
+            chunk_id = props.get("chunkId")
 
             def is_chunk(node_id: str) -> bool:
                 return str(node_id).startswith("chunk-")
@@ -165,20 +165,20 @@ class NetworkXGDB(BaseGDB):
                 if node_id not in self.graph.nodes:
                     self.graph.add_node(node_id)
                 if workspace_id is not None:
-                    self.graph.nodes[node_id]["workspace_id"] = workspace_id
+                    self.graph.nodes[node_id]["workspaceId"] = workspace_id
                 if knowledge_base_id is not None:
-                    self.graph.nodes[node_id]["knowledge_base_id"] = knowledge_base_id
+                    self.graph.nodes[node_id]["knowledgeBaseId"] = knowledge_base_id
 
                 if not is_chunk(node_id):
                     if name_hint:
                         self.graph.nodes[node_id]["entity_name"] = name_hint
-                    self.graph.nodes[node_id].setdefault("entity_type", "entity")
-                    self.graph.nodes[node_id].setdefault("chunk_ids", [])
+                    self.graph.nodes[node_id].setdefault("entityType", "entity")
+                    self.graph.nodes[node_id].setdefault("chunkIds", [])
                     if (
                         chunk_id
-                        and chunk_id not in self.graph.nodes[node_id]["chunk_ids"]
+                        and chunk_id not in self.graph.nodes[node_id]["chunkIds"]
                     ):
-                        self.graph.nodes[node_id]["chunk_ids"].append(chunk_id)
+                        self.graph.nodes[node_id]["chunkIds"].append(chunk_id)
 
             source_name = None if is_chunk(relation.source) else props.get("source")
             target_name = None if is_chunk(relation.target) else props.get("target")
@@ -208,13 +208,13 @@ class NetworkXGDB(BaseGDB):
         else:
             metadata["description"] = []
 
-        # Ensure entity_type exists
-        if "entity_type" not in metadata:
-            metadata["entity_type"] = "UNKNOWN"
+        # Ensure entityType exists
+        if "entityType" not in metadata:
+            metadata["entityType"] = "UNKNOWN"
 
-        # Ensure chunk_ids exists
-        if "chunk_ids" not in metadata:
-            metadata["chunk_ids"] = []
+        # Ensure chunkIds exists
+        if "chunkIds" not in metadata:
+            metadata["chunkIds"] = []
 
         return Entity(
             id=node_id,
@@ -230,7 +230,7 @@ class NetworkXGDB(BaseGDB):
             properties=edge,
         )
 
-    async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]):
+    async def query_one_hop(self, node_id: str) -> Tuple[List[Entity], List[Relation]]:
         neighbors = list(self.graph.neighbors(node_id))
         edges = list(self.graph.edges(node_id))
         neighbor_results = await asyncio.gather(

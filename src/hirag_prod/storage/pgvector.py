@@ -20,6 +20,8 @@ from hirag_prod.resources.functions import (
 )
 from hirag_prod.schema import Base as PGBase
 from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, Triplets
+from hirag_prod.schema.graph import create_graph
+from hirag_prod.schema.node import create_node
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
@@ -99,12 +101,16 @@ class PGVector(BaseVDB):
             )
 
         model = self.get_model(table_name)
-
+        
         start = time.perf_counter()
         async with get_db_session_maker()() as session:
             embs = await self.embedding_func(texts_to_upsert)
             now = datetime.now()
             rows = []
+            
+            # Get valid column names for the table
+            valid_columns = set(model.__table__.columns.keys())
+            
             with tqdm(
                 total=len(properties_list), desc="Processing texts", leave=False
             ) as progress_bar:
@@ -131,7 +137,10 @@ class PGVector(BaseVDB):
                     vec = self._to_list(embs[i])
                     row["vector"] = vec
                     row["updatedAt"] = now
-                    rows.append(row)
+                    
+                    # Filter to only include valid columns
+                    filtered_row = {k: v for k, v in row.items() if k in valid_columns}
+                    rows.append(filtered_row)
                     progress_bar.update(1)
 
             table = model.__table__
@@ -193,36 +202,37 @@ class PGVector(BaseVDB):
         mode: Literal["append", "overwrite"] = "append",
     ):
 
-        edge_rows = []
-        node_map: Dict[tuple, Dict[str, Any]] = (
+        graph_objects = []
+        node_map: Dict[tuple, Node] = (
             {}
-        )  # key=(id, workspaceId, knowledgeBaseId), value=row
+        )  # key=(id, workspaceId, knowledgeBaseId), value=Node object
 
         def is_chunk(node_id: str) -> bool:
             return str(node_id).startswith("chunk-")
 
         for rel in relations:
             props = rel.properties or {}
-            workspace_id = props.get("workspace_id")
-            knowledge_base_id = props.get("knowledge_base_id")
-            chunk_id = props.get("chunk_id", [])
+            workspace_id = props.get("workspaceId")
+            knowledge_base_id = props.get("knowledgeBaseId")
+            chunk_id = props.get("chunkId", [])
             source_id = rel.source
             target_id = rel.target
             source_name = None if is_chunk(source_id) else props.get("source")
             target_name = None if is_chunk(target_id) else props.get("target")
-            document_id = props.get("document_id", "")
+            document_id = props.get("documentId", "")
             uri = props.get("uri", "")
 
-            edge_rows.append(
-                {
-                    "source": source_id,
-                    "target": target_id,
-                    "uri": uri,
-                    "workspaceId": workspace_id,
-                    "knowledgeBaseId": knowledge_base_id,
-                    "documentId": document_id,
-                }
+            # Create Graph object using create_object method for robustness
+            graph_obj = create_graph(
+                metadata=props,
+                source=source_id,
+                target=target_id,
+                uri=uri,
+                workspaceId=workspace_id,
+                knowledgeBaseId=knowledge_base_id,
+                documentId=document_id,
             )
+            graph_objects.append(graph_obj)
 
             for node_id, name_hint in (
                 (source_id, source_name),
@@ -231,21 +241,23 @@ class PGVector(BaseVDB):
                 if is_chunk(node_id):
                     continue
                 key = (node_id, workspace_id, knowledge_base_id)
-                rec = node_map.get(key)
-                if rec is None:
-                    rec = {
-                        "id": node_id,
-                        "workspaceId": workspace_id,
-                        "knowledgeBaseId": knowledge_base_id,
-                        "entityName": name_hint,
-                        "entityType": "entity",
-                        "chunkIds": [],
-                        "documentId": document_id,
-                        "uri": uri,
-                    }
-                    node_map[key] = rec
-                if chunk_id and chunk_id not in rec["chunkIds"]:
-                    rec["chunkIds"].append(chunk_id)
+                node_obj = node_map.get(key)
+                if node_obj is None:
+                    # Create Node object using create_object method for robustness
+                    node_obj = create_node(
+                        metadata=props,
+                        id=node_id,
+                        workspaceId=workspace_id,
+                        knowledgeBaseId=knowledge_base_id,
+                        entityName=name_hint or node_id,  # fallback to node_id if name_hint is None
+                        chunkIds=[],
+                        documentId=document_id,
+                        uri=uri,
+                    )
+                    node_map[key] = node_obj
+
+                if chunk_id and chunk_id not in node_obj.chunkIds:
+                    node_obj.chunkIds.append(chunk_id)
 
         GraphModel = self.get_model("Graph")
         NodeModel = self.get_model("Nodes")
@@ -254,37 +266,47 @@ class PGVector(BaseVDB):
         async with get_db_session_maker()() as session:
             now = datetime.now()
 
-            if edge_rows:
+            if graph_objects:
                 graph_table = GraphModel.__table__
                 pk_cols = [c.name for c in graph_table.primary_key.columns]
+                
+                # Convert Graph objects to dicts for bulk insert
+                edge_rows = []
+                for graph_obj in graph_objects:
+                    edge_dict = dict(graph_obj)
+                    edge_dict["updatedAt"] = now
+                    edge_rows.append(edge_dict)
+                
                 cols_per_row = len(edge_rows[0])
                 param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
                 for i in range(0, len(edge_rows), max_batch_size):
-                    batch = [
-                        {**r, "updatedAt": now}
-                        for r in edge_rows[i : i + max_batch_size]
-                    ]
+                    batch = edge_rows[i : i + max_batch_size]
                     ins = insert(graph_table).values(batch)
                     stmt = ins.on_conflict_do_nothing(
                         index_elements=[graph_table.c[name] for name in pk_cols]
                     )
                     await session.execute(stmt)
 
-            node_rows = list(node_map.values())
-            if node_rows:
+            node_objects = list(node_map.values())
+            if node_objects:
                 node_table = NodeModel.__table__
-                for nr in node_rows:
-                    if nr.get("chunkIds"):
-                        nr["chunkIds"] = list(dict.fromkeys(nr["chunkIds"]))
+                
+                # Convert Node objects to dicts for bulk insert
+                node_rows = []
+                for node_obj in node_objects:
+                    if node_obj.chunkIds:
+                        node_obj.chunkIds = list(dict.fromkeys(node_obj.chunkIds))
+                    
+                    node_dict = dict(node_obj)
+                    node_dict["updatedAt"] = now
+                    node_rows.append(node_dict)
+                
                 cols_per_row = len(node_rows[0])
                 param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
                 for i in range(0, len(node_rows), max_batch_size):
-                    batch = [
-                        {**nr, "updatedAt": now}
-                        for nr in node_rows[i : i + max_batch_size]
-                    ]
+                    batch = node_rows[i : i + max_batch_size]
                     ins = insert(node_table).values(batch)
                     stmt = ins.on_conflict_do_update(
                         index_elements=[
@@ -319,11 +341,11 @@ class PGVector(BaseVDB):
             elapsed = time.perf_counter() - start
             logger.info(
                 "[upsert_graph] Upserted %d edges and %d nodes, elapsed=%.3fs",
-                len(edge_rows),
-                len(node_rows),
+                len(graph_objects),
+                len(node_objects),
                 elapsed,
             )
-            return {"edges": len(edge_rows), "nodes": len(node_rows)}
+            return {"edges": len(graph_objects), "nodes": len(node_objects)}
 
     async def query_node(
         self,
@@ -351,12 +373,12 @@ class PGVector(BaseVDB):
             chunk_ids = list(dict.fromkeys(chunk_ids))
 
         meta = {
-            "entity_type": etype,
+            "entityType": etype,
             "description": [],
-            "chunk_ids": chunk_ids,
-            "document_id": getattr(row, "documentId", ""),
-            "workspace_id": getattr(row, "workspaceId", ""),
-            "knowledge_base_id": getattr(row, "knowledgeBaseId", ""),
+            "chunkIds": chunk_ids,
+            "documentId": getattr(row, "documentId", ""),
+            "workspaceId": getattr(row, "workspaceId", ""),
+            "knowledgeBaseId": getattr(row, "knowledgeBaseId", ""),
         }
         return Entity(id=node_id, page_content=name, metadata=meta)
 
@@ -477,9 +499,24 @@ class PGVector(BaseVDB):
             await session.commit()
             elapsed = time.perf_counter() - start
             logger.info(
-                f"[upsert_texts] Upserted file information into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
+                f"[upsert_file] Upserted file information into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
             )
             return row
+
+    async def upsert_file_from_metadata(
+        self,
+        metadata: dict,
+        table_name: str = "Files",
+        mode: Literal["append", "overwrite"] = "append",
+        **kwargs
+    ):
+        """Create a File object from metadata and kwargs, then upsert it."""
+        try:
+            file_obj = self.create_object("Files", metadata, **kwargs)
+            return await self.upsert_file(file_obj, table_name, mode)
+        except Exception as e:
+            logger.error(f"Failed to create file from metadata: {e}")
+            raise
 
     async def query(
         self,

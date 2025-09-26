@@ -12,7 +12,7 @@ from hirag_prod.exceptions import HiRAGException
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
-from hirag_prod.schema import Chunk, File, Item, file_to_item, item_to_chunk
+from hirag_prod.schema import Chunk, File, Item, file_to_item, item_to_chunk, create_file
 
 
 def _keep_sheet(name: str) -> bool:
@@ -46,7 +46,7 @@ async def load_and_chunk_excel(
                 local_path = route_file_path("excel_loader", document_path)
             except Exception:
                 local_path = document_path
-        breakpoint()
+
         all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(local_path, None)
 
         filtered_sheets = [
@@ -56,17 +56,14 @@ async def load_and_chunk_excel(
         document_id = document_meta.get("documentKey", "")
         file_name = document_meta.get("fileName", os.path.basename(local_path))
 
-        generated_md = File(
+        generated_md = create_file(
+            metadata=document_meta,
             documentKey=document_id,
             text=file_name,
-            type=document_meta.get("type", "xlsx"),
             pageNumber=len(filtered_sheets),
             fileName=file_name,
             uri=document_meta.get("uri", document_path),
             private=bool(document_meta.get("private", False)),
-            uploadedAt=document_meta.get("uploadedAt", datetime.now()),
-            knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
-            workspaceId=document_meta.get("workspaceId", ""),
         )
 
         latex_list: List[str] = []

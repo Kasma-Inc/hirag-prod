@@ -27,7 +27,6 @@ class Chunk(Base):
     pageNumber: Mapped[Optional[List[int]]] = mapped_column(
         ARRAY(Integer), nullable=True
     )
-    uploadedAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     # From ChunkMetadata
     documentId: Mapped[str] = mapped_column(String, nullable=False)
     chunkIdx: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -46,9 +45,11 @@ class Chunk(Base):
     vector_float_array: Mapped[List[float]] = column_property(
         cast(vector, ARRAY(Float(4)))
     )
-    updatedAt: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    # Timestamps and Users
+    createdAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    createdBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updatedAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updatedBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     def __iter__(self):
         for column_name in self.__table__.columns.keys():

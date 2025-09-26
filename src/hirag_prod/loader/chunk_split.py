@@ -80,7 +80,10 @@ def _inherit_file_metadata(source_file: File) -> Dict[str, Any]:
         "fileName": source_file.fileName,
         "uri": source_file.uri,
         "private": source_file.private,
-        "uploadedAt": source_file.uploadedAt,
+        "createdAt": source_file.createdAt,
+        "updatedAt": source_file.updatedAt,
+        "createdBy": source_file.createdBy,
+        "updatedBy": source_file.updatedBy,
         "knowledgeBaseId": source_file.knowledgeBaseId,
         "workspaceId": source_file.workspaceId,
     }
@@ -749,7 +752,10 @@ def items_to_chunks_recursive(
             "fileName": dchunk.file_name,
             "uri": dchunk.uri,
             "private": dchunk.private,
-            "uploadedAt": dchunk.uploaded_at,
+            "createdAt": dchunk.created_at,
+            "updatedAt": dchunk.updated_at,
+            "createdBy": dchunk.created_by,
+            "updatedBy": dchunk.updated_by,
             "knowledgeBaseId": dchunk.knowledge_base_id,
             "workspaceId": dchunk.workspace_id,
         }

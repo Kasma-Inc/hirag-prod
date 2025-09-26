@@ -246,7 +246,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[LoaderType],
-    ) -> (List[Chunk], File):
+    ) -> (List[Chunk], File): # type: ignore
         """Load and chunk document"""
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None
@@ -1003,7 +1003,8 @@ class HiRAG:
         document_meta["documentKey"] = document_id
         document_meta["knowledgeBaseId"] = knowledge_base_id
         document_meta["workspaceId"] = workspace_id
-        document_meta["uploadedAt"] = datetime.now()
+        document_meta["createdAt"] = datetime.now()
+        document_meta["updatedAt"] = datetime.now()
 
         if job_id and self._processor and self._processor.resume_tracker is not None:
             try:

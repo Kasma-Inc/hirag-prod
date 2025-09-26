@@ -26,7 +26,11 @@ class DenseChunk:
     private: bool = None
     knowledge_base_id: str = None
     workspace_id: str = None
-    uploaded_at: datetime = None
+    created_at: datetime = None
+    updated_at: datetime = None
+    created_by: str = None
+    updated_by: str = None
+    
 
 
 class UnifiedRecursiveChunker:
@@ -104,7 +108,10 @@ class UnifiedRecursiveChunker:
             private=reference_item.private,
             knowledge_base_id=reference_item.knowledgeBaseId,
             workspace_id=reference_item.workspaceId,
-            uploaded_at=reference_item.uploadedAt,
+            created_at=reference_item.createdAt,
+            updated_at=reference_item.updatedAt,
+            created_by=reference_item.createdBy,
+            updated_by=reference_item.updatedBy,
         )
 
     def _build_table_chunk(self, item: Item, chunk_idx: int) -> DenseChunk:
@@ -126,7 +133,10 @@ class UnifiedRecursiveChunker:
             private=item.private,
             knowledge_base_id=item.knowledgeBaseId,
             workspace_id=item.workspaceId,
-            uploaded_at=item.uploadedAt,
+            created_at=item.createdAt,
+            updated_at=item.updatedAt,
+            created_by=item.createdBy,
+            updated_by=item.updatedBy,
         )
 
     def chunk(

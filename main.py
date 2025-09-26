@@ -21,6 +21,8 @@ def get_test(id: str):
             "fileName": "2wiki_subcorpus.txt",
             "uri": document_path,
             "private": False,
+            "createdBy": "wiki_subcorpus_test",
+            "updatedBy": "wiki_subcorpus_test",
         }
         query = "When did Lothair II's mother die?"
         return document_path, content_type, document_meta, query
@@ -32,6 +34,8 @@ def get_test(id: str):
             "fileName": "small.pdf",
             "uri": document_path,
             "private": False,
+            "createdBy": "small_pdf_test",
+            "updatedBy": "small_pdf_test",
         }
         query = "Machine learning in detection"
         return document_path, content_type, document_meta, query
@@ -45,6 +49,8 @@ def get_test(id: str):
             "fileName": "Guide-to-U.S.-Healthcare-System.pdf",
             "uri": document_path,
             "private": False,
+            "createdBy": "U.S.Health_test",
+            "updatedBy": "U.S.Health_test",
         }
         query = "What is the structure of the U.S. healthcare system?"
         return document_path, content_type, document_meta, query
@@ -56,6 +62,8 @@ def get_test(id: str):
             "fileName": "Ideal holiday itinerary.md",
             "uri": document_path,
             "private": False,
+            "createdBy": "itinerary_test",
+            "updatedBy": "itinerary_test",
         }
         query = "What are the focuses of the holiday plan?"
         return document_path, content_type, document_meta, query
@@ -67,6 +75,8 @@ def get_test(id: str):
             "fileName": "fresh_wiki_article.md",
             "uri": document_path,
             "private": False,
+            "createdBy": "wiki_article_test",
+            "updatedBy": "wiki_article_test",
         }
         query = "What is the cause of Odisha train accident in 2023?"
         return document_path, content_type, document_meta, query
@@ -78,6 +88,8 @@ def get_test(id: str):
             "fileName": "2023-24_INTERIM_notes_to_the_condensed_consolidated_interim_financial_information.pdf",
             "uri": document_path,
             "private": False,
+            "createdBy": "interim_test",
+            "updatedBy": "interim_test",
         }
         query = "What are the key financial highlights for 2023-24?"
         return document_path, content_type, document_meta, query
@@ -103,6 +115,8 @@ def get_test(id: str):
                 "fileName": fn,
                 "uri": document_path_base + fn,
                 "private": False,
+                "createdBy": "translation_test",
+                "updatedBy": "translation_test",
             }
             for fn in filenames
         ]
@@ -135,6 +149,8 @@ def get_test(id: str):
             "fileName": "small.pdf",
             "uri": document_path,
             "private": False,
+            "createdBy": "small_pdf_test",
+            "updatedBy": "small_pdf_test",
         }
         query = "Machine learning in detection"
         return document_path, content_type, document_meta, query

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 from sqlalchemy import ARRAY, DateTime, Float, String, Text, cast
 from sqlalchemy.orm import Mapped, column_property, mapped_column
@@ -25,6 +25,12 @@ class Triplets(Base):
     vector_float_array: Mapped[List[float]] = column_property(
         cast(vector, ARRAY(Float(4)))
     )
+    # Timestamps and Users
+    createdAt: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now, nullable=False
+    )
+    createdBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updatedAt: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False
     )
+    updatedBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)

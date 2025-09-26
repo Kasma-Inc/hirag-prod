@@ -13,7 +13,7 @@ from hirag_prod._utils import (
 from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.entity.base import BaseKG
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.schema import Chunk, Entity, Relation
+from hirag_prod.schema import Chunk, Entity, Relation, Triplets, Node
 
 
 @dataclass
@@ -73,23 +73,26 @@ class VanillaKG(BaseKG):
 
         dense_sparse_relations = []
         for entity in entities:
+            # Create properties dict starting with relation-specific properties
+            properties = {
+                "source": chunk.documentKey,
+                "relation": "contains",
+                "target": entity.page_content,
+                "description": f"Chunk {chunk.documentKey} contains Entity {entity.page_content}",
+                "weight": 1.0,
+                "chunkId": chunk.documentKey,
+            }
+            
+            # Add all chunk properties directly from chunk.__iter__()
+            for key, value in chunk:
+                if value is not None and key not in properties:
+                    properties[key] = value
+
             dense_sparse_relations.append(
                 Relation(
                     source=chunk.documentKey,
                     target=entity.id,
-                    properties={
-                        "source": chunk.documentKey,
-                        "relation": "contains",
-                        "target": entity.page_content,
-                        "description": f"Chunk {chunk.documentKey} contains Entity {entity.page_content}",
-                        "weight": 1.0,
-                        "document_id": chunk.documentId,
-                        "uri": chunk.uri,
-                        "chunk_id": chunk.documentKey,
-                        "file_name": chunk.fileName,
-                        "workspace_id": chunk.workspaceId,
-                        "knowledge_base_id": chunk.knowledgeBaseId,
-                    },
+                    properties=properties,
                 )
             )
 
@@ -173,11 +176,11 @@ class VanillaKG(BaseKG):
                     id=entity_id,
                     page_content=entity,
                     metadata={
-                        "entity_type": "entity",
+                        "entityType": "entity",
                         "description": [],
-                        "chunk_ids": [chunk_id],
-                        "workspace_id": workspace_id,
-                        "knowledge_base_id": knowledge_base_id,
+                        "chunkIds": [chunk_id],
+                        "workspaceId": workspace_id,
+                        "knowledgeBaseId": knowledge_base_id,
                     },
                 )
             )
@@ -272,19 +275,20 @@ class VanillaKG(BaseKG):
             source_id = compute_mdhash_id(head, prefix="ent-")
             target_id = compute_mdhash_id(tail, prefix="ent-")
 
+            # Create properties dict starting with relation-specific properties
             properties = {
                 "source": head,
                 "relation": relation,
                 "target": tail,
                 "description": f"{head} {relation} {tail}",
                 "weight": 1.0,
-                "document_id": chunk.documentId,
-                "uri": chunk.uri,
-                "chunk_id": chunk.documentKey,
-                "file_name": chunk.fileName,
-                "workspace_id": chunk.workspaceId,
-                "knowledge_base_id": chunk.knowledgeBaseId,
+                "chunkId": chunk.documentKey,
             }
+            
+            # Add all chunk properties directly from chunk.__iter__()
+            for key, value in chunk:
+                if value is not None and key not in properties:
+                    properties[key] = value
 
             rel = Relation(
                 source=source_id,
@@ -297,22 +301,22 @@ class VanillaKG(BaseKG):
                 id=source_id,
                 page_content=head,
                 metadata={
-                    "entity_type": "entity",
+                    "entityType": "entity",
                     "description": [],
-                    "chunk_ids": [chunk.documentKey],
-                    "workspace_id": chunk.workspaceId,
-                    "knowledge_base_id": chunk.knowledgeBaseId,
+                    "chunkIds": [chunk.documentKey],
+                    "workspaceId": chunk.workspaceId,
+                    "knowledgeBaseId": chunk.knowledgeBaseId,
                 },
             )
             target_entity = Entity(
                 id=target_id,
                 page_content=tail,
                 metadata={
-                    "entity_type": "entity",
+                    "entityType": "entity",
                     "description": [],
-                    "chunk_ids": [chunk.documentKey],
-                    "workspace_id": chunk.workspaceId,
-                    "knowledge_base_id": chunk.knowledgeBaseId,
+                    "chunkIds": [chunk.documentKey],
+                    "workspaceId": chunk.workspaceId,
+                    "knowledgeBaseId": chunk.knowledgeBaseId,
                 },
             )
 

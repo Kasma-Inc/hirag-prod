@@ -4,11 +4,11 @@ from pydantic import BaseModel, field_validator
 
 
 class EntityMetadata(BaseModel):
-    entity_type: str
+    entityType: str
     description: List[str]
-    chunk_ids: List[str]
-    workspace_id: str
-    knowledge_base_id: str
+    chunkIds: List[str]
+    workspaceId: str
+    knowledgeBaseId: str
 
 
 class Entity(BaseModel):
