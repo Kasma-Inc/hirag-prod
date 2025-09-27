@@ -5,7 +5,7 @@ import weakref
 from abc import ABC
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import httpx
 import numpy as np
@@ -21,7 +21,11 @@ from tenacity import (
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.embedding_config import EmbeddingConfig
-from hirag_prod.configs.functions import get_embedding_config, get_llm_config
+from hirag_prod.configs.functions import (
+    get_embedding_config,
+    get_init_config,
+    get_llm_config,
+)
 from hirag_prod.configs.llm_config import LLMConfig
 
 # ============================================================================
@@ -676,25 +680,25 @@ class TextValidator:
     """Validates and cleans text inputs for embedding"""
 
     @staticmethod
-    def validate_and_clean(texts: List[str]) -> List[str]:
-        """Validate and clean texts for embedding"""
+    def validate_and_clean(
+        texts: List[Optional[str]],
+    ) -> Tuple[List[str], List[int], int]:
+        """Return (non-empty cleaned texts, their original indices, total count)."""
         if not texts:
-            raise ValueError("texts list cannot be empty")
+            return [], [], 0
 
-        valid_texts = []
+        valid_texts: List[str] = []
+        valid_indices: List[int] = []
         for i, text in enumerate(texts):
             if text is None:
-                raise ValueError(f"Text at index {i} is None")
-
+                continue
             cleaned_text = text.strip()
             if not cleaned_text:
-                raise ValueError(
-                    f"Text at index {i} is empty after stripping whitespace"
-                )
-
+                continue
             valid_texts.append(cleaned_text)
+            valid_indices.append(i)
 
-        return valid_texts
+        return valid_texts, valid_indices, len(texts)
 
 
 class EmbeddingService(metaclass=SingletonMeta):
@@ -749,24 +753,48 @@ class EmbeddingService(metaclass=SingletonMeta):
         Returns:
             Numpy array of embeddings
         """
-        # Validate and clean texts
-        valid_texts = self._text_validator.validate_and_clean(texts)
+        # Partition texts into valid and empty
+        valid_texts, valid_indices, total_count = (
+            self._text_validator.validate_and_clean(texts)
+        )
 
         # Use default batch size if not specified
         if batch_size is None:
             batch_size = self.default_batch_size
 
-        # If batch size is small enough, process directly
+        # If nothing valid, return an empty (0, dim) array
+        if total_count == 0 or len(valid_texts) == 0:
+            dim = get_init_config().EMBEDDING_DIMENSION
+            return np.zeros((total_count, dim), dtype=np.float32)
+
+        # Embed valid texts (batched if necessary)
         if len(valid_texts) <= batch_size:
-            return await self._create_embeddings_batch(valid_texts, model)
+            embeddings = await self._create_embeddings_batch(valid_texts, model)
+        else:
+            embeddings = await self._batch_processor.process_with_adaptive_batching(
+                valid_texts, batch_size, self._create_embeddings_batch, model
+            )
 
-        # Process in batches for large inputs with adaptive batch sizing
-        result = await self._batch_processor.process_with_adaptive_batching(
-            valid_texts, batch_size, self._create_embeddings_batch, model
+        # If no empties, return directly
+        if len(valid_texts) == total_count:
+            self._logger.info(
+                f"✅ All {len(valid_texts)} embeddings processed successfully"
+            )
+            return embeddings
+
+        # Restore original order with zeros for empty inputs
+        embedding_dim = (
+            embeddings.shape[1]
+            if embeddings.size > 0
+            else get_init_config().EMBEDDING_DIMENSION
         )
-
+        result = np.zeros(
+            (total_count, embedding_dim),
+            dtype=embeddings.dtype if embeddings.size > 0 else np.float32,
+        )
+        result[valid_indices] = embeddings
         self._logger.info(
-            f"✅ All {len(valid_texts)} embeddings processed successfully"
+            f"✅ Processed {len(valid_texts)} non-empty texts; filled {total_count - len(valid_texts)} empty with zeros"
         )
         return result
 
@@ -816,27 +844,51 @@ class LocalEmbeddingService:
         Returns:
             Numpy array of embeddings
         """
-        # Validate and clean texts
-        valid_texts = self._text_validator.validate_and_clean(texts)
+        # Partition texts into valid and empty
+        valid_texts, valid_indices, total_count = (
+            self._text_validator.validate_and_clean(texts)
+        )
 
         # Use default batch size if not specified
         effective_batch_size = batch_size or self.default_batch_size
+
+        # If nothing valid, return an empty (0, dim) array
+        if total_count == 0 or len(valid_texts) == 0:
+            dim = get_init_config().EMBEDDING_DIMENSION
+            return np.zeros((total_count, dim), dtype=np.float32)
 
         self._logger.info(
             f"🔄 Processing {len(valid_texts)} texts with batch_size={effective_batch_size}"
         )
 
-        # If batch size is small enough, process directly
+        # Embed valid texts (batched if necessary)
         if len(valid_texts) <= effective_batch_size:
-            return await self._create_embeddings_batch(valid_texts)
+            embeddings = await self._create_embeddings_batch(valid_texts)
+        else:
+            embeddings = await self._batch_processor.process_with_adaptive_batching(
+                valid_texts, effective_batch_size, self._create_embeddings_batch, ""
+            )
 
-        # Process in batches for large inputs with adaptive batch sizing
-        result = await self._batch_processor.process_with_adaptive_batching(
-            valid_texts, effective_batch_size, self._create_embeddings_batch, ""
+        # If no empties, return directly
+        if len(valid_texts) == total_count:
+            self._logger.info(
+                f"✅ Completed processing {total_count} texts, result shape: {embeddings.shape}"
+            )
+            return embeddings
+
+        # Restore original order with zeros for empty inputs
+        embedding_dim = (
+            embeddings.shape[1]
+            if embeddings.size > 0
+            else get_init_config().EMBEDDING_DIMENSION
         )
-
+        result = np.zeros(
+            (total_count, embedding_dim),
+            dtype=embeddings.dtype if embeddings.size > 0 else np.float32,
+        )
+        result[valid_indices] = embeddings
         self._logger.info(
-            f"✅ Completed processing {len(valid_texts)} texts, result shape: {result.shape}"
+            f"✅ Processed {len(valid_texts)} non-empty texts; filled {total_count - len(valid_texts)} empty with zeros"
         )
         return result
 

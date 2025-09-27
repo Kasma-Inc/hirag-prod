@@ -46,7 +46,6 @@ async def load_and_chunk_excel(
                 local_path = route_file_path("excel_loader", document_path)
             except Exception:
                 local_path = document_path
-        breakpoint()
         all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(local_path, None)
 
         filtered_sheets = [

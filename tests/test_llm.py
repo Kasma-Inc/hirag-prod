@@ -1,39 +1,16 @@
 import numpy as np
 import pytest
-from dotenv import load_dotenv
+import pytest_asyncio
 
-from hirag_prod._llm import (
-    ChatCompletion,
-    EmbeddingService,
-    SingletonABCMeta,
-    SingletonMeta,
-    create_chat_service,
-    create_embedding_service,
+from hirag_prod.configs.functions import initialize_config_manager
+from hirag_prod.resources.functions import (
+    get_chat_service,
+    get_embedding_service,
+    get_resource_manager,
+    initialize_resource_manager,
 )
 
-load_dotenv("/chatbot/.env")
-
-
-def clear_all_singletons():
-    """Clear all singleton instances to avoid test pollution"""
-    # Reset token usage stats for existing ChatCompletion instances
-    for singleton_class in [ChatCompletion]:
-        if (
-            hasattr(singleton_class, "_instances")
-            and singleton_class in singleton_class._instances
-        ):
-            instance = singleton_class._instances[singleton_class]
-            if hasattr(instance, "reset_token_usage_stats"):
-                instance.reset_token_usage_stats()
-
-    # Clear all singleton instances
-    for singleton_class in [EmbeddingService, ChatCompletion]:
-        if hasattr(singleton_class, "_instances"):
-            singleton_class._instances.clear()
-
-    # Also clear the metaclass instances for both SingletonMeta and SingletonABCMeta
-    SingletonMeta._instances.clear()
-    SingletonABCMeta._instances.clear()
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 
 class TestConfig:
@@ -49,110 +26,104 @@ class TestConfig:
     SAMPLE_SYSTEM_PROMPT = "You are a helpful AI assistant."
 
 
-@pytest.fixture(autouse=True)
-def auto_clear_singletons():
-    """Automatically clear singleton instances before each test"""
-    clear_all_singletons()
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def setup_env():
+    """Initialize config/resources once per module, and cleanup once."""
+    initialize_config_manager(cli_options_dict={"debug": False})
+    await initialize_resource_manager()
+    chat_service = get_chat_service()
+    embedding_service = get_embedding_service()
     yield
-    clear_all_singletons()
+    try:
+        await chat_service.close()
+    except Exception:
+        pass
+    try:
+        await embedding_service.close()
+    except Exception:
+        pass
+    try:
+        await get_resource_manager().cleanup()
+    except Exception:
+        pass
 
 
 class TestChatCompletion:
     """Test suite for ChatCompletion service"""
 
-    @pytest.mark.asyncio
     async def test_chat_completion_basic(self):
         """Test basic chat completion"""
-        chat_service = create_chat_service()
+        chat_service = get_chat_service()
+        result = await chat_service.complete(
+            model="gpt-4o-mini", prompt=TestConfig.SAMPLE_PROMPT
+        )
+        assert isinstance(result, str)
+        assert len(result.strip()) > 0
 
-        try:
-            result = await chat_service.complete(
-                model="gpt-4o-mini", prompt=TestConfig.SAMPLE_PROMPT
-            )
-
-            assert isinstance(result, str)
-            assert len(result.strip()) > 0
-
-        finally:
-            await chat_service.close()
-
-    @pytest.mark.asyncio
     async def test_chat_completion_with_system_prompt(self):
         """Test chat completion with system prompt and history"""
-        chat_service = create_chat_service()
-
-        try:
-            history = [{"role": "user", "content": "Previous question"}]
-            result = await chat_service.complete(
-                model="gpt-4o-mini",
-                prompt=TestConfig.SAMPLE_PROMPT,
-                system_prompt=TestConfig.SAMPLE_SYSTEM_PROMPT,
-                history_messages=history,
-            )
-
-            assert isinstance(result, str)
-            assert len(result.strip()) > 0
-
-        finally:
-            await chat_service.close()
+        chat_service = get_chat_service()
+        history = [{"role": "user", "content": "Previous question"}]
+        result = await chat_service.complete(
+            model="gpt-4o-mini",
+            prompt=TestConfig.SAMPLE_PROMPT,
+            system_prompt=TestConfig.SAMPLE_SYSTEM_PROMPT,
+            history_messages=history,
+        )
+        assert isinstance(result, str)
+        assert len(result.strip()) > 0
 
 
 class TestEmbeddingService:
     """Test suite for embedding service"""
 
-    @pytest.mark.asyncio
     async def test_embedding_service_basic(self):
         """Test basic embedding service"""
-        embedding_service = create_embedding_service()
+        embedding_service = get_embedding_service()
+        result = await embedding_service.create_embeddings(
+            texts=TestConfig.SAMPLE_TEXTS
+        )
+        assert isinstance(result, np.ndarray)
+        assert result.shape[0] == len(TestConfig.SAMPLE_TEXTS)
+        assert result.shape[1] > 0
 
-        try:
-            result = await embedding_service.create_embeddings(
-                texts=TestConfig.SAMPLE_TEXTS
-            )
-
-            assert isinstance(result, np.ndarray)
-            assert result.shape[0] == len(TestConfig.SAMPLE_TEXTS)
-            assert result.shape[1] > 0
-
-        finally:
-            await embedding_service.close()
-
-    @pytest.mark.asyncio
     async def test_batch_embedding_processing(self):
         """Test batch processing functionality"""
-        embedding_service = create_embedding_service(default_batch_size=2)
+        embedding_service = get_embedding_service()
+        large_text_list = TestConfig.SAMPLE_TEXTS * 5  # 15 texts total
+        result = await embedding_service.create_embeddings(texts=large_text_list)
+        assert isinstance(result, np.ndarray)
+        assert result.shape[0] == len(large_text_list)
+        assert result.shape[1] > 0
 
-        try:
-            # Create a larger list of texts to trigger batch processing
-            large_text_list = TestConfig.SAMPLE_TEXTS * 5  # 15 texts total
+    async def test_embedding_with_empty_inputs(self):
+        """Embedding should handle empty/None/whitespace by returning zeros in place."""
+        embedding_service = get_embedding_service()
+        texts = ["Hello", "", "   ", None, "\n", "World"]
+        result = await embedding_service.create_embeddings(texts=texts)
 
-            result = await embedding_service.create_embeddings(
-                texts=large_text_list, batch_size=2
-            )
+        assert isinstance(result, np.ndarray)
+        assert result.shape[0] == len(texts)
 
-            assert isinstance(result, np.ndarray)
-            assert result.shape[0] == len(large_text_list)
-            assert result.shape[1] > 0
+        empty_indices = [1, 2, 3, 4]
+        for idx in empty_indices:
+            assert np.allclose(result[idx], 0.0)
 
-        finally:
-            await embedding_service.close()
+        for idx in [0, 5]:
+            assert not np.allclose(result[idx], 0.0)
 
 
 class TestServiceFactory:
     """Test service factory functions"""
 
-    @pytest.mark.asyncio
     async def test_chat_service_factory(self):
         """Test chat service factory"""
-        service = create_chat_service()
+        service = get_chat_service()
         assert service is not None
         assert hasattr(service, "complete")
-        await service.close()
 
-    @pytest.mark.asyncio
     async def test_embedding_service_factory(self):
         """Test embedding service factory"""
-        service = create_embedding_service()
+        service = get_embedding_service()
         assert service is not None
         assert hasattr(service, "create_embeddings")
-        await service.close()
