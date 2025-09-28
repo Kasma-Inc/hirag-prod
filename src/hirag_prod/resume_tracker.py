@@ -257,9 +257,7 @@ class ResumeTracker:
     async def set_job_completed(self, job_id: str) -> None:
         await self.set_job_status(job_id, JobStatus.COMPLETED)
 
-    async def set_job_failed(
-        self, job_id: str, error_message: str, signal: Optional[str] = None
-    ) -> None:
+    async def set_job_failed(self, job_id: str, error_message: str) -> None:
         key = self._job_key(job_id)
         await self._ensure_job_exists(job_id)
         now = datetime.now().isoformat()
@@ -291,7 +289,8 @@ class ResumeTracker:
                     loop.call_soon_threadsafe(
                         asyncio.create_task,
                         self.set_job_failed(
-                            job_id, f"Terminated by signal {signum}", signal=str(signum)
+                            job_id=job_id,
+                            error_message=f"Terminated by signal {signum}",
                         ),
                     )
                 except Exception:
