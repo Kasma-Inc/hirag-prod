@@ -203,6 +203,7 @@ async def index(test_id="2", overwrite=True, summary=True):
 
     for dp, dm in zip(document_path, document_meta):
         await index.insert_to_kb(
+            file_id="test_id",
             document_path=dp,
             content_type=content_type,
             document_meta=dm,

@@ -26,6 +26,7 @@ file_types = Literal[
 class File(Base):
     __tablename__ = "Files"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     # File Data
     documentKey: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(

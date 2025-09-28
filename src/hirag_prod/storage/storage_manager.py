@@ -12,7 +12,6 @@ from hirag_prod.schema import (
     File,
     Item,
     Relation,
-    Triplets,
 )
 from hirag_prod.storage import (
     BaseGDB,

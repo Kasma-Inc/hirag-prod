@@ -225,6 +225,7 @@ class PGVector(BaseVDB):
             # Create Graph object using create_object method for robustness
             graph_obj = create_graph(
                 metadata=props,
+                id=props.get("id"),
                 source=source_id,
                 target=target_id,
                 uri=uri,
@@ -246,7 +247,8 @@ class PGVector(BaseVDB):
                     # Create Node object using create_object method for robustness
                     node_obj = create_node(
                         metadata=props,
-                        id=node_id,
+                        id=props.get("id"),
+                        node_id=node_id,
                         workspaceId=workspace_id,
                         knowledgeBaseId=knowledge_base_id,
                         entityName=name_hint
@@ -311,7 +313,7 @@ class PGVector(BaseVDB):
                     ins = insert(node_table).values(batch)
                     stmt = ins.on_conflict_do_update(
                         index_elements=[
-                            node_table.c.id,
+                            node_table.c.node_id,
                             node_table.c.workspaceId,
                             node_table.c.knowledgeBaseId,
                         ],
@@ -358,7 +360,7 @@ class PGVector(BaseVDB):
         async with get_db_session_maker()() as session:
             stmt = (
                 select(NodeModel)
-                .where(NodeModel.id == node_id)
+                .where(NodeModel.node_id == node_id)
                 .where(NodeModel.workspaceId == workspace_id)
                 .where(NodeModel.knowledgeBaseId == knowledge_base_id)
             )

@@ -10,6 +10,7 @@ from hirag_prod.schema.base import Base
 class Graph(Base):
     __tablename__ = "Graph"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     source: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     target: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     uri: Mapped[str] = mapped_column(String, nullable=False)

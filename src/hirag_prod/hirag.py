@@ -961,6 +961,7 @@ class HiRAG:
         knowledge_base_id: str,
         content_type: str,
         with_graph: bool = True,
+        file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
@@ -976,6 +977,7 @@ class HiRAG:
             knowledge_base_id: knowledge base id
             content_type: document type
             with_graph: whether to process graph data (entities and relations)
+            file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
             job_id: job id
@@ -1003,6 +1005,7 @@ class HiRAG:
         document_meta["documentKey"] = document_id
         document_meta["knowledgeBaseId"] = knowledge_base_id
         document_meta["workspaceId"] = workspace_id
+        document_meta["id"] = file_id
         document_meta["createdAt"] = datetime.now()
         document_meta["updatedAt"] = datetime.now()
 

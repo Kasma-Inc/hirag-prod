@@ -11,7 +11,8 @@ from hirag_prod.schema.base import Base
 class Node(Base):
     __tablename__ = "Nodes"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
+    id: Mapped[str] = mapped_column(String, nullable=True)
+    node_id: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(
         String, primary_key=True, nullable=False
@@ -57,7 +58,7 @@ def create_node(metadata: dict, **kwargs) -> Node:
 
     # Check for required fields and set defaults if needed
     required_fields = [
-        "id",
+        "node_id",
         "workspaceId",
         "knowledgeBaseId",
         "entityName",

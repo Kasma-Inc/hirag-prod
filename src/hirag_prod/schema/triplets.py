@@ -11,6 +11,7 @@ from hirag_prod.schema.vector_config import PGVECTOR
 class Triplets(Base):
     __tablename__ = "Triplets"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     source: Mapped[str] = mapped_column(String, nullable=False)
     target: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)

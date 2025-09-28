@@ -12,6 +12,7 @@ from hirag_prod.schema.vector_config import PGVECTOR, PGVector
 class Item(Base):
     __tablename__ = "Items"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     # Item Data
     documentKey: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(

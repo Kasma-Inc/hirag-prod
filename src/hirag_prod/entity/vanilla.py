@@ -13,7 +13,7 @@ from hirag_prod._utils import (
 from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.entity.base import BaseKG
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.schema import Chunk, Entity, Node, Relation, Triplets
+from hirag_prod.schema import Chunk, Entity, Relation
 
 
 @dataclass

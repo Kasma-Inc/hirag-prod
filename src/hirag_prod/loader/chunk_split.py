@@ -76,6 +76,7 @@ LABEL_TO_CHUNK_TYPE = {
 def _inherit_file_metadata(source_file: File) -> Dict[str, Any]:
     """Extract inheritable metadata from a File object."""
     return {
+        "id": source_file.id,
         "type": source_file.type,
         "fileName": source_file.fileName,
         "uri": source_file.uri,
@@ -748,6 +749,7 @@ def items_to_chunks_recursive(
         tbbox_list = dchunk.bbox
 
         file_metadata = {
+            "id": dchunk.id,
             "type": dchunk.document_type,
             "fileName": dchunk.file_name,
             "uri": dchunk.uri,

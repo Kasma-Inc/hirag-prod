@@ -12,6 +12,7 @@ from hirag_prod.schema.vector_config import PGVECTOR
 class Chunk(Base):
     __tablename__ = "Chunks"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     # Chunk Data
     documentKey: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(
