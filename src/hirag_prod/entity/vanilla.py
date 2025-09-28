@@ -13,7 +13,7 @@ from hirag_prod._utils import (
 from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.entity.base import BaseKG
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.schema import Chunk, Entity, Relation, Triplets, Node
+from hirag_prod.schema import Chunk, Entity, Node, Relation, Triplets
 
 
 @dataclass
@@ -82,7 +82,7 @@ class VanillaKG(BaseKG):
                 "weight": 1.0,
                 "chunkId": chunk.documentKey,
             }
-            
+
             # Add all chunk properties directly from chunk.__iter__()
             for key, value in chunk:
                 if value is not None and key not in properties:
@@ -284,7 +284,7 @@ class VanillaKG(BaseKG):
                 "weight": 1.0,
                 "chunkId": chunk.documentKey,
             }
-            
+
             # Add all chunk properties directly from chunk.__iter__()
             for key, value in chunk:
                 if value is not None and key not in properties:

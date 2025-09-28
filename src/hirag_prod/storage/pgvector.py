@@ -101,16 +101,16 @@ class PGVector(BaseVDB):
             )
 
         model = self.get_model(table_name)
-        
+
         start = time.perf_counter()
         async with get_db_session_maker()() as session:
             embs = await self.embedding_func(texts_to_upsert)
             now = datetime.now()
             rows = []
-            
+
             # Get valid column names for the table
             valid_columns = set(model.__table__.columns.keys())
-            
+
             with tqdm(
                 total=len(properties_list), desc="Processing texts", leave=False
             ) as progress_bar:
@@ -137,7 +137,7 @@ class PGVector(BaseVDB):
                     vec = self._to_list(embs[i])
                     row["vector"] = vec
                     row["updatedAt"] = now
-                    
+
                     # Filter to only include valid columns
                     filtered_row = {k: v for k, v in row.items() if k in valid_columns}
                     rows.append(filtered_row)
@@ -249,7 +249,8 @@ class PGVector(BaseVDB):
                         id=node_id,
                         workspaceId=workspace_id,
                         knowledgeBaseId=knowledge_base_id,
-                        entityName=name_hint or node_id,  # fallback to node_id if name_hint is None
+                        entityName=name_hint
+                        or node_id,  # fallback to node_id if name_hint is None
                         chunkIds=[],
                         documentId=document_id,
                         uri=uri,
@@ -269,14 +270,14 @@ class PGVector(BaseVDB):
             if graph_objects:
                 graph_table = GraphModel.__table__
                 pk_cols = [c.name for c in graph_table.primary_key.columns]
-                
+
                 # Convert Graph objects to dicts for bulk insert
                 edge_rows = []
                 for graph_obj in graph_objects:
                     edge_dict = dict(graph_obj)
                     edge_dict["updatedAt"] = now
                     edge_rows.append(edge_dict)
-                
+
                 cols_per_row = len(edge_rows[0])
                 param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
@@ -291,17 +292,17 @@ class PGVector(BaseVDB):
             node_objects = list(node_map.values())
             if node_objects:
                 node_table = NodeModel.__table__
-                
+
                 # Convert Node objects to dicts for bulk insert
                 node_rows = []
                 for node_obj in node_objects:
                     if node_obj.chunkIds:
                         node_obj.chunkIds = list(dict.fromkeys(node_obj.chunkIds))
-                    
+
                     node_dict = dict(node_obj)
                     node_dict["updatedAt"] = now
                     node_rows.append(node_dict)
-                
+
                 cols_per_row = len(node_rows[0])
                 param_budget = 30000
                 max_batch_size = max(1, param_budget // cols_per_row)
@@ -508,7 +509,7 @@ class PGVector(BaseVDB):
         metadata: dict,
         table_name: str = "Files",
         mode: Literal["append", "overwrite"] = "append",
-        **kwargs
+        **kwargs,
     ):
         """Create a File object from metadata and kwargs, then upsert it."""
         try:

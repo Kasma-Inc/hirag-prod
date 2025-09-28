@@ -30,7 +30,6 @@ class DenseChunk:
     updated_at: datetime = None
     created_by: str = None
     updated_by: str = None
-    
 
 
 class UnifiedRecursiveChunker:

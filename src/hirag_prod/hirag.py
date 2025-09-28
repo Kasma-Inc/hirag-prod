@@ -246,7 +246,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[LoaderType],
-    ) -> (List[Chunk], File): # type: ignore
+    ) -> (List[Chunk], File):  # type: ignore
         """Load and chunk document"""
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None

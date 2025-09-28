@@ -133,12 +133,12 @@ class StorageManager:
                 "target": r.target,
                 "description": r.properties.get("description", ""),
             }
-            
+
             # Map all other relation properties directly (now in camelCase)
             for key, value in r.properties.items():
                 if key not in triplet_properties and value is not None:
                     triplet_properties[key] = value
-                    
+
             properties_list.append(triplet_properties)
         await self.vdb.upsert_texts(
             texts_to_upsert=texts_to_embed,

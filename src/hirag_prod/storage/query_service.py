@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.reranker.utils import apply_reranking
-from hirag_prod.storage.storage_manager import StorageManager
 from hirag_prod.schema.vector_config import use_halfvec
+from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
 
