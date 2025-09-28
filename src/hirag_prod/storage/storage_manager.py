@@ -71,7 +71,7 @@ class StorageManager:
             return
 
         def _embed_text(c: Chunk) -> str:
-            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table", "picture"]:
                 cap = (getattr(c, "caption", "") or "").strip()
                 if cap:
                     return cap
@@ -91,7 +91,7 @@ class StorageManager:
             return
 
         def _embed_text(c: Item) -> str:
-            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table", "picture"]:
                 cap = (getattr(c, "caption", "") or "").strip()
                 if cap:
                     return cap
