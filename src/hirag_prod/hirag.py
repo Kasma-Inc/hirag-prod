@@ -1062,6 +1062,17 @@ class HiRAG:
                 )
                 return metrics
 
+        cleanup_handlers = None
+        if job_id and self._processor and self._processor.resume_tracker is not None:
+            try:
+                cleanup_handlers = (
+                    self._processor.resume_tracker.register_signal_handlers(job_id)
+                )
+            except Exception as e:
+                log_error_info(
+                    logging.WARNING, "Failed to set up job termination hooks", e
+                )
+
         try:
             metrics = await self._processor.process_document(
                 document_path=document_path,
@@ -1104,6 +1115,12 @@ class HiRAG:
                         e,
                     )
             raise
+        finally:
+            if cleanup_handlers is not None:
+                try:
+                    cleanup_handlers()
+                except Exception:
+                    pass
 
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query document chunks"""

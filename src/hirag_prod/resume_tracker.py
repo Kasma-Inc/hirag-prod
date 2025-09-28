@@ -1,5 +1,7 @@
+import asyncio
 import hashlib
 import logging
+import signal
 from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional
@@ -255,7 +257,9 @@ class ResumeTracker:
     async def set_job_completed(self, job_id: str) -> None:
         await self.set_job_status(job_id, JobStatus.COMPLETED)
 
-    async def set_job_failed(self, job_id: str, error_message: str) -> None:
+    async def set_job_failed(
+        self, job_id: str, error_message: str, signal: Optional[str] = None
+    ) -> None:
         key = self._job_key(job_id)
         await self._ensure_job_exists(job_id)
         now = datetime.now().isoformat()
@@ -268,6 +272,54 @@ class ResumeTracker:
             },
         )
         await self.save_job_status_to_postgres(job_id, JobStatus.FAILED.value)
+
+    # ============================ Signal registration ==========================
+    def register_signal_handlers(self, job_id: str):
+        """
+        Capture SIGINT/SIGTERM signals and mark the job as failed. Returns a cleanup function to restore original handlers.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        previous = {}
+
+        def _handler(signum, frame):
+            if loop is not None and not loop.is_closed():
+                try:
+                    loop.call_soon_threadsafe(
+                        asyncio.create_task,
+                        self.set_job_failed(
+                            job_id, f"Terminated by signal {signum}", signal=str(signum)
+                        ),
+                    )
+                except Exception:
+                    pass
+            prev = previous.get(signum)
+            if callable(prev):
+                try:
+                    prev(signum, frame)
+                except Exception:
+                    pass
+
+        for sig in (getattr(signal, "SIGINT", None), getattr(signal, "SIGTERM", None)):
+            if sig is None:
+                continue
+            try:
+                previous[sig] = signal.getsignal(sig)
+                signal.signal(sig, _handler)
+            except Exception:
+                pass
+
+        def _cleanup():
+            for sig, prev in previous.items():
+                try:
+                    signal.signal(sig, prev)
+                except Exception:
+                    pass
+
+        return _cleanup
 
     # ============================ Chunk registration ==========================
 
