@@ -26,6 +26,7 @@ from hirag_prod.exceptions import (
     HiRAGException,
     KGConstructionError,
 )
+from hirag_prod.job_status_tracker import JobStatus, JobStatusTracker
 from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     build_rich_toc,
@@ -46,7 +47,6 @@ from hirag_prod.resources.functions import (
     get_translator,
     initialize_resource_manager,
 )
-from hirag_prod.resume_tracker import JobStatus, ResumeTracker
 from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
 from hirag_prod.storage import (
     BaseGDB,
@@ -81,13 +81,13 @@ class DocumentProcessor:
         storage: StorageManager,
         chunker: BaseChunk,
         kg_constructor: BaseKG,
-        resume_tracker: Optional[ResumeTracker] = None,
+        job_status_tracker: Optional[JobStatusTracker] = None,
         metrics: Optional[MetricsCollector] = None,
     ):
         self.storage = storage
         self.chunker = chunker
         self.kg_constructor = kg_constructor
-        self.resume_tracker = resume_tracker
+        self.job_status_tracker = job_status_tracker
         self.metrics = metrics or MetricsCollector()
 
     async def clear_document(
@@ -139,11 +139,10 @@ class DocumentProcessor:
 
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
-                # Mark job failed if tracking is enabled
-                if self.resume_tracker and job_id:
+                if self.job_status_tracker and job_id:
                     try:
-                        await self.resume_tracker.set_job_failed(
-                            job_id, "No chunks created from document"
+                        await self.job_status_tracker.set_job_status(
+                            job_id, JobStatus.FAILED
                         )
                     except Exception as e:
                         log_error_info(
@@ -156,86 +155,42 @@ class DocumentProcessor:
             self.metrics.metrics.total_chunks = len(chunks)
             self.metrics.metrics.job_id = job_id or ""
 
-            # Check if document was already completed in a previous session
-            if self.resume_tracker:
-                document_id = chunks[0].documentId
-                # Update job -> processing with doc info as soon as we know
-                if job_id:
-                    try:
-                        await self.resume_tracker.set_job_processing(
-                            job_id=job_id,
-                            document_id=document_id,
-                            total_chunks=len(chunks),
-                        )
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (processing) to Postgres",
-                            e,
-                        )
-
-                document_uri = chunks[0].uri
-                await self.resume_tracker.register_chunks(
-                    chunks,
-                    document_id,
-                    document_uri,
-                    workspace_id,
-                    knowledge_base_id,
-                )
+            # Update job -> processing as soon as we know
+            if self.job_status_tracker and job_id:
+                try:
+                    await self.job_status_tracker.set_job_status(
+                        job_id=job_id,
+                        status=JobStatus.PROCESSING,
+                    )
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (processing) to Postgres",
+                        e,
+                    )
 
             # Store file information after chunking but before processing chunks
             await self.storage.upsert_file_to_vdb(file)
 
             # Process chunks
             await self._process_chunks(chunks, items, workspace_id, knowledge_base_id)
-            # Update job progress for processed chunks
-            if self.resume_tracker and job_id:
-                try:
-                    await self.resume_tracker.set_job_progress(
-                        job_id,
-                        processed_chunks=self.metrics.metrics.processed_chunks,
-                    )
-                except Exception as e:
-                    log_error_info(
-                        logging.ERROR,
-                        "Failed to saving job status (progress) to Postgres",
-                        e,
-                    )
 
             # Process graph data
             if with_graph:
                 await self._construct_kg(chunks)
-                # Update job progress for entity/relation totals
-                if self.resume_tracker and job_id:
-                    try:
-                        await self.resume_tracker.set_job_progress(
-                            job_id,
-                            total_entities=self.metrics.metrics.total_entities,
-                            total_relations=self.metrics.metrics.total_relations,
-                        )
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (progress) to Postgres",
-                            e,
-                        )
 
             # Mark as complete
-            if self.resume_tracker:
-                await self.resume_tracker.mark_document_completed(
-                    document_id=chunks[0].documentId,
-                    workspace_id=workspace_id,
-                    knowledge_base_id=knowledge_base_id,
-                )
-                if job_id:
-                    try:
-                        await self.resume_tracker.set_job_completed(job_id)
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (completed) to Postgres",
-                            e,
-                        )
+            if self.job_status_tracker and job_id:
+                try:
+                    await self.job_status_tracker.set_job_status(
+                        job_id, JobStatus.COMPLETED
+                    )
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (completed) to Postgres",
+                        e,
+                    )
 
             return self.metrics.metrics
 
@@ -410,7 +365,7 @@ class DocumentProcessor:
         if not chunks:
             return []
 
-        if self.resume_tracker:
+        if self.job_status_tracker:
             # Check for existing chunks in vector database
             uri = chunks[0].uri
             existing_chunk_ids = await self.storage.get_existing_chunks(
@@ -576,11 +531,11 @@ class HiRAG:
             llm_model_name=get_llm_config().model_name,
         )
 
-        # Initialize resume tracker
-        resume_tracker = kwargs.get("resume_tracker")
-        if resume_tracker is None:
-            resume_tracker = ResumeTracker()
-            logger.info("Using Redis-based resume tracker")
+        # Initialize job tracker (no cache)
+        job_status_tracker = kwargs.get("job_status_tracker")
+        if job_status_tracker is None:
+            job_status_tracker = JobStatusTracker()
+            logger.info("Using job status tracker (no cache)")
 
         # Initialize components
         self._metrics = MetricsCollector()
@@ -588,7 +543,7 @@ class HiRAG:
             storage=self._storage,
             chunker=chunker,
             kg_constructor=self._kg_constructor,
-            resume_tracker=resume_tracker,
+            job_status_tracker=job_status_tracker,
             metrics=self._metrics,
         )
         self._query_service = QueryService(self._storage)
@@ -1007,28 +962,22 @@ class HiRAG:
         document_meta["createdAt"] = datetime.now()
         document_meta["updatedAt"] = datetime.now()
 
-        if job_id and self._processor and self._processor.resume_tracker is not None:
+        if (
+            job_id
+            and self._processor
+            and self._processor.job_status_tracker is not None
+        ):
             try:
-                await self._processor.resume_tracker.set_job_status(
+                await self._processor.job_status_tracker.set_job_status(
                     job_id=job_id,
                     status=JobStatus.PROCESSING,
-                    document_uri=(
-                        document_meta.get("uri")
-                        if isinstance(document_meta, dict)
-                        else str(document_path)
-                    ),
-                    with_graph=with_graph,
                 )
-
             except Exception as e:
                 log_error_info(
                     logging.WARNING, f"Failed to initialize external job {job_id}", e
                 )
 
         try:
-            await self._processor.resume_tracker.reset_document(
-                document_id, workspace_id, knowledge_base_id
-            )
             await self._processor.clear_document(
                 document_id, workspace_id, knowledge_base_id
             )
@@ -1067,11 +1016,13 @@ class HiRAG:
             )
             if (
                 self._processor
-                and self._processor.resume_tracker is not None
+                and self._processor.job_status_tracker is not None
                 and job_id
             ):
                 try:
-                    await self._processor.resume_tracker.set_job_failed(job_id, str(e))
+                    await self._processor.job_status_tracker.set_job_failed(
+                        job_id, str(e)
+                    )
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
