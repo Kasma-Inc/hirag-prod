@@ -264,7 +264,7 @@ You are an AI assistant tasked with generating a comprehensive and accurate resp
 - Always cite the source chunk(s) for any information, fact, or claim you use. Use XML-style inline reference tags in the format <ref>index</ref>, where "index" is the chunk number (e.g., <ref>1</ref> or <ref>1</ref><ref>2</ref> for multiple sources). Place the reference immediately after the relevant sentence, phrase, or value.
 - For any numerical value (e.g., dates, statistics, quantities) mentioned in the response, you MUST append a reference immediately after it, even if it's part of a sentence (e.g., "The population is 1.4 billion<ref>3</ref>.").
 - If you generate a Markdown table, EVERY cell that contains data, text, or values MUST have a reference appended directly to its content (e.g., "Apple <ref>1</ref>" in a cell). Do not leave any cell without a reference if it derives from the chunks.
-- Only cite chunks that are directly relevant; do not fabricate references. If information cannot be sourced from the chunks, state "Information not available in provided chunks" without reference.
+- Only cite chunks that are directly relevant; do not fabricate references.
 </key_rules_for_references>
 
 <output_format>
@@ -300,7 +300,7 @@ Specific markdown rules:
   - Always cite the source chunk(s) for any information, fact, or claim you use. Use XML-style inline reference tags in the format <ref>index</ref>, where "index" is the chunk number (e.g., <ref>1</ref> or <ref>1</ref><ref>2</ref> for multiple sources). Place the reference immediately after the relevant sentence, phrase, or value.
   - For any numerical value (e.g., dates, statistics, quantities) mentioned in the response, you MUST append a reference immediately after it, even if it's part of a sentence (e.g., "The population is 1.4 billion<ref>3</ref>.").
   - If you generate a Markdown table, EVERY cell that contains data, text, or values MUST have a reference appended directly to its content (e.g., "Apple <ref>1</ref>" in a cell). Do not leave any cell without a reference if it derives from the chunks.
-  - Only cite chunks that are directly relevant; do not fabricate references. If information cannot be sourced from the chunks, state "Information not available in provided chunks" without reference.
+  - Only cite chunks that are directly relevant; do not fabricate references.
   example:
   **Input Text:**
   Retrieved Chunks:
@@ -630,7 +630,7 @@ PROMPTS[
 - 对于你使用的任何信息、事实或声明，始终引用源块。使用XML风格的内联引用标签，格式为<ref>index</ref>，其中"index"是块编号（例如，<ref>1</ref> 或 <ref>1</ref><ref>2</ref> 用于多个来源）。将引用立即放置在相关句子、短语或值之后。
 - 对于响应中提到的任何数值（例如，日期、统计数据、数量），你必须在其后立即附加引用，即使它是句子的一部分（例如，"人口是1.4亿<ref>3</ref>."）。
 - 如果你生成Markdown表格，每个包含数据、文本或值的单元格必须直接在其内容后附加引用（例如，单元格中的"Apple <ref>1</ref>"）。如果源自块，不要留下任何单元格没有引用。
-- 只引用直接相关的块；不要捏造引用。如果信息无法从块中获取，则声明"信息不在提供的块中"而不带引用。
+- 只引用直接相关的块；不要捏造引用。
 </引用规则>
 
 <输出格式>
@@ -666,7 +666,7 @@ PROMPTS[
   - 对于你使用的任何信息、事实或声明，始终引用源块。使用XML风格的内联引用标签，格式为<ref>index</ref>，其中"index"是块编号（例如，<ref>1</ref> 或 <ref>1</ref><ref>2</ref> 用于多个来源）。将引用立即放置在相关句子、短语或值之后。
   - 对于响应中提到的任何数值（例如，日期、统计数据、数量），你必须在其后立即附加引用，即使它是句子的一部分（例如，"人口是1.4亿<ref>3</ref>."）。
   - 如果你生成Markdown表格，每个包含数据、文本或值的单元格必须直接在其内容后附加引用（例如，单元格中的"Apple <ref>1</ref>"）。如果源自块，不要留下任何单元格没有引用。
-  - 只引用直接相关的块；不要捏造引用。如果信息无法从块中获取，则声明"信息不在提供的块中"而不带引用。
+  - 只引用直接相关的块；不要捏造引用。
   示例:
   **输入文本:**
   检索到的块:
@@ -965,7 +965,7 @@ PROMPTS[
 - 對於你使用的任何資訊、事實或聲明，始終引用來源塊。使用XML風格的內聯引用標籤，格式為<ref>index</ref>，其中「index」是塊編號（例如，<ref>1</ref> 或 <ref>1</ref><ref>2</ref> 用於多個來源）。將引用立即放置在相關句子、短語或值之後。
 - 對於回覆中提到的任何數值（例如，日期、統計數據、數量），你必須在其後立即附加引用，即使它是句子的一部分（例如，「人口是1.4億<ref>3</ref>。」）。
 - 如果你生成Markdown表格，每個包含數據、文字或值的單元格必須直接在其內容後附加引用（例如，單元格中的「Apple <ref>1</ref>」）。如果源自塊，不要留下任何單元格沒有引用。
-- 只引用直接相關的塊；不要捏造引用。如果資訊無法從塊中取得，則聲明「資訊不在提供的塊中」而不帶引用。
+- 只引用直接相關的塊；不要捏造引用。
 </引用規則>
 
 <輸出格式>
@@ -1001,7 +1001,7 @@ PROMPTS[
   - 對於你使用的任何資訊、事實或聲明，始終引用來源塊。使用XML風格的內聯引用標籤，格式為<ref>index</ref>，其中「index」是塊編號（例如，<ref>1</ref> 或 <ref>1</ref><ref>2</ref> 用於多個來源）。將引用立即放置在相關句子、短語或值之後。
   - 對於回應中提到的任何數值（例如，日期、統計數據、數量），你必須在其後立即附加引用，即使它是句子的一部分（例如，「人口是1.4億<ref>3</ref>。」）。
   - 如果你生成Markdown表格，每個包含數據、文字或值的單元格必須直接在其內容後附加引用（例如，單元格中的「Apple <ref>1</ref>」）。如果源自塊，不要留下任何單元格沒有引用。
-  - 只引用直接相關的塊；不要捏造引用。如果資訊無法從塊中取得，則聲明「資訊不在提供的塊中」而不帶引用。
+  - 只引用直接相關的塊；不要捏造引用。
   示例:
   **輸入文本:**
   檢索到的塊:
