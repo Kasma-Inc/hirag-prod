@@ -965,7 +965,6 @@ class HiRAG:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        overwrite: Optional[bool] = False,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
@@ -981,7 +980,6 @@ class HiRAG:
             document_meta: document metadata
             loader_configs: loader configurations
             job_id: job id
-            overwrite: whether to overwrite the document
             loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
@@ -1027,44 +1025,17 @@ class HiRAG:
                     logging.WARNING, f"Failed to initialize external job {job_id}", e
                 )
 
-        if await self._processor.resume_tracker.is_document_already_completed(
-            document_id, workspace_id, knowledge_base_id
-        ):
-            if overwrite:
-                logger.info(
-                    "⚠️ Document already processed in previous session, clearing and overwritting..."
-                )
-                try:
-                    await self._processor.resume_tracker.reset_document(
-                        document_id, workspace_id, knowledge_base_id
-                    )
-                    await self._processor.clear_document(
-                        document_id, workspace_id, knowledge_base_id
-                    )
-                except Exception as e:
-                    log_error_info(
-                        logging.WARNING, f"Failed to reset document {document_id}", e
-                    )
-            else:
-                logger.info("🎉 Document already fully processed in previous session!")
-                if job_id:
-                    try:
-                        await self._processor.resume_tracker.set_job_completed(job_id)
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (completed) to Postgres",
-                            e,
-                        )
-                total_time = time.perf_counter() - start_time
-                metrics = ProcessingMetrics(
-                    total_chunks=0,
-                    total_entities=0,
-                    total_relations=0,
-                    processing_time=total_time,
-                    job_id=job_id,
-                )
-                return metrics
+        try:
+            await self._processor.resume_tracker.reset_document(
+                document_id, workspace_id, knowledge_base_id
+            )
+            await self._processor.clear_document(
+                document_id, workspace_id, knowledge_base_id
+            )
+        except Exception as e:
+            log_error_info(
+                logging.WARNING, f"Failed to clear document {document_id}", e
+            )
 
         try:
             metrics = await self._processor.process_document(

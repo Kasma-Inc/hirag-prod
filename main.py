@@ -209,7 +209,6 @@ async def index(test_id="2", overwrite=True, summary=True):
             document_meta=dm,
             workspace_id="test_workspace",
             knowledge_base_id="test_pg",
-            overwrite=overwrite,
         )
 
     if isinstance(query, str):

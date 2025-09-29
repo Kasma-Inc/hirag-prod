@@ -183,6 +183,7 @@ class PGVector(BaseVDB):
                 processed += len(batch)
 
             await session.commit()
+            await session.flush()  # for debugging
             elapsed = time.perf_counter() - start
             logger.info(
                 "[upsert_texts] Upserted %d into '%s' in batches (batch_size<=%d), mode=%s, elapsed=%.3fs",
@@ -341,6 +342,7 @@ class PGVector(BaseVDB):
                     await session.execute(stmt)
 
             await session.commit()
+            await session.flush()  # for debugging
             elapsed = time.perf_counter() - start
             logger.info(
                 "[upsert_graph] Upserted %d edges and %d nodes, elapsed=%.3fs",
@@ -470,11 +472,12 @@ class PGVector(BaseVDB):
             stmt = delete(model).where(
                 *[getattr(model, k) == v for k, v in where.items()]
             )
-            await session.execute(stmt)
+            result = await session.execute(stmt)
+            rows_deleted = result.rowcount or 0
             await session.commit()
             elapsed = time.perf_counter() - start
             logger.info(
-                f"[clean_table] Cleaned table '{table_name}', elapsed={elapsed:.3f}s"
+                f"[clean_table] Cleaned {rows_deleted} rows from table '{table_name}', elapsed={elapsed:.3f}s"
             )
 
     async def upsert_file(
@@ -500,6 +503,7 @@ class PGVector(BaseVDB):
 
             await session.execute(stmt)
             await session.commit()
+            await session.flush()  # for debugging
             elapsed = time.perf_counter() - start
             logger.info(
                 f"[upsert_file] Upserted file information into '{table_name}', mode={mode}, elapsed={elapsed:.3f}s"
