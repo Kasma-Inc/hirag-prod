@@ -29,10 +29,10 @@ from hirag_prod.exceptions import (
 from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     build_rich_toc,
-    extract_and_apply_timestamp_to_items,
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
+    extract_and_apply_timestamp_to_items,
     items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
@@ -263,7 +263,9 @@ class DocumentProcessor:
                         loader_type="langchain",
                     )
                     items = chunk_langchain_document(generated_md)
-                    extracted_timestamp = await extract_and_apply_timestamp_to_items(items)
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
                     chunks = [
                         item_to_chunk(item) for item in items
                     ]  # Convert items to chunks
@@ -277,7 +279,9 @@ class DocumentProcessor:
                         document_path=document_path,
                         document_meta=document_meta or {},
                     )
-                    extracted_timestamp = await extract_and_apply_timestamp_to_items(items)
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
                     if generated_md and extracted_timestamp:
                         generated_md.extractedTimestamp = extracted_timestamp
 
@@ -351,9 +355,11 @@ class DocumentProcessor:
                         raise DocumentProcessingError(
                             "Invalid document format returned by loader"
                         )
-                    
+
                     # Extract timestamp from items
-                    extracted_timestamp = await extract_and_apply_timestamp_to_items(items)
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
 
                     # Unified chunking method :)
                     chunks = items_to_chunks_recursive(

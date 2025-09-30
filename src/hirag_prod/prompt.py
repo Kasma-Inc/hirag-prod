@@ -1048,7 +1048,9 @@ document.md 的內容（必須包含引用）
 **輸出:**
 """
 
-PROMPTS["extract_timestamp"] = """
+PROMPTS[
+    "extract_timestamp"
+] = """
 ## Role and Objective
 
 You are an expert in extracting and validating timestamps from document content.
