@@ -3,6 +3,7 @@ from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import numpy as np
 from sqlalchemy import desc, func, tuple_
+from sqlalchemy.sql.functions import coalesce
 
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.cross_language_search.functions import (
@@ -65,6 +66,10 @@ async def cross_language_search(
             [sentence_embedding_np_array_original, sentence_embedding_np_array], axis=0
         ),
     }
+    del keyword_embedding_np_array_original
+    del sentence_embedding_np_array_original
+    del keyword_embedding_np_array
+    del sentence_embedding_np_array
 
     last_cursor: Optional[Any] = None
     batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
@@ -77,6 +82,7 @@ async def cross_language_search(
                 "text",
                 "fileName",
                 "uri",
+                "type",
                 "pageNumber",
                 "chunkIdx",
                 "chunkType",
@@ -107,12 +113,13 @@ async def cross_language_search(
             ),
             additional_where_clause_list=last_cursor,
             order_by=[
+                Item.type,
                 Item.fileName,
-                Item.pageNumber,
+                coalesce(Item.pageNumber, -1),
                 desc(Item.bbox[2]),
                 Item.bbox[1],
-                desc(Item.bbox[4]),
-                Item.bbox[3],
+                desc(coalesce(Item.bbox[4], -1.0)),
+                coalesce(Item.bbox[3], -1.0),
                 Item.chunkIdx,
             ],
             limit=batch_size,
@@ -165,7 +172,6 @@ async def cross_language_search(
         str_embedding_np_array_dict: Dict[str, np.ndarray] = (
             await create_embeddings_batch(str_list_dict_to_embed)
         )
-
         if ("matched_keyword" in str_list_dict_to_embed) and (
             len(search_embedding_np_array_dict["search_keyword"]) > 0
         ):
@@ -174,7 +180,6 @@ async def cross_language_search(
                 search_embedding_np_array_dict["search_keyword"],
                 matched_keyword_index_list_dict_batch,
             )
-
         if ("matched_sentence" in str_list_dict_to_embed) and (
             len(search_embedding_np_array_dict["search_sentence"]) > 0
         ):
@@ -183,6 +188,7 @@ async def cross_language_search(
                 search_embedding_np_array_dict["search_sentence"],
                 matched_sentence_index_list_dict_batch,
             )
+        del str_list_dict_to_embed
 
         embedding_similar_chunk_info_dict: Dict[int, float] = {}
         if len(search_embedding_np_array_dict["search_sentence"]) > 0:
@@ -244,19 +250,30 @@ async def cross_language_search(
             break
         else:
             last_cursor = tuple_(
+                Item.type,
                 Item.fileName,
-                Item.pageNumber,
+                coalesce(Item.pageNumber, -1),
                 -Item.bbox[2],
                 Item.bbox[1],
-                -Item.bbox[4],
-                Item.bbox[3],
+                -coalesce(Item.bbox[4], -1.0),
+                coalesce(Item.bbox[3], -1.0),
                 Item.chunkIdx,
             ) > (
+                chunk_list[-1]["type"],
                 chunk_list[-1]["fileName"],
-                chunk_list[-1]["pageNumber"],
+                (
+                    chunk_list[-1]["pageNumber"]
+                    if chunk_list[-1]["pageNumber"] is not None
+                    else -1
+                ),
                 -chunk_list[-1]["bbox"][1],
                 chunk_list[-1]["bbox"][0],
-                -chunk_list[-1]["bbox"][3],
-                chunk_list[-1]["bbox"][2],
+                -(
+                    chunk_list[-1]["bbox"][3]
+                    if len(chunk_list[-1]["bbox"]) > 3
+                    else -1.0
+                ),
+                chunk_list[-1]["bbox"][2] if len(chunk_list[-1]["bbox"]) > 2 else -1.0,
                 chunk_list[-1]["chunkIdx"],
             )
+    del search_embedding_np_array_dict

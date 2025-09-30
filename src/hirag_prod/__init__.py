@@ -1,3 +1,8 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hirag_prod.hirag import HiRAG
+
 __all__ = ["HiRAG", "server"]
 
 

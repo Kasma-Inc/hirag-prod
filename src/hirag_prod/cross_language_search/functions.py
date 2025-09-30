@@ -297,9 +297,11 @@ async def precise_search_by_search_sentence_list(
         )
         if len(search_list) > 0:
             if fuzzy_match_list_dict_batch[i]["original"] is not None:
-                fuzzy_match_list_dict_batch[i]["original"] += find_sentence_matches(
+                search_result: Optional[List[Tuple[int, int]]] = find_sentence_matches(
                     processed_chunk["original_normalized"], search_list
                 )
+                if search_result is not None:
+                    fuzzy_match_list_dict_batch[i]["original"] += search_result
             else:
                 fuzzy_match_list_dict_batch[i]["translation"] = find_sentence_matches(
                     processed_chunk["translation_normalized"], search_list

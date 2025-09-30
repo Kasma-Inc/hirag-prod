@@ -31,8 +31,6 @@ logger = logging.getLogger("HiRAG")
 ENCODER = None
 load_dotenv("/chatbot/.env")
 
-T = TypeVar("T")
-
 
 def log_error_info(
     level: int,
@@ -41,7 +39,7 @@ def log_error_info(
     debug_only: bool = False,
     exc_info: Optional[bool] = None,
     raise_error: bool = False,
-    new_error_class: Type[T] = None,
+    new_error_class: Optional[Type[Any]] = None,
 ):
     if (not debug_only) or get_config_manager().debug:
         logger.log(
@@ -50,7 +48,7 @@ def log_error_info(
             exc_info=get_config_manager().debug if exc_info is None else exc_info,
         )
     if raise_error:
-        raise new_error_class(message) if new_error_class else error
+        raise new_error_class(message) if new_error_class is not None else error
 
 
 def retry_async(

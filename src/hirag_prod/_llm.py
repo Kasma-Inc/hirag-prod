@@ -226,7 +226,7 @@ class LocalEmbeddingClient:
 
     def __init__(self):
         self._logger = logging.getLogger(LoggerNames.EMBEDDING)
-        self._http_client = httpx.AsyncClient(timeout=30.0)
+        self._http_client = httpx.AsyncClient(timeout=3600)
 
     async def create_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Create embeddings using local service API"""
