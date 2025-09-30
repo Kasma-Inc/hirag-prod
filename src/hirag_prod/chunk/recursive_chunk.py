@@ -31,6 +31,7 @@ class DenseChunk:
     created_by: str = None
     updated_by: str = None
     id: str = None
+    extracted_timestamp: Optional[datetime] = None
 
 
 class UnifiedRecursiveChunker:
@@ -116,6 +117,7 @@ class UnifiedRecursiveChunker:
             created_by=reference_item.createdBy,
             updated_by=reference_item.updatedBy,
             id=reference_item.id,
+            extracted_timestamp=reference_item.extractedTimestamp,
         )
 
     def _build_separate_chunk(
@@ -155,6 +157,7 @@ class UnifiedRecursiveChunker:
             created_by=item.createdBy,
             updated_by=item.updatedBy,
             id=item.id,
+            extracted_timestamp=item.extractedTimestamp,
         )
 
     def chunk(
