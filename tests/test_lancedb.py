@@ -113,44 +113,44 @@ async def test_lancedb_with_entity():
             Entity(
                 id="ent-3ff39c0f9a2e36a5d47ded059ba14673",
                 metadata={
-                    "entity_type": "GEO",
+                    "entityType": "GEO",
                     "description": [
                         "The United States is a country characterized by a free market health care system that encompasses a diverse array of insurance providers and health care facilities. This system allows for competition among various organizations, which can lead to a wide range of options for consumers seeking medical care and insurance coverage."
                     ],
-                    "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
+                    "chunkIds": ["chunk-5b8421d1da0999a82176b7836b795235"],
                 },
                 page_content="UNITED STATES",
             ),
             Entity(
                 id="ent-5a28a79d61d9ba7001246e3fdebbe108",
                 metadata={
-                    "entity_type": "EVENT",
+                    "entityType": "EVENT",
                     "description": [
                         "The Health Care System in the United States refers to the organized provision of medical services, which relies on a combination of privatized and government insurance. This system encompasses a variety of healthcare providers and services aimed at delivering medical care to the population, ensuring access to needed health resources through different forms of insurance coverage."
                     ],
-                    "chunk_ids": ["chunk-5b8421d1da0999a82176b7836b795235"],
+                    "chunkIds": ["chunk-5b8421d1da0999a82176b7836b795235"],
                 },
                 page_content="HEALTH CARE SYSTEM",
             ),
             Entity(
                 id="ent-2a422318fc58c5302a5ba9365bcbc0be",
                 metadata={
-                    "entity_type": "ORGANIZATION",
+                    "entityType": "ORGANIZATION",
                     "description": [
                         "Insurance Companies are private entities that offer health insurance coverage and establish payment processes for healthcare services based on contracts with providers. They play a crucial role in the healthcare system by managing risk and ensuring that individuals have access to necessary medical services through their insurance plans."
                     ],
-                    "chunk_ids": ["chunk-d66c81e0b32e3d4e6777f0dfbabe81a8"],
+                    "chunkIds": ["chunk-d66c81e0b32e3d4e6777f0dfbabe81a8"],
                 },
                 page_content="INSURANCE COMPANIES",
             ),
             Entity(
                 id="ent-8ac4883b1b6f421ea5f0196eb317b2ba",
                 metadata={
-                    "entity_type": "ORGANIZATION",
+                    "entityType": "ORGANIZATION",
                     "description": [
                         "Health Care Providers are the professionals or facilities that offer medical treatments and services to patients, regardless of their insurance status, whether they are insured or uninsured."
                     ],
-                    "chunk_ids": ["chunk-d66c81e0b32e3d4e6777f0dfbabe81a8"],
+                    "chunkIds": ["chunk-d66c81e0b32e3d4e6777f0dfbabe81a8"],
                 },
                 page_content="HEALTH CARE PROVIDERS",
             ),
@@ -177,7 +177,7 @@ async def test_lancedb_with_entity():
         assert set(table.schema.names) == {
             "text",
             "document_key",
-            "entity_type",
+            "entityType",
             "description",
             "chunk_ids",
             "vector",

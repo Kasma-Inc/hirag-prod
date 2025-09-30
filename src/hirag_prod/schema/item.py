@@ -12,6 +12,7 @@ from hirag_prod.schema.vector_config import PGVECTOR, PGVector
 class Item(Base):
     __tablename__ = "Items"
 
+    id: Mapped[str] = mapped_column(String, nullable=True)
     # Item Data
     documentKey: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     knowledgeBaseId: Mapped[str] = mapped_column(
@@ -25,7 +26,6 @@ class Item(Base):
     private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    uploadedAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     # From ChunkMetadata
     documentId: Mapped[str] = mapped_column(String, nullable=False)
     chunkIdx: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -59,9 +59,11 @@ class Item(Base):
     vector_float_array: Mapped[List[float]] = column_property(
         cast(vector, ARRAY(Float(4)))
     )
-    updatedAt: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now, nullable=False
-    )
+    # Timestamps and Users
+    createdAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    createdBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    updatedAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updatedBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     def __iter__(self):
         for column_name in self.__table__.columns.keys():

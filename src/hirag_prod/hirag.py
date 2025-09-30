@@ -1,13 +1,11 @@
 import asyncio
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
-import pandas as pd
 from docling_core.types.doc import DoclingDocument
 
 from hirag_prod._utils import (
@@ -28,6 +26,7 @@ from hirag_prod.exceptions import (
     HiRAGException,
     KGConstructionError,
 )
+from hirag_prod.job_status_tracker import JobStatus, JobStatusTracker
 from hirag_prod.loader import load_document
 from hirag_prod.loader.chunk_split import (
     build_rich_toc,
@@ -37,7 +36,7 @@ from hirag_prod.loader.chunk_split import (
     items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
-from hirag_prod.loader.utils import route_file_path, validate_document_path
+from hirag_prod.loader.excel_loader import load_and_chunk_excel
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
 from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
@@ -48,8 +47,7 @@ from hirag_prod.resources.functions import (
     get_translator,
     initialize_resource_manager,
 )
-from hirag_prod.resume_tracker import JobStatus, ResumeTracker
-from hirag_prod.schema import Chunk, File, Item, LoaderType, file_to_item, item_to_chunk
+from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
@@ -83,13 +81,13 @@ class DocumentProcessor:
         storage: StorageManager,
         chunker: BaseChunk,
         kg_constructor: BaseKG,
-        resume_tracker: Optional[ResumeTracker] = None,
+        job_status_tracker: Optional[JobStatusTracker] = None,
         metrics: Optional[MetricsCollector] = None,
     ):
         self.storage = storage
         self.chunker = chunker
         self.kg_constructor = kg_constructor
-        self.resume_tracker = resume_tracker
+        self.job_status_tracker = job_status_tracker
         self.metrics = metrics or MetricsCollector()
 
     async def clear_document(
@@ -141,11 +139,10 @@ class DocumentProcessor:
 
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
-                # Mark job failed if tracking is enabled
-                if self.resume_tracker and job_id:
+                if self.job_status_tracker and job_id:
                     try:
-                        await self.resume_tracker.set_job_failed(
-                            job_id, "No chunks created from document"
+                        await self.job_status_tracker.set_job_status(
+                            job_id, JobStatus.FAILED
                         )
                     except Exception as e:
                         log_error_info(
@@ -158,86 +155,42 @@ class DocumentProcessor:
             self.metrics.metrics.total_chunks = len(chunks)
             self.metrics.metrics.job_id = job_id or ""
 
-            # Check if document was already completed in a previous session
-            if self.resume_tracker:
-                document_id = chunks[0].documentId
-                # Update job -> processing with doc info as soon as we know
-                if job_id:
-                    try:
-                        await self.resume_tracker.set_job_processing(
-                            job_id=job_id,
-                            document_id=document_id,
-                            total_chunks=len(chunks),
-                        )
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (processing) to Postgres",
-                            e,
-                        )
-
-                document_uri = chunks[0].uri
-                await self.resume_tracker.register_chunks(
-                    chunks,
-                    document_id,
-                    document_uri,
-                    workspace_id,
-                    knowledge_base_id,
-                )
+            # Update job -> processing as soon as we know
+            if self.job_status_tracker and job_id:
+                try:
+                    await self.job_status_tracker.set_job_status(
+                        job_id=job_id,
+                        status=JobStatus.PROCESSING,
+                    )
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (processing) to Postgres",
+                        e,
+                    )
 
             # Store file information after chunking but before processing chunks
             await self.storage.upsert_file_to_vdb(file)
 
             # Process chunks
             await self._process_chunks(chunks, items, workspace_id, knowledge_base_id)
-            # Update job progress for processed chunks
-            if self.resume_tracker and job_id:
-                try:
-                    await self.resume_tracker.set_job_progress(
-                        job_id,
-                        processed_chunks=self.metrics.metrics.processed_chunks,
-                    )
-                except Exception as e:
-                    log_error_info(
-                        logging.ERROR,
-                        "Failed to saving job status (progress) to Postgres",
-                        e,
-                    )
 
             # Process graph data
             if with_graph:
                 await self._construct_kg(chunks)
-                # Update job progress for entity/relation totals
-                if self.resume_tracker and job_id:
-                    try:
-                        await self.resume_tracker.set_job_progress(
-                            job_id,
-                            total_entities=self.metrics.metrics.total_entities,
-                            total_relations=self.metrics.metrics.total_relations,
-                        )
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (progress) to Postgres",
-                            e,
-                        )
 
             # Mark as complete
-            if self.resume_tracker:
-                await self.resume_tracker.mark_document_completed(
-                    document_id=chunks[0].documentId,
-                    workspace_id=workspace_id,
-                    knowledge_base_id=knowledge_base_id,
-                )
-                if job_id:
-                    try:
-                        await self.resume_tracker.set_job_completed(job_id)
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (completed) to Postgres",
-                            e,
-                        )
+            if self.job_status_tracker and job_id:
+                try:
+                    await self.job_status_tracker.set_job_status(
+                        job_id, JobStatus.COMPLETED
+                    )
+                except Exception as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "Failed to saving job status (completed) to Postgres",
+                        e,
+                    )
 
             return self.metrics.metrics
 
@@ -271,98 +224,10 @@ class DocumentProcessor:
                     content_type
                     == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 ):
-                    try:
-                        local_path = route_file_path("excel_loader", document_path)
-                    except Exception:
-                        local_path = document_path
-                    validate_document_path(local_path)
-
-                    all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(
-                        local_path, sheet_name=None
+                    chunks, generated_md, items = await load_and_chunk_excel(
+                        document_path=document_path,
+                        document_meta=document_meta or {},
                     )
-
-                    def keep_sheet(name: str) -> bool:
-                        s = (name or "").lower()
-                        return ("cache" not in s) and ("detail" not in s)
-
-                    filtered_sheets = [
-                        (name, df)
-                        for name, df in all_sheets.items()
-                        if keep_sheet(name)
-                    ]
-                    document_id = document_meta.get("documentKey", "")
-                    file_name = document_meta.get(
-                        "fileName", os.path.basename(local_path)
-                    )
-                    generated_md = File(
-                        documentKey=document_id,
-                        text=file_name,
-                        type=document_meta.get("type", "xlsx"),
-                        pageNumber=len(filtered_sheets),
-                        fileName=file_name,
-                        uri=document_meta.get("uri", document_path),
-                        private=bool(document_meta.get("private", False)),
-                        uploadedAt=document_meta.get("uploadedAt", datetime.now()),
-                        knowledgeBaseId=document_meta.get("knowledgeBaseId", ""),
-                        workspaceId=document_meta.get("workspaceId", ""),
-                    )
-
-                    latex_list = []
-                    sheet_names = []
-                    for sheet_name, df in filtered_sheets:
-                        try:
-                            latex_list.append(df.to_latex(index=False))
-                        except Exception:
-                            latex_list.append(df.to_string(index=False))
-                        sheet_names.append(sheet_name)
-
-                    # summarize each sheet latex into a concise caption using LLM
-                    async def summarize_excel_sheet(sheet_name: str, latex: str) -> str:
-                        system_prompt = PROMPTS["summary_excel_en"].format(
-                            sheet_name=sheet_name, latex=latex
-                        )
-                        try:
-                            return await get_chat_service().complete(
-                                prompt=system_prompt,
-                                model=get_llm_config().model_name,
-                            )
-                        except Exception:
-                            raise HiRAGException(
-                                f"Failed to summarize excel sheet {sheet_name}"
-                            )
-
-                    captions = await asyncio.gather(
-                        *[
-                            summarize_excel_sheet(sheet_name, latex)
-                            for sheet_name, latex in zip(sheet_names, latex_list)
-                        ]
-                    )
-                    items = []
-                    chunks = []
-
-                    for idx, (name, latex, caption) in enumerate(
-                        zip(sheet_names, latex_list, captions), start=1
-                    ):
-                        sheet_key = compute_mdhash_id(
-                            f"{document_id}:{name}", prefix="chunk-"
-                        )
-                        item = file_to_item(
-                            generated_md,
-                            documentKey=sheet_key,
-                            text=(latex or "").strip(),
-                            documentId=document_id,
-                            chunkIdx=idx,
-                        )
-                        item.caption = (caption or "None").strip()
-                        item.chunkType = "excel_sheet"
-
-                        chunk = item_to_chunk(item)
-                        chunk.text = (latex or "None").strip()
-                        chunk.caption = (caption or "None").strip()
-                        chunk.chunkType = "excel_sheet"
-
-                        items.append(item)
-                        chunks.append(chunk)
 
                 else:
                     if (
@@ -500,7 +365,7 @@ class DocumentProcessor:
         if not chunks:
             return []
 
-        if self.resume_tracker:
+        if self.job_status_tracker:
             # Check for existing chunks in vector database
             uri = chunks[0].uri
             existing_chunk_ids = await self.storage.get_existing_chunks(
@@ -632,9 +497,6 @@ class HiRAG:
                     path=get_hi_rag_config().graph_db_path,
                     llm_func=get_chat_service().complete,
                 )
-            elif get_hi_rag_config().gdb_type == "neo4j":
-                # Placeholder for future Neo4j adapter
-                raise HiRAGException("Neo4j GDB not implemented yet")
 
         self._storage = StorageManager(
             vdb,
@@ -669,11 +531,11 @@ class HiRAG:
             llm_model_name=get_llm_config().model_name,
         )
 
-        # Initialize resume tracker
-        resume_tracker = kwargs.get("resume_tracker")
-        if resume_tracker is None:
-            resume_tracker = ResumeTracker()
-            logger.info("Using Redis-based resume tracker")
+        # Initialize job tracker (no cache)
+        job_status_tracker = kwargs.get("job_status_tracker")
+        if job_status_tracker is None:
+            job_status_tracker = JobStatusTracker()
+            logger.info("Using job status tracker (no cache)")
 
         # Initialize components
         self._metrics = MetricsCollector()
@@ -681,7 +543,7 @@ class HiRAG:
             storage=self._storage,
             chunker=chunker,
             kg_constructor=self._kg_constructor,
-            resume_tracker=resume_tracker,
+            job_status_tracker=job_status_tracker,
             metrics=self._metrics,
         )
         self._query_service = QueryService(self._storage)
@@ -1054,10 +916,10 @@ class HiRAG:
         knowledge_base_id: str,
         content_type: str,
         with_graph: bool = True,
+        file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
-        overwrite: Optional[bool] = False,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
@@ -1069,10 +931,10 @@ class HiRAG:
             knowledge_base_id: knowledge base id
             content_type: document type
             with_graph: whether to process graph data (entities and relations)
+            file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
             job_id: job id
-            overwrite: whether to overwrite the document
             loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
@@ -1096,64 +958,33 @@ class HiRAG:
         document_meta["documentKey"] = document_id
         document_meta["knowledgeBaseId"] = knowledge_base_id
         document_meta["workspaceId"] = workspace_id
-        document_meta["uploadedAt"] = datetime.now()
+        document_meta["id"] = file_id
+        document_meta["createdAt"] = datetime.now()
+        document_meta["updatedAt"] = datetime.now()
 
-        if job_id and self._processor and self._processor.resume_tracker is not None:
+        if (
+            job_id
+            and self._processor
+            and self._processor.job_status_tracker is not None
+        ):
             try:
-                await self._processor.resume_tracker.set_job_status(
+                await self._processor.job_status_tracker.set_job_status(
                     job_id=job_id,
                     status=JobStatus.PROCESSING,
-                    document_uri=(
-                        document_meta.get("uri")
-                        if isinstance(document_meta, dict)
-                        else str(document_path)
-                    ),
-                    with_graph=with_graph,
                 )
-
             except Exception as e:
                 log_error_info(
                     logging.WARNING, f"Failed to initialize external job {job_id}", e
                 )
 
-        if await self._processor.resume_tracker.is_document_already_completed(
-            document_id, workspace_id, knowledge_base_id
-        ):
-            if overwrite:
-                logger.info(
-                    "⚠️ Document already processed in previous session, clearing and overwritting..."
-                )
-                try:
-                    await self._processor.resume_tracker.reset_document(
-                        document_id, workspace_id, knowledge_base_id
-                    )
-                    await self._processor.clear_document(
-                        document_id, workspace_id, knowledge_base_id
-                    )
-                except Exception as e:
-                    log_error_info(
-                        logging.WARNING, f"Failed to reset document {document_id}", e
-                    )
-            else:
-                logger.info("🎉 Document already fully processed in previous session!")
-                if job_id:
-                    try:
-                        await self._processor.resume_tracker.set_job_completed(job_id)
-                    except Exception as e:
-                        log_error_info(
-                            logging.ERROR,
-                            "Failed to saving job status (completed) to Postgres",
-                            e,
-                        )
-                total_time = time.perf_counter() - start_time
-                metrics = ProcessingMetrics(
-                    total_chunks=0,
-                    total_entities=0,
-                    total_relations=0,
-                    processing_time=total_time,
-                    job_id=job_id,
-                )
-                return metrics
+        try:
+            await self._processor.clear_document(
+                document_id, workspace_id, knowledge_base_id
+            )
+        except Exception as e:
+            log_error_info(
+                logging.WARNING, f"Failed to clear document {document_id}", e
+            )
 
         try:
             metrics = await self._processor.process_document(
@@ -1185,11 +1016,13 @@ class HiRAG:
             )
             if (
                 self._processor
-                and self._processor.resume_tracker is not None
+                and self._processor.job_status_tracker is not None
                 and job_id
             ):
                 try:
-                    await self._processor.resume_tracker.set_job_failed(job_id, str(e))
+                    await self._processor.job_status_tracker.set_job_failed(
+                        job_id, str(e)
+                    )
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,

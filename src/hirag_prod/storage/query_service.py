@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.reranker.utils import apply_reranking
+from hirag_prod.schema.vector_config import use_halfvec
 from hirag_prod.storage.storage_manager import StorageManager
 
 logger = logging.getLogger("HiRAG")
@@ -68,6 +69,7 @@ class QueryService:
                 chunk_ids=chunk_ids,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
+                columns_to_select=["documentKey", "vector"],
             )
             for row in rows:
                 key = row.get("documentKey")
@@ -76,6 +78,11 @@ class QueryService:
                 elif key:
                     logger.warning(f"Chunk {key} has no vector data")
                     res[key] = None
+            if use_halfvec:
+                # Convert HalfVector to List[float] for JSON serialization
+                for k in res:
+                    if res[k] is not None:
+                        res[k] = res[k].to_list()
         except Exception as e:
             log_error_info(logging.ERROR, "Failed to query chunk embeddings", e)
             return {}

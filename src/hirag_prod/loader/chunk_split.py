@@ -5,7 +5,11 @@ from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from hirag_prod._utils import compute_mdhash_id
+from hirag_prod._utils import (
+    compute_mdhash_id,
+    decode_tokens_by_tiktoken,
+    encode_string_by_tiktoken,
+)
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.schema import Chunk, File, Item
 
@@ -71,16 +75,69 @@ LABEL_TO_CHUNK_TYPE = {
 
 
 # ======================== Helper Functions ========================
+def _copy_chunk_with_updates(source_chunk: Chunk, **updates) -> Chunk:
+    """Create a new Chunk by copying all fields from source and applying updates."""
+    new_chunk = Chunk()
+    for col in dict(source_chunk):
+        if hasattr(new_chunk, col):
+            setattr(new_chunk, col, getattr(source_chunk, col))
+
+    # Apply updates
+    for key, value in updates.items():
+        if hasattr(new_chunk, key):
+            setattr(new_chunk, key, value)
+
+    return new_chunk
+
+
+def split_long_text_chunks(chunks: List[Chunk], chunk_max_tokens: int = 8192):
+    """Split chunks that exceed token limit into smaller chunks."""
+    if not chunks or not chunk_max_tokens:
+        return chunks
+
+    splitted_chunks: List[Chunk] = []
+
+    for ck in chunks:
+        # Skip chunks that embed from caption, not text
+        if getattr(ck, "chunkType", None) in ("table", "excel_sheet"):
+            splitted_chunks.append(ck)
+            continue
+
+        text = ck.text or ""
+        toks = encode_string_by_tiktoken(text)
+        if len(toks) <= chunk_max_tokens:
+            splitted_chunks.append(ck)
+            continue
+
+        # Split into contiguous token windows (no overlap)
+        for i in range(0, len(toks), chunk_max_tokens):
+            part_text = decode_tokens_by_tiktoken(toks[i : i + chunk_max_tokens])
+            new_key = compute_mdhash_id(part_text, prefix="chunk-")
+
+            # Create new chunk by copying all fields and updating text & documentKey
+            splitted_chunks.append(
+                _copy_chunk_with_updates(
+                    ck,
+                    documentKey=new_key,
+                    text=part_text,
+                )
+            )
+
+    return splitted_chunks
 
 
 def _inherit_file_metadata(source_file: File) -> Dict[str, Any]:
     """Extract inheritable metadata from a File object."""
     return {
+        "id": source_file.id,
         "type": source_file.type,
         "fileName": source_file.fileName,
         "uri": source_file.uri,
         "private": source_file.private,
-        "uploadedAt": source_file.uploadedAt,
+        "createdAt": source_file.createdAt,
+        "updatedAt": source_file.updatedAt,
+        "createdBy": source_file.createdBy,
+        "updatedBy": source_file.updatedBy,
         "knowledgeBaseId": source_file.knowledgeBaseId,
         "workspaceId": source_file.workspaceId,
     }
@@ -732,6 +789,7 @@ def chunk_langchain_document(
 def items_to_chunks_recursive(
     items: Optional[List[Item]] = None,
     header_set: Optional[set[str]] = None,
+    chunk_max_tokens: Optional[int] = 8192,
 ) -> List[Chunk]:
     """
     Split a dots document into chunks using UnifiedRecursiveChunker and return a list of Chunk objects.
@@ -745,11 +803,15 @@ def items_to_chunks_recursive(
         tbbox_list = dchunk.bbox
 
         file_metadata = {
+            "id": dchunk.id,
             "type": dchunk.document_type,
             "fileName": dchunk.file_name,
             "uri": dchunk.uri,
             "private": dchunk.private,
-            "uploadedAt": dchunk.uploaded_at,
+            "createdAt": dchunk.created_at,
+            "updatedAt": dchunk.updated_at,
+            "createdBy": dchunk.created_by,
+            "updatedBy": dchunk.updated_by,
             "knowledgeBaseId": dchunk.knowledge_base_id,
             "workspaceId": dchunk.workspace_id,
         }
@@ -770,4 +832,6 @@ def items_to_chunks_recursive(
         chunks.append(chunk_obj)
 
     chunks.sort(key=lambda c: c.chunkIdx)
+    if chunk_max_tokens and chunk_max_tokens > 0:
+        chunks = split_long_text_chunks(chunks, chunk_max_tokens)
     return chunks

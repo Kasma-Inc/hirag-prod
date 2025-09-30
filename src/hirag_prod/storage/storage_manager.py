@@ -70,7 +70,7 @@ class StorageManager:
             return
 
         def _embed_text(c: Chunk) -> str:
-            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table", "picture"]:
                 cap = (getattr(c, "caption", "") or "").strip()
                 if cap:
                     return cap
@@ -90,7 +90,7 @@ class StorageManager:
             return
 
         def _embed_text(c: Item) -> str:
-            if getattr(c, "chunkType", None) in ["excel_sheet", "table"]:
+            if getattr(c, "chunkType", None) in ["excel_sheet", "table", "picture"]:
                 cap = (getattr(c, "caption", "") or "").strip()
                 if cap:
                     return cap
@@ -123,19 +123,22 @@ class StorageManager:
         if not filtered:
             return
         texts_to_embed = [r.properties.get("description", "") for r in filtered]
-        properties_list = [
-            {
+        # Create properties list by mapping relation properties to Triplets schema
+        properties_list = []
+        for r in filtered:
+            # Start with required Triplets fields
+            triplet_properties = {
                 "source": r.source,
                 "target": r.target,
                 "description": r.properties.get("description", ""),
-                "documentId": r.properties.get("document_id", ""),
-                "uri": r.properties.get("uri", ""),
-                "fileName": r.properties.get("file_name", ""),
-                "knowledgeBaseId": r.properties.get("knowledge_base_id", ""),
-                "workspaceId": r.properties.get("workspace_id", ""),
             }
-            for r in filtered
-        ]
+
+            # Map all other relation properties directly (now in camelCase)
+            for key, value in r.properties.items():
+                if key not in triplet_properties and value is not None:
+                    triplet_properties[key] = value
+
+            properties_list.append(triplet_properties)
         await self.vdb.upsert_texts(
             texts_to_upsert=texts_to_embed,
             properties_list=properties_list,

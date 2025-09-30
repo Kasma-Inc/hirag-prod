@@ -15,7 +15,7 @@ class LocalReranker(Reranker):
         model_name: str,
         entry_point: str,
         auth_token: str,
-        timeout: int = 30,
+        timeout: int = 3600,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
