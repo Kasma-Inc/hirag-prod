@@ -24,7 +24,7 @@ class ApiReranker(Reranker):
 
         # Handle single query case
         if isinstance(query, str):
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=3600.0) as client:
                 response = await client.post(
                     self.endpoint,
                     headers={"Authorization": f"Bearer {self.api_key}"},
@@ -52,7 +52,7 @@ class ApiReranker(Reranker):
             # Initialize scores for each document
             max_scores = {}
 
-            async with httpx.AsyncClient() as client:
+            async with httpx.AsyncClient(timeout=3600.0) as client:
                 # Process each query and track maximum scores
                 for single_query in query:
                     response = await client.post(
