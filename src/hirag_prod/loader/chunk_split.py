@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import datetime
 from enum import Enum
@@ -10,9 +11,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
+from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -265,6 +269,7 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
     Uses LLM to validate and extract the most relevant document timestamp.
     """
     if not items:
+        logger.warning("No items provided for timestamp extraction.")
         return None
 
     # Common date patterns to look for
@@ -380,9 +385,13 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
             today_date=datetime.now().strftime("%Y-%m-%d"),
         )
 
+        llm_config = get_config_manager().llm_config
+
         response = await chat_service.complete(
-            model="gpt-4o",
             prompt=prompt,
+            model=llm_config.model_name,
+            max_tokens=llm_config.max_tokens,
+            timeout=llm_config.timeout,
         )
 
         # Parse the JSON response to extract timestamp
@@ -415,7 +424,9 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                         "%Y",
                     ]:
                         try:
-                            return datetime.strptime(timestamp_str, fmt)
+                            timestamp_extracted = datetime.strptime(timestamp_str, fmt)
+                            logger.info(f"Extracted timestamp: {timestamp_extracted}")
+                            return timestamp_extracted
                         except ValueError:
                             continue
 
@@ -436,12 +447,14 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                         "%Y",
                     ]:
                         try:
-                            return datetime.strptime(timestamp_str, fmt)
+                            timestamp_extracted = datetime.strptime(timestamp_str, fmt)
+                            logger.info(f"Extracted timestamp: {timestamp_extracted}")
+                            return timestamp_extracted
                         except ValueError:
                             continue
 
     except Exception as e:
-        print(f"Error extracting timestamp: {e}")
+        logger.error(f"Error extracting timestamp: {e}")
 
     return None
 
