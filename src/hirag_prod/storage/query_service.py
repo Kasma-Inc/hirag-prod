@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
@@ -103,7 +103,7 @@ class QueryService:
 
     async def filter_chunks_by_cluster(
         self, workspace_id: str, knowledge_base_id: str, chunks: List[Dict[str, Any]]
-    ) -> List[str]:
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         # Apply clustering
         chunk_ids = [
             chunk.get("documentKey") for chunk in chunks if chunk.get("documentKey")
@@ -128,6 +128,7 @@ class QueryService:
 
         # Among a cluster, keep the chunk which is the latest in extractedTime and all other chunks that have the same fileName are kept
         filtered_chunks = []
+        outlier_chunks = []
         for cluster_id, chunk_keys in clusters.items():
             latest_chunks = []
             for chunk_key in chunk_keys:
@@ -144,7 +145,15 @@ class QueryService:
             # According to logic, all chunks in latest_chunks should have the same fileName
             filtered_chunks.extend(latest_chunks)
 
-        return filtered_chunks
+        for chunk in chunks:
+            if chunk not in filtered_chunks:
+                outlier_chunks.append(chunk)
+
+        logger.info(
+            f"After clustering filter: {len(filtered_chunks)} chunks kept, {len(outlier_chunks)} outliers"
+        )
+
+        return filtered_chunks, outlier_chunks
 
     async def recall_chunks(self, *args, **kwargs) -> Dict[str, Any]:
         """Recall chunks and return both raw results and extracted chunk_ids.
@@ -168,10 +177,15 @@ class QueryService:
                     "workspace_id and knowledge_base_id are required for clustering filter"
                 )
             else:
-                chunks = await self.filter_chunks_by_cluster(
+                chunks, outlier_chunks = await self.filter_chunks_by_cluster(
                     workspace_id, knowledge_base_id, chunks
                 )
-        return {"chunks": chunks, "chunk_ids": chunk_ids}
+
+        return {
+            "chunks": chunks,
+            "chunk_ids": chunk_ids,
+            "outlier_chunks": outlier_chunks,
+        }
 
     async def query_triplets(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query relations using unified storage"""
@@ -405,7 +419,7 @@ class QueryService:
             pr_ids, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
         )
 
-        pr_rows = await self.filter_chunks_by_cluster(
+        pr_rows, outlier_rows = await self.filter_chunks_by_cluster(
             workspace_id, knowledge_base_id, pr_rows
         )
 
@@ -415,6 +429,7 @@ class QueryService:
 
         return {
             "pagerank": pr_rows,
+            "outlier_chunks": outlier_rows,
             "query_top": query_chunks,
         }
 

@@ -3,7 +3,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from docling_core.types.doc import DoclingDocument
@@ -201,7 +201,7 @@ class DocumentProcessor:
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
         loader_type: Optional[LoaderType],
-    ) -> (List[Chunk], File):  # type: ignore
+    ) -> Tuple[List[Chunk], File, List[Item]]:
         """Load and chunk document"""
         async with self.metrics.track_operation("load_and_chunk"):
             generated_md = None

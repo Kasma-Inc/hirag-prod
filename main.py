@@ -190,7 +190,7 @@ def print_chunks_user_friendly(chunks):
         print()
 
 
-async def index(test_id="2", overwrite=True, summary=True):
+async def index(test_id="2", summary=True):
     index = await HiRAG.create()
 
     await index.set_language("en")  # en | cn
@@ -249,13 +249,11 @@ def main():
     print("  4 / md-itinerary - Holiday itinerary markdown")
     print("  5 / md-wiki - Wikipedia article markdown")
     print(f"\nRunning test: {cli_options.test}")
-    print(f"Overwrite: {cli_options.overwrite}")
     print(f"Summary: {cli_options.summary}\n")
 
     asyncio.run(
         index(
             cli_options.test,
-            cli_options.overwrite,
             cli_options.summary,
         )
     )

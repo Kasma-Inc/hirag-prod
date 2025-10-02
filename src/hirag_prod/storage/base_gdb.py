@@ -10,7 +10,7 @@ class BaseGDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def query_one_hop(self, node_id: str) -> (List[Entity], List[Relation]):  # type: ignore
+    async def query_one_hop(self, node_id: str) -> Tuple[List[Entity], List[Relation]]:
         raise NotImplementedError
 
     @abstractmethod
