@@ -2,7 +2,7 @@ import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import desc, func, tuple_
+from sqlalchemy import case, func, tuple_
 from sqlalchemy.sql.functions import coalesce
 
 from hirag_prod.configs.functions import get_envs
@@ -116,9 +116,15 @@ async def cross_language_search(
                 Item.type,
                 Item.fileName,
                 coalesce(Item.pageNumber, -1),
-                desc(Item.bbox[2]),
-                Item.bbox[1],
-                desc(coalesce(Item.bbox[4], -1.0)),
+                case(
+                    (Item.type.in_(["pdf", "image"]), -Item.bbox[2]),
+                    else_=coalesce(Item.bbox[1], -1.0),
+                ),
+                case(
+                    (Item.type.in_(["pdf", "image"]), Item.bbox[1]),
+                    else_=coalesce(Item.bbox[2], -1.0),
+                ),
+                -coalesce(Item.bbox[4], -1.0),
                 coalesce(Item.bbox[3], -1.0),
                 Item.chunkIdx,
             ],
@@ -253,8 +259,16 @@ async def cross_language_search(
                 Item.type,
                 Item.fileName,
                 coalesce(Item.pageNumber, -1),
-                -Item.bbox[2],
-                Item.bbox[1],
+                (
+                    -Item.bbox[2]
+                    if chunk_list[-1]["type"] in ["pdf", "image"]
+                    else coalesce(Item.bbox[1], -1.0)
+                ),
+                (
+                    Item.bbox[1]
+                    if chunk_list[-1]["type"] in ["pdf", "image"]
+                    else coalesce(Item.bbox[2], -1.0)
+                ),
                 -coalesce(Item.bbox[4], -1.0),
                 coalesce(Item.bbox[3], -1.0),
                 Item.chunkIdx,
@@ -266,14 +280,42 @@ async def cross_language_search(
                     if chunk_list[-1]["pageNumber"] is not None
                     else -1
                 ),
-                -chunk_list[-1]["bbox"][1],
-                chunk_list[-1]["bbox"][0],
+                (
+                    -chunk_list[-1]["bbox"][1]
+                    if chunk_list[-1]["type"] in ["pdf", "image"]
+                    else (
+                        chunk_list[-1]["bbox"][0]
+                        if (
+                            (chunk_list[-1]["bbox"] is not None)
+                            and (len(chunk_list[-1]["bbox"]) > 0)
+                        )
+                        else -1.0
+                    )
+                ),
+                (
+                    chunk_list[-1]["bbox"][0]
+                    if chunk_list[-1]["type"] in ["pdf", "image"]
+                    else (
+                        chunk_list[-1]["bbox"][1]
+                        if (
+                            (chunk_list[-1]["bbox"] is not None)
+                            and (len(chunk_list[-1]["bbox"]) > 1)
+                        )
+                        else -1.0
+                    )
+                ),
                 -(
                     chunk_list[-1]["bbox"][3]
-                    if len(chunk_list[-1]["bbox"]) > 3
+                    if (chunk_list[-1]["bbox"] is not None)
+                    and (len(chunk_list[-1]["bbox"]) > 3)
                     else -1.0
                 ),
-                chunk_list[-1]["bbox"][2] if len(chunk_list[-1]["bbox"]) > 2 else -1.0,
+                (
+                    chunk_list[-1]["bbox"][2]
+                    if (chunk_list[-1]["bbox"] is not None)
+                    and (len(chunk_list[-1]["bbox"]) > 2)
+                    else -1.0
+                ),
                 chunk_list[-1]["chunkIdx"],
             )
     del search_embedding_np_array_dict

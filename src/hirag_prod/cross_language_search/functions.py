@@ -248,12 +248,12 @@ def find_sentence_matches(
     while len(queue) > 0:
         text, start_index = queue.pop(0)
         for search in search_list:
-            if fuzz.ratio(text, search) > 80:
+            if fuzz.ratio(text, search) > 90:
                 fuzzy_match_list.append((start_index, start_index + len(text)))
                 break
             elif len(text) >= len(search):
                 match_result: Optional[ScoreAlignment] = fuzz.partial_ratio_alignment(
-                    text, search, score_cutoff=80
+                    text, search, score_cutoff=90
                 )
                 if match_result is not None:
                     fuzzy_match_list.append(
