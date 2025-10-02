@@ -277,6 +277,7 @@ def print_chunks_user_friendly(chunks):
         print("   " + "─" * 50)
         print()
 
+
 async def index(test_id="2", summary=True, save_json=False):
     index = await HiRAG.create()
 
