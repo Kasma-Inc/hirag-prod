@@ -27,6 +27,9 @@ class Triplets(Base):
         cast(vector, ARRAY(Float(4)))
     )
     # Timestamps and Users
+    extractedTimestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     createdAt: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False
     )

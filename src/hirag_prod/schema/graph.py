@@ -23,6 +23,9 @@ class Graph(Base):
     )  # For tracing back to the source document
 
     # Timestamps and Users
+    extractedTimestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     createdAt: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False
     )

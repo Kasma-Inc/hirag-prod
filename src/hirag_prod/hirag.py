@@ -33,6 +33,7 @@ from hirag_prod.loader.chunk_split import (
     chunk_docling_document,
     chunk_dots_document,
     chunk_langchain_document,
+    extract_and_apply_timestamp_to_items,
     items_to_chunks_recursive,
     obtain_docling_md_bbox,
 )
@@ -217,9 +218,14 @@ class DocumentProcessor:
                         loader_type="langchain",
                     )
                     items = chunk_langchain_document(generated_md)
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
                     chunks = [
                         item_to_chunk(item) for item in items
                     ]  # Convert items to chunks
+                    if generated_md and extracted_timestamp:
+                        generated_md.extractedTimestamp = extracted_timestamp
                 elif (
                     content_type
                     == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -228,6 +234,11 @@ class DocumentProcessor:
                         document_path=document_path,
                         document_meta=document_meta or {},
                     )
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
+                    if generated_md and extracted_timestamp:
+                        generated_md.extractedTimestamp = extracted_timestamp
 
                 else:
                     if (
@@ -300,6 +311,11 @@ class DocumentProcessor:
                             "Invalid document format returned by loader"
                         )
 
+                    # Extract timestamp from items
+                    extracted_timestamp = await extract_and_apply_timestamp_to_items(
+                        items
+                    )
+
                     # Unified chunking method :)
                     chunks = items_to_chunks_recursive(
                         items=items,
@@ -309,6 +325,8 @@ class DocumentProcessor:
                         generated_md.tableOfContents = build_rich_toc(
                             items, generated_md
                         )
+                        if extracted_timestamp:
+                            generated_md.extractedTimestamp = extracted_timestamp
 
                 logger.info(
                     f"📄 Created {len(chunks)} chunks from document {document_path}"

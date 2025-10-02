@@ -1,6 +1,9 @@
 # This is a quickstart script for the HiRAG system.
 import asyncio
+import json
 import logging
+import os
+from datetime import datetime
 
 from hirag_prod import HiRAG
 from hirag_prod.configs.cli_options import CliOptions
@@ -10,6 +13,19 @@ logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 
 load_dotenv(".env", override=True)
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for datetime and other non-serializable objects."""
+
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        # Handle other non-serializable types by converting to string
+        try:
+            return str(obj)
+        except:
+            return repr(obj)
 
 
 def get_test(id: str):
@@ -140,6 +156,37 @@ def get_test(id: str):
             "What is the penalty under Cap. 95B Regulation 12 for contraventions?",
         ]
         return document_paths, content_type, document_metas, query
+
+    elif id == "PiT_test" or id == "8":
+        document_path_base = f"s3://monkeyocr/test/input/test_pdf/fire_dept/"
+        filenames = [
+            "Cap 95B Consolidated version for the Whole Chapter (01-11-2023) (English).pdf",
+            "Cap 95B Consolidated version for the Whole Chapter (01-09-2021) (English).pdf",
+            "Cap 95B Consolidated version for the Whole Chapter (19-09-2019) (English).pdf",
+            "Cap 95B PDF (01-01-2004) (English).pdf",
+        ]
+        document_paths = [document_path_base + fn for fn in filenames]
+        content_type = "application/pdf"
+        document_metas = [
+            {
+                "type": "pdf",
+                "fileName": fn,
+                "uri": document_path_base + fn,
+                "private": False,
+                "createdBy": "PiT_test",
+                "updatedBy": "PiT_test",
+            }
+            for fn in filenames
+        ]
+        query = [
+            "What are the definitions of key terms like 'portable equipment', 'registered contractor', and 'stand-alone fire detector' in Cap 95B?",
+            "What are the rules for approval, listing, and publication of portable equipment under regulations 3 and 4 of Cap 95B?",
+            "What prohibitions apply to the sale or supply of portable equipment under regulation 5 of Cap 95B?",
+            "Who is authorized to install, maintain, inspect, or repair fire service installations under regulations 6 and 7 of Cap 95B, and what exemptions apply?",
+            "What duties do owners have for maintaining and inspecting fire service installations under regulation 8 of Cap 95B, including any exceptions?",
+        ]
+        return document_paths, content_type, document_metas, query
+
     else:
         # Default to small.pdf if test not found
         document_path = f"s3://monkeyocr/test/input/test_pdf/small.pdf"
@@ -154,6 +201,47 @@ def get_test(id: str):
         }
         query = "Machine learning in detection"
         return document_path, content_type, document_meta, query
+
+
+def save_chunks_to_json(chunks, query, filename="logs/retrieved_chunks.json"):
+    """
+    Save chunks to a JSON file by appending to existing data.
+    """
+
+    # Create logs directory if it doesn't exist
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+
+    terms_to_save = ["text", "fileName"]
+
+    # Filter chunks to only include specified terms
+    chunks = [
+        {k: v for k, v in chunk.items() if k in terms_to_save} for chunk in chunks
+    ]
+
+    for i in range(len(chunks)):
+        chunks[i]["saveId"] = f"{i+1}"
+
+    # Prepare the data entry
+    entry = {"query": query, "chunks": chunks}
+
+    # Check if file exists and load existing data
+    if os.path.exists(filename):
+        try:
+            with open(filename, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            data = []
+    else:
+        data = []
+
+    # Append new entry
+    data.append(entry)
+
+    # Save back to file using custom encoder
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False, cls=DateTimeEncoder)
+
+    print(f"Saved {len(chunks)} chunks to {filename}")
 
 
 def print_chunks_user_friendly(chunks):
@@ -190,7 +278,7 @@ def print_chunks_user_friendly(chunks):
         print()
 
 
-async def index(test_id="2", overwrite=True, summary=True):
+async def index(test_id="2", overwrite=True, summary=True, save_json=False):
     index = await HiRAG.create()
 
     await index.set_language("en")  # en | cn
@@ -231,6 +319,13 @@ async def index(test_id="2", overwrite=True, summary=True):
             print(f"Query: {q}\n")
             print("———————————————————— Chunks ————————————————————\n")
             print_chunks_user_friendly(ret["chunks"])
+
+            # Save chunks to JSON file if enabled
+            if save_json:
+                save_chunks_to_json(
+                    ret["chunks"], q, f"logs/{test_id}_retrieved_chunks.json"
+                )
+
             if summary:
                 print("———————————————————— Summary ————————————————————\n")
                 print(ret["summary"])
@@ -242,21 +337,17 @@ def main():
     cli_options = CliOptions()
 
     # Print available tests for user reference
-    print("Available tests:")
-    print("  1 / wiki_subcorpus - 2wiki subcorpus text file")
-    print("  2 / s3: small_pdf - Small PDF from S3 (default)")
-    print("  3 / oss: U.S.Health - U.S. Healthcare guide PDF")
-    print("  4 / md-itinerary - Holiday itinerary markdown")
-    print("  5 / md-wiki - Wikipedia article markdown")
     print(f"\nRunning test: {cli_options.test}")
     print(f"Overwrite: {cli_options.overwrite}")
-    print(f"Summary: {cli_options.summary}\n")
+    print(f"Summary: {cli_options.summary}")
+    print(f"Save JSON: {cli_options.save_json}\n")
 
     asyncio.run(
         index(
             cli_options.test,
             cli_options.overwrite,
             cli_options.summary,
+            cli_options.save_json,
         )
     )
 
