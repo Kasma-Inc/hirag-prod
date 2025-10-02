@@ -47,6 +47,9 @@ class Chunk(Base):
         cast(vector, ARRAY(Float(4)))
     )
     # Timestamps and Users
+    extractedTimestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     createdAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     createdBy: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     updatedAt: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

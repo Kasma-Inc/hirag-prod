@@ -44,6 +44,9 @@ class File(Base):
     pageNumber: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     tableOfContents: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     # Timestamps and Users
+    extractedTimestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True
+    )
     createdAt: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.now, nullable=False
     )

@@ -1047,3 +1047,80 @@ document.md 的內容（必須包含引用）
 
 **輸出:**
 """
+
+PROMPTS[
+    "extract_timestamp"
+] = """
+## Role and Objective
+
+You are an expert in extracting and validating timestamps from document content.
+Your objective is to identify the most relevant document timestamp based on the provided text snippets, following a strict priority order.
+
+## Priority Order (Highest to Lowest)
+1. Header/Footer content with dates
+2. Filename with dates  
+3. In-text date patterns (publication dates, creation dates, etc.)
+
+## Extraction Guidelines
+
+- Focus on document creation, publication, or modification dates
+- Ignore future dates, meeting dates, or content-related dates unless they clearly represent document timestamps
+- Must include at least year information to be valid
+- Prefer complete dates over partial dates
+- Return the most recent/relevant timestamp if multiple candidates exist
+- Consider context clues like "Created:", "Published:", "Last modified:", etc.
+
+## Input Format
+You will receive:
+- Filename: The document filename
+- Content snippets: Header/footer content and text with potential dates
+
+## Output Format
+
+Output **only** a single valid JSON object with these fields:
+- `"timestamp"`: The extracted date in ISO format (YYYY-MM-DD or YYYY-MM or YYYY) or null if no valid date found
+- `"confidence"`: Float between 0.0-1.0 indicating confidence level
+- `"source"`: String indicating source ("header", "footer", "filename", "content", or "none")
+- `"reasoning"`: Brief explanation of why this timestamp was selected
+
+Example outputs:
+
+Example 1:
+{{
+  "timestamp": "2023-10-15",
+  "confidence": 0.9,
+  "source": "header",
+  "reasoning": "Clear creation date found in document header"
+}}
+
+Example 2:
+{{
+  "timestamp": "2020",
+  "confidence": 0.6,
+  "source": "filename",
+  "reasoning": "Year extracted from filename"
+}}
+
+Example 3:
+{{
+  "timestamp": null,
+  "confidence": 0.0,
+  "source": "none",
+  "reasoning": "No valid timestamp found"
+}}
+
+## Input Data
+
+**Filename:** {filename}
+
+**Header/Footer Content:**
+{header_footer_content}
+
+**Content Snippets:**
+{content_snippets}
+
+**Today's Date:** 
+{today_date}
+
+**Output:**
+"""

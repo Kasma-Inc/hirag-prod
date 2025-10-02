@@ -1,3 +1,7 @@
+import json
+import logging
+import re
+from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -11,7 +15,12 @@ from hirag_prod._utils import (
     encode_string_by_tiktoken,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
+from hirag_prod.configs.functions import get_config_manager
+from hirag_prod.prompt import PROMPTS
+from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
+
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
@@ -301,6 +310,219 @@ def _build_doc_pages_map(doc: DoclingDocument) -> dict[int, tuple[float, float]]
         pn = pg.page_no if hasattr(pg, "page_no") else int(k)
         size_map[int(pn)] = (pg.size.width, pg.size.height)
     return size_map
+
+
+async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
+    """
+    Extract timestamp from document items following priority order:
+    1. Header & footer content with dates
+    2. Filename with dates
+    3. In-text date patterns
+
+    Uses LLM to validate and extract the most relevant document timestamp.
+    """
+    if not items:
+        logger.warning("No items provided for timestamp extraction.")
+        return None
+
+    # Common date patterns to look for
+    date_patterns = [
+        r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b",  # YYYY-MM-DD or YYYY/MM/DD
+        r"\b\d{1,2}[-/]\d{1,2}[-/]\d{4}\b",  # MM-DD-YYYY or MM/DD/YYYY
+        r"\b\d{4}[-/]\d{1,2}\b",  # YYYY-MM or YYYY/MM
+        r"\b\d{4}\b",  # YYYY (year only)
+        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b",  # Month DD, YYYY
+        r"\b\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b",  # DD Month YYYY
+    ]
+
+    # Collect content by priority
+    header_footer_content = []
+    content_snippets = []
+
+    def extract_snippet_around_date(text: str, match) -> str:
+        """Extract ~100 words around date match, using ... for truncation."""
+        start, end = match.span()
+        words = text.split()
+
+        # Find word positions around the match
+        char_count = 0
+        word_start_idx = 0
+        word_end_idx = len(words) - 1
+
+        # Find starting word index (within ~100 words before)
+        for i, word in enumerate(words):
+            char_count += len(word) + 1  # +1 for space
+            if char_count >= start:
+                word_start_idx = max(0, i - 50)  # ~50 words before
+                break
+
+        # Find ending word index (within ~100 words after)
+        char_count = 0
+        for i, word in enumerate(words):
+            char_count += len(word) + 1
+            if char_count >= end:
+                word_end_idx = min(len(words) - 1, i + 50)  # ~50 words after
+                break
+
+        # Extract the snippet
+        snippet_words = words[word_start_idx : word_end_idx + 1]
+        snippet = " ".join(snippet_words)
+
+        # Add ellipsis if truncated
+        if word_start_idx > 0:
+            snippet = "... " + snippet
+        if word_end_idx < len(words) - 1:
+            snippet = snippet + " ..."
+
+        return snippet
+
+    def find_date_snippets(text: str) -> List[tuple[str, int]]:
+        """Find date patterns and extract snippets around them."""
+        snippets = []
+        if not text:
+            return snippets
+
+        for pattern in date_patterns:
+            for match in re.finditer(pattern, text, re.IGNORECASE):
+                snippet = extract_snippet_around_date(text, match)
+                snippets.append((snippet, len(snippet)))
+
+        return snippets
+
+    # Process items by type and priority
+    for item in items:
+        if not item.text:
+            continue
+
+        # Check if it's header or footer
+        is_header_footer = item.chunkType in [
+            ChunkType.PAGE_HEADER.value,
+            ChunkType.PAGE_FOOTER.value,
+            ChunkType.TITLE.value,
+            ChunkType.SECTION_HEADER.value,
+        ]
+
+        snippets = find_date_snippets(item.text)
+
+        if is_header_footer:
+            header_footer_content.extend(snippets)
+        else:
+            content_snippets.extend(snippets)
+
+    # Sort snippets by length (shorter first) and limit quantities
+    header_footer_content.sort(key=lambda x: x[1])
+    content_snippets.sort(key=lambda x: x[1])
+
+    # Priority 1: Header & footer (max 5)
+    selected_hf_snippets = header_footer_content[:5]
+
+    # Priority 3: Content snippets (max 10)
+    selected_content_snippets = content_snippets[:10]
+
+    # Use LLM to extract the most relevant timestamp
+    try:
+        chat_service = get_chat_service()
+
+        prompt = PROMPTS["extract_timestamp"].format(
+            filename=items[0].fileName if items else "unknown",
+            header_footer_content=(
+                "\n---\n".join([s[0] for s in selected_hf_snippets])
+                if selected_hf_snippets
+                else "N/A"
+            ),
+            content_snippets=(
+                "\n---\n".join([s[0] for s in selected_content_snippets])
+                if selected_content_snippets
+                else "N/A"
+            ),
+            today_date=datetime.now().strftime("%Y-%m-%d"),
+        )
+
+        llm_config = get_config_manager().llm_config
+
+        response = await chat_service.complete(
+            prompt=prompt,
+            model=llm_config.model_name,
+            max_tokens=llm_config.max_tokens,
+            timeout=llm_config.timeout,
+        )
+
+        # Parse the JSON response to extract timestamp
+        if response:
+            try:
+                # The response might be wrapped in markdown code blocks, so extract JSON
+                response_text = response.strip()
+
+                # Remove markdown code block formatting if present
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]  # Remove ```json
+                if response_text.startswith("```"):
+                    response_text = response_text[3:]  # Remove ```
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]  # Remove ending ```
+
+                # Parse JSON response
+                parsed_response = json.loads(response_text.strip())
+
+                # Extract timestamp from JSON
+                timestamp_str = parsed_response.get("timestamp")
+
+                if timestamp_str and timestamp_str != "null":
+                    # Try to parse various datetime formats
+                    for fmt in [
+                        "%Y-%m-%d",
+                        "%Y/%m/%d",
+                        "%Y-%m",
+                        "%Y/%m",
+                        "%Y",
+                    ]:
+                        try:
+                            timestamp_extracted = datetime.strptime(timestamp_str, fmt)
+                            logger.info(f"Extracted timestamp: {timestamp_extracted}")
+                            return timestamp_extracted
+                        except ValueError:
+                            continue
+
+            except (json.JSONDecodeError, KeyError, AttributeError) as e:
+                print(f"Error parsing JSON response: {e}")
+                print(f"Response was: {response}")
+                # Fallback: try to find timestamp in raw response
+                if "timestamp:" in response.lower():
+                    timestamp_str = response.split("timestamp:")[-1].strip()
+                    # Remove quotes and commas if present
+                    timestamp_str = timestamp_str.split(",")[0].strip().strip("\"'")
+
+                    for fmt in [
+                        "%Y-%m-%d",
+                        "%Y/%m/%d",
+                        "%Y-%m",
+                        "%Y/%m",
+                        "%Y",
+                    ]:
+                        try:
+                            timestamp_extracted = datetime.strptime(timestamp_str, fmt)
+                            logger.info(f"Extracted timestamp: {timestamp_extracted}")
+                            return timestamp_extracted
+                        except ValueError:
+                            continue
+
+    except Exception as e:
+        logger.error(f"Error extracting timestamp: {e}")
+
+    return None
+
+
+async def extract_and_apply_timestamp_to_items(items: List[Item]) -> Optional[datetime]:
+    """
+    Extract timestamp from items and apply to all items' extracted_timestamp field.
+    """
+    timestamp = await extract_timestamp_from_items(items)
+
+    if timestamp:
+        for item in items:
+            item.extractedTimestamp = timestamp
+
+    return timestamp
 
 
 def determine_docling_chunk_type(chunk) -> ChunkType:
@@ -808,6 +1030,7 @@ def items_to_chunks_recursive(
             "fileName": dchunk.file_name,
             "uri": dchunk.uri,
             "private": dchunk.private,
+            "extractedTimestamp": dchunk.extracted_timestamp,
             "createdAt": dchunk.created_at,
             "updatedAt": dchunk.updated_at,
             "createdBy": dchunk.created_by,
