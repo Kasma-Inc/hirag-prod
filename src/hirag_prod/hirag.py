@@ -1048,6 +1048,7 @@ class HiRAG:
         translation: Optional[List[str]] = None,
         translator: Literal["google", "qwen"] = "qwen",
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        filter_by_clustering: bool = True,
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1093,6 +1094,7 @@ class HiRAG:
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             strategy=strategy,
+            filter_by_clustering=filter_by_clustering,
         )
 
         # Filter chunks by threshold on relevance score

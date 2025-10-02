@@ -182,6 +182,7 @@ class StorageManager:
                 "private",
                 "updatedAt",
                 "documentKey",
+                "extractedTimestamp",
             ],
         )
         return rows

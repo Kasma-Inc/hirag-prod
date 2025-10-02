@@ -16,6 +16,14 @@ class HiRAGConfig(BaseSettings):
     graph_db_path: str = "kb/hirag.gpickle"
     vdb_type: Literal["lancedb", "pgvector"] = "pgvector"
     gdb_type: Literal["networkx"] = "networkx"
+    clustering_n_clusters: int = 8  # Set to None if not using fixed number of clusters
+    clustering_distance_threshold: float = (
+        0.5  # Set to None if not using distance threshold
+    )
+    clustering_linkage_method: str = (
+        "ward"  # Options: 'ward', 'complete', 'average', 'single'
+    )
+    clustering_n_type: Literal["fixed", "distance"] = "fixed"  # 'fixed' or 'distance'
 
     # Chunking configuration
     chunk_size: int = 1200

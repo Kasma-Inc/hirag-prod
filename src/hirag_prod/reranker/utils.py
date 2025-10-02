@@ -8,6 +8,7 @@ async def apply_reranking(
     results: List[Dict],
     topk: int,
     topn: int,
+    rerank_with_time=False,
     key: str = "text",
 ) -> List[Dict]:
     if not results:
@@ -19,5 +20,7 @@ async def apply_reranking(
         raise ValueError(f"topn ({topn}) must be <= topk ({topk})")
     reranker = get_reranker()
     items_to_rerank = results[:topk]
-    reranked_items = await reranker.rerank(query=query, items=items_to_rerank, key=key)
+    reranked_items = await reranker.rerank(
+        query=query, items=items_to_rerank, key=key, rerank_with_time=rerank_with_time
+    )
     return reranked_items[:topn]
