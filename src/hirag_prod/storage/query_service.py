@@ -131,16 +131,15 @@ class QueryService:
         outlier_chunks = []
         for cluster_id, chunk_keys in clusters.items():
             latest_chunks = []
+            latest_timestamp = datetime.min
             for chunk_key in chunk_keys:
                 chunk = id_to_chunk.get(chunk_key)
                 if chunk:
-                    if not latest_chunks or chunk.get(
-                        "extractedTimestamp", datetime.min
-                    ) > latest_chunks[0].get("extractedTimestamp", datetime.min):
+                    timestamp = chunk.get("extractedTimestamp", datetime.min) or datetime.min
+                    if not latest_chunks or timestamp > latest_timestamp:
                         latest_chunks = [chunk]
-                    elif chunk.get("extractedTimestamp", datetime.min) == latest_chunks[
-                        0
-                    ].get("extractedTimestamp", datetime.min):
+                        latest_timestamp = timestamp
+                    elif timestamp == latest_timestamp:
                         latest_chunks.append(chunk)
             # According to logic, all chunks in latest_chunks should have the same fileName
             filtered_chunks.extend(latest_chunks)

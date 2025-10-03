@@ -16,7 +16,7 @@ class QwenTranslatorConfig(BaseSettings):
     # Qwen Translator Dashscope settings
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-    model_name: str = "qwen-mt-plus"
+    model_name: str = "qwen-mt-turbo"
 
     # Additional translator settings
     timeout: float = 30.0

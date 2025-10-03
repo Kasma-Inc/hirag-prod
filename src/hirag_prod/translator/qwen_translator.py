@@ -112,6 +112,7 @@ class QwenTranslator:
                 messages=messages,
                 max_tokens=config.max_tokens,
                 temperature=config.temperature,
+                timeout=config.timeout,
                 extra_body={"translation_options": translation_options},
             )
 
