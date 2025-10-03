@@ -135,7 +135,9 @@ class QueryService:
             for chunk_key in chunk_keys:
                 chunk = id_to_chunk.get(chunk_key)
                 if chunk:
-                    timestamp = chunk.get("extractedTimestamp", datetime.min) or datetime.min
+                    timestamp = (
+                        chunk.get("extractedTimestamp", datetime.min) or datetime.min
+                    )
                     if not latest_chunks or timestamp > latest_timestamp:
                         latest_chunks = [chunk]
                         latest_timestamp = timestamp

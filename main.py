@@ -312,7 +312,7 @@ async def index(test_id="2", summary=True, save_json=False):
                 threshold=0.001,
                 strategy="hybrid",
                 translation=["en", "zh-TW", "zh"],
-                translator="qwen",
+                translator_type="qwen",
             )
 
             print("———————————————————— Query ————————————————————\n")
