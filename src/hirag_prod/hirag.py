@@ -143,7 +143,7 @@ class DocumentProcessor:
                 if self.job_status_tracker and job_id:
                     try:
                         await self.job_status_tracker.set_job_status(
-                            job_id, JobStatus.FAILED
+                            job_id=job_id, status=JobStatus.FAILED
                         )
                     except Exception as e:
                         log_error_info(
@@ -184,7 +184,7 @@ class DocumentProcessor:
             if self.job_status_tracker and job_id:
                 try:
                     await self.job_status_tracker.set_job_status(
-                        job_id, JobStatus.COMPLETED
+                        job_id=job_id, status=JobStatus.COMPLETED
                     )
                 except Exception as e:
                     log_error_info(
@@ -1038,8 +1038,8 @@ class HiRAG:
                 and job_id
             ):
                 try:
-                    await self._processor.job_status_tracker.set_job_failed(
-                        job_id, str(e)
+                    await self._processor.job_status_tracker.set_job_status(
+                        job_id=job_id, status=JobStatus.FAILED
                     )
                 except Exception as e:
                     log_error_info(
@@ -1064,7 +1064,7 @@ class HiRAG:
         summary: bool = False,
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
-        translator: Literal["google", "qwen"] = "qwen",
+        translator_type: Literal["google", "qwen"] = "qwen",
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
         filter_by_clustering: bool = True,
     ) -> Dict[str, Any]:
@@ -1080,10 +1080,11 @@ class HiRAG:
         query_list = [original_query]
 
         if translation:
+            translator = None
             # Get translator from resource manager
-            if translator == "qwen":
+            if translator_type == "qwen":
                 translator = get_qwen_translator()
-            elif translator == "google":
+            elif translator_type == "google":
                 translator = get_translator()
 
             if not translator:

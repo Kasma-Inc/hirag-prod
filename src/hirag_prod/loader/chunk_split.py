@@ -965,7 +965,7 @@ def chunk_langchain_document(
     chunk_overlap: int = CHUNK_OVERLAP,
     separators: Optional[List[str]] = SEPARATORS,
     keep_separator: bool = True,
-) -> List[Chunk]:
+) -> List[Item]:
     """
     Split a langchain document into chunks and return a list of Chunk objects.
     Each chunk will inherit metadata from the original document.
