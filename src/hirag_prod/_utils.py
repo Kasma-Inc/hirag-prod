@@ -394,11 +394,11 @@ async def _limited_gather_with_factory(
 
 
 # extract <ref>index</ref> tags in-order
-def extract_ref_indices(text: str) -> list[int]:
+def extract_ref_indices(text: str) -> List[list[int]]:
     """Extract <ref>index</ref> tags in-order and return their integer indices."""
     if not text:
-        return []
-    return [int(m) for m in re.findall(r"<ref>\s*(\d+)\s*</ref>", text)]
+        return [[]]
+    return [[int(m)] for m in re.findall(r"<ref>\s*(\d+)\s*</ref>", text)]
 
 
 async def extract_ref_indices_from_markdown(
