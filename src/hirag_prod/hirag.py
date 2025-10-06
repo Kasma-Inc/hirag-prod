@@ -98,18 +98,18 @@ class DocumentProcessor:
 
         async with self.metrics.track_operation("clear_document"):
             where_dict = {
-                "documentId": document_id,
-                "workspaceId": workspace_id,
-                "knowledgeBaseId": knowledge_base_id,
-            }
-            await self.storage.clean_vdb_document(where=where_dict)
-
-            where_dict = {
                 "documentKey": document_id,
                 "workspaceId": workspace_id,
                 "knowledgeBaseId": knowledge_base_id,
             }
-            await self.storage.clean_vdb_file(where=where_dict)
+            is_exist = await self.storage.clean_vdb_file(where=where_dict)
+            if is_exist:
+                where_dict = {
+                    "documentId": document_id,
+                    "workspaceId": workspace_id,
+                    "knowledgeBaseId": knowledge_base_id,
+                }
+                await self.storage.clean_vdb_document(where=where_dict)
 
         return self.metrics.metrics
 
@@ -143,6 +143,12 @@ class DocumentProcessor:
                         await self.job_status_tracker.set_job_status(
                             job_id=job_id, status=JobStatus.FAILED
                         )
+                        await self.clear_document(
+                            document_id=document_meta["documentKey"],
+                            workspace_id=workspace_id,
+                            knowledge_base_id=knowledge_base_id,
+                        )
+
                     except Exception as e:
                         log_error_info(
                             logging.ERROR,
@@ -1031,6 +1037,11 @@ class HiRAG:
                 try:
                     await self._processor.job_status_tracker.set_job_status(
                         job_id=job_id, status=JobStatus.FAILED
+                    )
+                    await self._processor.clear_document(
+                        document_id=document_id,
+                        workspace_id=workspace_id,
+                        knowledge_base_id=knowledge_base_id,
                     )
                 except Exception as e:
                     log_error_info(

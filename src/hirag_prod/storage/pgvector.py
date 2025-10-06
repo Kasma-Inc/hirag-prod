@@ -457,7 +457,7 @@ class PGVector(BaseVDB):
         self,
         table_name: str,
         where: Dict[str, Any],
-    ):
+    ) -> bool:
         # Clean all rows matching the where criteria
         # where {"key": "value"}
         model = self.get_model(table_name)
@@ -474,6 +474,7 @@ class PGVector(BaseVDB):
             logger.info(
                 f"[clean_table] Cleaned {rows_deleted} rows from table '{table_name}', elapsed={elapsed:.3f}s"
             )
+            return rows_deleted != 0
 
     async def upsert_file(
         self,

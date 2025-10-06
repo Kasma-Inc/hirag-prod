@@ -60,8 +60,9 @@ class StorageManager:
         await self.vdb.clean_table(table_name="Nodes", where=where)
 
     @retry_async()
-    async def clean_vdb_file(self, where: Dict[str, Any]) -> None:
-        await self.vdb.clean_table(table_name="Files", where=where)
+    async def clean_vdb_file(self, where: Dict[str, Any]) -> bool:
+        is_exist = await self.vdb.clean_table(table_name="Files", where=where)
+        return is_exist
 
     @retry_async()
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
