@@ -100,7 +100,7 @@ async def _extract_excel_cell_coord_by_llm(
 
 async def annotate_excel_cell_bbox(
     text_to_cite: str, chunk_like: Dict
-) -> Optional[List[float]]:
+) -> Optional[List[int]]:
     """
     Compute numeric bbox for an excel_sheet chunk:
     - Uses LLM to get x/y labels from the sentence and the chunk's LaTeX.
@@ -142,7 +142,7 @@ async def annotate_excel_cell_bbox(
             return None
 
         row_idx, col_idx = pos[0], pos[1]
-        return [float(col_idx), float(row_idx)]
+        return [int(col_idx), int(row_idx)]
     except Exception as e:
         log_error_info(logging.ERROR, "annotate_excel_cell_bbox failed", e)
         return None

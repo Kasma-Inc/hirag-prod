@@ -12,6 +12,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
     Type,
     TypeAlias,
     TypeVar,
@@ -209,22 +210,23 @@ async def extract_ref_indices_from_markdown(
     chunk_list: List[Chunk],
     threshold: float = 0.8,
     concurrency: int = 4,
-) -> List[List[int]]:
+) -> Tuple[List[List[int]], List[str]]:
     """Extract text segments immediately preceding each [slot](x) inside fenced ```markdown blocks,
     then, for each segment, rerank against the given chunk_list and return indices
     of chunks passing threshold (>= threshold). If none pass, return the single best.
 
     Returns:
         List[List[int]]: citations per extracted segment, each a list of indices into chunk_list.
+        List[str]: texts to cite per extracted segment.
     """
     if not text:
-        return []
+        return [], []
 
     markdown_blocks = re.findall(
         r"```markdown\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE
     )
     if not markdown_blocks:
-        return []
+        return [], []
 
     markdown_content = "\n".join(markdown_blocks)
     texts_to_cite: list[str] = []
@@ -256,7 +258,7 @@ async def extract_ref_indices_from_markdown(
         last_slot_end = m.end()
 
     if not texts_to_cite or not chunk_list:
-        return [[] for _ in texts_to_cite]
+        return [[] for _ in texts_to_cite], texts_to_cite
 
     from hirag_prod.resources.functions import get_reranker
 
@@ -299,4 +301,4 @@ async def extract_ref_indices_from_markdown(
             best = reranked[0].get("list_index")
             results.append([best] if best is not None else [])
 
-    return results
+    return results, texts_to_cite
