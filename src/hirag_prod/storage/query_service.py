@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -103,7 +103,7 @@ class QueryService:
 
     async def filter_chunks_by_cluster(
         self, workspace_id: str, knowledge_base_id: str, chunks: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         # Apply clustering
         chunk_ids = [
             chunk.get("documentKey") for chunk in chunks if chunk.get("documentKey")
@@ -146,15 +146,11 @@ class QueryService:
             # According to logic, all chunks in latest_chunks should have the same fileName
             filtered_chunks.extend(latest_chunks)
 
-        for chunk in chunks:
-            if chunk not in filtered_chunks:
-                outlier_chunks.append(chunk)
-
         logger.info(
             f"After clustering filter: {len(filtered_chunks)} chunks kept, {len(outlier_chunks)} outliers"
         )
 
-        return filtered_chunks, outlier_chunks
+        return filtered_chunks
 
     async def recall_chunks(self, *args, **kwargs) -> Dict[str, Any]:
         """Recall chunks and return both raw results and extracted chunk_ids.
@@ -396,17 +392,12 @@ class QueryService:
             pr_ids, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
         )
 
-        pr_rows, outlier_rows = await self.filter_chunks_by_cluster(
-            workspace_id, knowledge_base_id, pr_rows
-        )
-
         pr_score_map = {cid: score for cid, score in pr_ranked}
         for row in pr_rows:
             row["pagerank_score"] = pr_score_map.get(row.get("documentKey"), 0.0)
 
         return {
             "pagerank": pr_rows,
-            "outlier_chunks": outlier_rows,
             "query_top": query_chunks,
         }
 
@@ -482,11 +473,15 @@ class QueryService:
                 if pagerank_result.get("pagerank")
                 else pagerank_result.get("query_top", [])
             )
+            logger.info(f"After pagerank: {len(result['chunks'])} chunks")
+
         # If filter by clustering, apply clustering filter
         if filter_by_clustering:
-            result["chunks"], result["outliers"] = await self.filter_chunks_by_cluster(
+            result["chunks"] = await self.filter_chunks_by_cluster(
                 workspace_id, knowledge_base_id, result["chunks"]
             )
+            logger.info(f"After clustering filter: {len(result['chunks'])} chunks")
+
         # If reranker or hybrid, do reranking
         if strategy in ["reranker", "hybrid"]:
             try:
@@ -497,8 +492,18 @@ class QueryService:
                     topn=topn,
                     rerank_with_time=True,
                 )
+                logger.info(f"After reranking: {len(result['chunks'])} chunks")
             except Exception as e:
                 log_error_info(
                     logging.ERROR, "Failed to rerank chunks in apply_strategy", e
                 )
+
+        # Get the outliers
+        filtered_chunk_ids = {c.get("documentKey") for c in result["chunks"]}
+        outlier_chunks = []
+        for c in chunks:
+            if c.get("documentKey") not in filtered_chunk_ids:
+                outlier_chunks.append(c)
+        result["outliers"] = outlier_chunks
+
         return result

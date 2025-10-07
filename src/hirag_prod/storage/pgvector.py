@@ -11,7 +11,7 @@ from sqlalchemy.orm import load_only
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.configs.functions import get_init_config
+from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.resources.functions import (
     get_db_engine,
@@ -25,10 +25,6 @@ from hirag_prod.schema.node import create_node
 from hirag_prod.storage.base_vdb import BaseVDB
 
 logger = logging.getLogger(__name__)
-
-THRESHOLD_DISTANCE = get_init_config().default_distance_threshold
-TOPK = get_init_config().default_query_top_k
-TOPN = get_init_config().default_query_top_n
 
 
 # extends to implement PostgreSQL-based vdb with pgvector support
@@ -526,15 +522,23 @@ class PGVector(BaseVDB):
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,
-        topk: Optional[int] = TOPK,
-        topn: Optional[int] = TOPN,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
-        distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
+        distance_threshold: Optional[float] = None,
     ) -> List[dict]:
         if isinstance(query, str):
             query = [query]
+
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
+        distance_threshold = (
+            distance_threshold
+            if distance_threshold
+            else get_hi_rag_config().default_distance_threshold
+        )
 
         if topn > topk:
             raise ValueError(f"topn ({topn}) must be <= topk ({topk})")

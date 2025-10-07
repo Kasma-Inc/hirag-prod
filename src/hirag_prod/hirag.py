@@ -1127,8 +1127,6 @@ class HiRAG:
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
 
-        query_results["query"] = query_list
-
         query_results = await self._query_service.query(
             query=query_list if len(query_list) > 1 else original_query,
             workspace_id=workspace_id,
@@ -1136,6 +1134,8 @@ class HiRAG:
             strategy=strategy,
             filter_by_clustering=filter_by_clustering,
         )
+
+        query_results["query"] = query_list
 
         # Filter chunks by threshold on relevance score
         if threshold > 0.0 and query_results.get("chunks"):

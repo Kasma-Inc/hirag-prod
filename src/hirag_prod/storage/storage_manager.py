@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import select
 
 from hirag_prod._utils import log_error_info, retry_async
-from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
+from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import (
@@ -20,8 +20,6 @@ from hirag_prod.storage import (
 from hirag_prod.storage.pgvector import PGVector
 
 logger = logging.getLogger("HiRAG")
-TOPK = get_init_config().default_query_top_k
-TOPN = get_init_config().default_query_top_n
 
 
 class StorageManager:
@@ -167,13 +165,15 @@ class StorageManager:
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Chunks",
-            topk=topk or TOPK,
-            topn=topn or TOPN,
+            topk=topk,
+            topn=topn,
             columns_to_select=[
                 "text",
                 "uri",
@@ -194,13 +194,16 @@ class StorageManager:
         topk: int = None,
         topn: int = None,
     ) -> List[Dict[str, Any]]:
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
+
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Triplets",
-            topk=topk if topk else TOPK,
-            topn=topn if topn else TOPN,
+            topk=topk,
+            topn=topn,
             columns_to_select=["source", "target", "description", "fileName"],
         )
         return rows
