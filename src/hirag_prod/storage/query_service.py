@@ -164,28 +164,12 @@ class QueryService:
                 - "chunks": raw chunk search results
                 - "chunk_ids": list of document_key values
         """
-        # Extract workspace_id and knowledge_base_id from kwargs for clustering
-        filter_by_clustering = kwargs.pop("filter_by_clustering", False)
-        workspace_id = kwargs.get("workspace_id")
-        knowledge_base_id = kwargs.get("knowledge_base_id")
-
         chunks = await self.query_chunks(*args, **kwargs)
         chunk_ids = [c.get("documentKey") for c in chunks if c.get("documentKey")]
-
-        if filter_by_clustering:
-            if not workspace_id or not knowledge_base_id:
-                logger.warning(
-                    "workspace_id and knowledge_base_id are required for clustering filter"
-                )
-            else:
-                chunks, outlier_chunks = await self.filter_chunks_by_cluster(
-                    workspace_id, knowledge_base_id, chunks
-                )
 
         return {
             "chunks": chunks,
             "chunk_ids": chunk_ids,
-            "outlier_chunks": outlier_chunks,
         }
 
     async def query_triplets(self, *args, **kwargs) -> List[Dict[str, Any]]:
@@ -263,12 +247,12 @@ class QueryService:
         by_id = {row.get("documentKey"): row for row in rows}
         return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
-    async def dual_recall_with_pagerank(
+    async def pagerank_chunks(
         self,
         query: Union[str, List[str]],
+        query_chunks: List[Dict[str, Any]],
         workspace_id: str,
         knowledge_base_id: str,
-        filter_by_clustering: bool,
         topk: Optional[int] = None,
         topn: Optional[int] = None,
         link_top_k: Optional[int] = None,
@@ -292,17 +276,9 @@ class QueryService:
 
         damping = damping or get_hi_rag_config().default_pagerank_damping
 
-        # Path 1: chunk recall (rerank happens in VDB query)
-        chunk_recall = await self.recall_chunks(
-            query,
-            topk=topk,
-            topn=topn,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-            filter_by_clustering=filter_by_clustering,
-        )
-        query_chunks = chunk_recall["chunks"]
-        query_chunk_ids = chunk_recall["chunk_ids"]
+        query_chunk_ids = [
+            c.get("documentKey") for c in query_chunks if c.get("documentKey")
+        ]
 
         # Path 2: triplet recall -> entity seeds
         triplet_recall = await self.recall_triplets(
@@ -317,7 +293,7 @@ class QueryService:
 
         # Build passage weights from chunk ranks (approximate DPR)
         passage_weights: Dict[str, float] = {}
-        if chunk_recall["chunk_ids"]:
+        if query_chunk_ids:
             # Inverse-rank weights then min-max normalize
             raw_weights = []
             for rank, cid in enumerate(query_chunk_ids):
@@ -434,50 +410,46 @@ class QueryService:
             "query_top": query_chunks,
         }
 
-    async def dual_recall_with_rerank(
+    async def query(
         self,
-        query: Union[str, List[str]],
         workspace_id: str,
         knowledge_base_id: str,
+        query: Union[str, List[str]],
         filter_by_clustering: bool,
+        strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Two-path retrieval + Reranking fusion."""
+        """Query Strategy"""
         topk = topk or get_hi_rag_config().default_query_top_k
         topn = topn or get_hi_rag_config().default_query_top_n
 
-        # Path 1: chunk recall
         chunk_recall = await self.recall_chunks(
-            query,
-            topk=topk,
-            topn=topn,
+            query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
-            filter_by_clustering=filter_by_clustering,
+            topk=topk,
+            topn=topn,
         )
-        query_chunks = chunk_recall["chunks"]
 
-        # rerank
-        if query_chunks:
-            try:
-                reranked_chunks = await apply_reranking(
-                    query=query,
-                    results=query_chunks,
-                    topk=topk,
-                    topn=topn,
-                    rerank_with_time=True,
-                )
-                query_chunks = reranked_chunks
-            except Exception as e:
-                log_error_info(logging.ERROR, "Failed to rerank chunks", e)
+        if strategy == "raw":
+            return chunk_recall
 
-        return {
-            "query_top": query_chunks,
-        }
+        chunks = chunk_recall.get("chunks", [])
+        return await self.apply_strategy_to_chunks(
+            chunks=chunks,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            query=query,
+            filter_by_clustering=filter_by_clustering,
+            strategy=strategy,
+            topk=topk,
+            topn=topn,
+        )
 
-    async def query(
+    async def apply_strategy_to_chunks(
         self,
+        chunks: List[Dict[str, Any]],
         workspace_id: str,
         knowledge_base_id: str,
         query: Union[str, List[str]],
@@ -486,73 +458,47 @@ class QueryService:
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Query Strategy"""
-        if strategy == "reranker":
-            result = await self.dual_recall_with_rerank(
-                topk=topk,
-                topn=topn,
+        """Apply reranking to an existing list of chunks."""
+        if not chunks:
+            return {"chunks": [], "outliers": []}
+
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+
+        result = {"chunks": chunks, "outliers": []}
+
+        # If pagerank or hybrid, do pagerank first
+        if strategy in ["pagerank", "hybrid"]:
+            pagerank_result = await self.pagerank_chunks(
                 query=query,
+                query_chunks=chunks,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
-            )
-            result["chunks"] = result.get("query_top", [])
-            return result
-        elif strategy == "pagerank":
-            result = await self.dual_recall_with_pagerank(
                 topk=topk,
                 topn=topn,
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
             )
             result["chunks"] = (
-                result.get("pagerank")
-                if result.get("pagerank")
-                else result.get("query_top", [])
-            )
-            return result
-        elif strategy == "hybrid":
-            # First get pagerank results
-            pagerank_result = await self.dual_recall_with_pagerank(
-                topk=topk,
-                topn=topn,
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
-            )
-
-            # Use pagerank results if available, otherwise fall back to query_top
-            chunks_to_rerank = (
                 pagerank_result.get("pagerank")
                 if pagerank_result.get("pagerank")
                 else pagerank_result.get("query_top", [])
             )
-
-            # Apply reranking to the pagerank results
-            if chunks_to_rerank:
-                try:
-                    topk = topk or get_hi_rag_config().default_query_top_k
-                    topn = topn or get_hi_rag_config().default_query_top_n
-                    reranked_chunks = await apply_reranking(
-                        query=query,
-                        results=chunks_to_rerank,
-                        topk=topk,
-                        topn=topn,
-                        rerank_with_time=True,
-                    )
-                    chunks_to_rerank = reranked_chunks
-                except Exception as e:
-                    log_error_info(
-                        logging.ERROR, "Failed to rerank chunks in hybrid strategy", e
-                    )
-
-            return {
-                "chunks": chunks_to_rerank,
-                "pagerank": pagerank_result.get("pagerank", []),
-                "query_top": pagerank_result.get("query_top", []),
-            }
-        else:
-            raise ValueError(f"Unknown query strategy: {strategy}")
+        # If filter by clustering, apply clustering filter
+        if filter_by_clustering:
+            result["chunks"], result["outliers"] = await self.filter_chunks_by_cluster(
+                workspace_id, knowledge_base_id, result["chunks"]
+            )
+        # If reranker or hybrid, do reranking
+        if strategy in ["reranker", "hybrid"]:
+            try:
+                result["chunks"] = await apply_reranking(
+                    query=query,
+                    results=result["chunks"],
+                    topk=topk,
+                    topn=topn,
+                    rerank_with_time=True,
+                )
+            except Exception as e:
+                log_error_info(
+                    logging.ERROR, "Failed to rerank chunks in apply_strategy", e
+                )
+        return result

@@ -1047,6 +1047,34 @@ class HiRAG:
 
         return await self._query_service.query_chunks(*args, **kwargs)
 
+    async def apply_strategy_to_chunks(
+        self,
+        chunks_dict: Dict[str, Any],
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        workspace_id: Optional[str] = None,
+        knowledge_base_id: Optional[str] = None,
+        filter_by_clustering: bool = True,
+    ) -> Dict[str, Any]:
+        """Apply retrieval strategy to a given set of chunks"""
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        query = chunks_dict.get("query", "")
+        chunks = chunks_dict.get("chunks", [])
+        if not query:
+            raise HiRAGException("Query text is required in chunks_dict")
+        if not chunks:
+            raise HiRAGException("Chunks are required in chunks_dict")
+
+        return await self._query_service.apply_strategy_to_chunks(
+            chunks=chunks,
+            query=query,
+            strategy=strategy,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            filter_by_clustering=filter_by_clustering,
+        )
+
     async def query(
         self,
         query: str,
@@ -1056,7 +1084,7 @@ class HiRAG:
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
         translator_type: Literal["google", "qwen"] = "qwen",
-        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         filter_by_clustering: bool = True,
     ) -> Dict[str, Any]:
         """Query all types of data"""
@@ -1098,6 +1126,8 @@ class HiRAG:
                         )
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+
+        query_results["query"] = query_list
 
         query_results = await self._query_service.query(
             query=query_list if len(query_list) > 1 else original_query,

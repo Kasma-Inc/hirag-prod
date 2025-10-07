@@ -310,9 +310,20 @@ async def index(test_id="2", summary=True, save_json=False):
                 workspace_id="test_workspace",
                 knowledge_base_id="test_pg",
                 threshold=0.001,
-                strategy="hybrid",
+                strategy="raw",
                 translation=["en", "zh-TW", "zh"],
                 translator_type="qwen",
+            )
+
+            print("———————————————————— Raw Results ————————————————————\n")
+            print_chunks_user_friendly(ret["chunks"])
+
+            await index.apply_strategy_to_chunks(
+                chunks_dict=ret,
+                strategy="hybrid",
+                filter_by_clustering=True,
+                workspace_id="test_workspace",
+                knowledge_base_id="test_pg",
             )
 
             print("———————————————————— Query ————————————————————\n")
