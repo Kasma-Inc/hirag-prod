@@ -361,6 +361,46 @@ Table content:
 **Output:**
 """
 
+PROMPTS[
+    "locate_excel_cell_en"
+] = """
+You are a meticulous Excel cell-location assistant. I will provide you with a passage and a reference Excel table (LaTeX format).
+Please strictly output a standard JSON, using the exact text as it appears in the Excel table (do not modify a single token or omit a single character).
+
+<Definitions>
+- Column label (x): the topmost row of the table (the horizontal header describing each column). Output to x.
+- Row label (y): the leftmost column of the table (the vertical header describing each row). Output to y.
+</Definitions>
+
+<Requirements>
+1. Return exactly one JSON object, and do not output anything other than the JSON (do not use code block markers).
+2. Never swap x and y: if it is a column name → put it in x; if it is a row name → put it in y.
+3. If only one can be determined, output an empty string "" for the other.
+4. Use the fixed JSON structure below, and keep it exactly identical to the original text from the Excel table (including case, spaces, and newline characters):
+{{
+  x: string
+  y: string
+}}
+5. If you cannot determine the answer, return {{"x": "", "y": ""}}.
+</Requirements>
+
+<Self-checklist>
+- Does x come from the top header? Does y come from the leftmost column?
+- Do x and/or y strictly come from the text appearing in the Excel table (including any newline and the text that follows it)?
+- Did you output only one JSON, with no extra text or punctuation?
+</Self-checklist>
+
+<Input text>
+{text_to_be_cited}
+</Input text>
+
+<Reference Excel (LaTeX format)>
+{excel_latex}
+</Reference Excel (LaTeX format)>
+
+**Output (JSON format):**
+"""
+
 # ===============================
 # Prompt(CN-Simplified): 简体中文提示词
 # ===============================
@@ -676,6 +716,46 @@ document.md 的内容
 </输入文本>
 
 **输出:**
+"""
+
+PROMPTS[
+    "locate_excel_cell_cn-s"
+] = """
+你是一个严谨的 excel 定位助手。我将给你一段文本和其参考的 excel (Latex 格式)。
+请严格输出一个标准的 JSON，使用 excel 中出现的原文 (一个词元都不能改，一个字符都不能少)
+
+<定义>
+- 列标签(x): 位于表格最上方的一行（横向表头，描述每一列）。输出到 x。
+- 行标签(y): 位于表格最左侧的一列（纵向表头，描述每一行）。输出到 y。
+</定义>
+
+<要求>
+1. 仅返回一个 JSON 对象，且不要输出除 JSON 之外的任何内容（不要使用代码块标记）。
+2. 绝不要交换 x 和 y：确定是列名 → 放到 x；确定是行名 → 放到 y。
+3. 如果只能确定其中一项，另一项请输出空字符串 ""。
+4. 固定 JSON 结构如下，并保持与 excel 原文完全一致（包括大小写、空格、换行符）：
+{{
+  x: string
+  y: string
+}}
+5. 如果无法判断，返回 {{"x": "", "y": ""}}。
+</要求>
+
+<自检清单>
+- x 是否来自顶端表头？y 是否来自最左列？
+- x 与/或 y 是否严格来自 excel 中出现的原文（包含换行及其后文本）？
+- 是否只输出了一个 JSON，且没有多余文本或标点？
+</自检清单>
+
+<输入文本>
+{text_to_be_cited}
+</输入文本>
+
+<参考的 excel (Latex 格式)>
+{excel_latex}
+</参考的 excel (Latex 格式)>
+
+**输出 (JSON 格式):**
 """
 
 # ===============================
@@ -1070,4 +1150,44 @@ Example 3:
 {today_date}
 
 **Output:**
+"""
+
+PROMPTS[
+    "locate_excel_cell_cn-t"
+] = """
+你是一個嚴謹的 excel 定位助手。我將給你一段文本和其參考的 excel (Latex 格式)。
+請嚴格輸出一個標準的 JSON，使用 excel 中出現的原文 (一個詞元都不能改，一個字元都不能少)
+
+<定義>
+- 列標籤(x): 位於表格最上方的一行（橫向表頭，描述每一列）。輸出到 x。
+- 行標籤(y): 位於表格最左側的一列（縱向表頭，描述每一行）。輸出到 y。
+</定義>
+
+<要求>
+1. 僅返回一個 JSON 對象，且不要輸出除 JSON 之外的任何內容（不要使用代碼塊標記）。
+2. 絕不要交換 x 和 y：確定是列名 → 放到 x；確定是行名 → 放到 y。
+3. 如果只能確定其中一項，另一項請輸出空字串 ""。
+4. 固定 JSON 結構如下，並保持與 excel 原文完全一致（包括大小寫、空格、換行符）：
+{{
+  x: string
+  y: string
+}}
+5. 如果無法判斷，返回 {{"x": "", "y": ""}}。
+</要求>
+
+<自檢清單>
+- x 是否來自頂端表頭？y 是否來自最左列？
+- x 與/或 y 是否嚴格來自 excel 中出現的原文（包含換行及其後文本）？
+- 是否只輸出了一個 JSON，且沒有多餘文本或標點？
+</自檢清單>
+
+<輸入文本>
+{text_to_be_cited}
+</輸入文本>
+
+<參考的 excel (Latex 格式)>
+{excel_latex}
+</參考的 excel (Latex 格式)>
+
+**輸出 (JSON 格式):**
 """

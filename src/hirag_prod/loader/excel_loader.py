@@ -105,11 +105,13 @@ async def load_and_chunk_excel(
             )
             item.caption = (caption or "None").strip()
             item.chunkType = "excel_sheet"
+            item.headers = [name]
 
             chunk = item_to_chunk(item)
             chunk.text = (latex or "None").strip()
             chunk.caption = (caption or "None").strip()
             chunk.chunkType = "excel_sheet"
+            chunk.headers = [name]
 
             items.append(item)
             chunks.append(chunk)
