@@ -6,7 +6,7 @@ import json_repair
 from openpyxl import Workbook, load_workbook
 
 from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_llm_config
+from hirag_prod.configs.functions import get_config_manager, get_llm_config
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
@@ -78,9 +78,9 @@ async def _extract_excel_cell_coord_by_llm(
     text_to_be_cited: str, excel_latex: str
 ) -> Tuple[Optional[str], Optional[str]]:
     try:
-        locate_excel_cell_prompt = PROMPTS["locate_excel_cell_cn-s"].format(
-            text_to_be_cited=text_to_be_cited, excel_latex=excel_latex
-        )
+        locate_excel_cell_prompt = PROMPTS[
+            "locate_excel_cell_" + get_config_manager().language
+        ].format(text_to_be_cited=text_to_be_cited, excel_latex=excel_latex)
         excel_cell_coord_result = await get_chat_service().complete(
             prompt=locate_excel_cell_prompt,
             model=get_llm_config().model_name,
