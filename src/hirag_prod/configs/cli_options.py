@@ -32,6 +32,11 @@ class CliOptions:
             choices=["T", "F", "True", "False", "true", "false"],
             help="Whether to save retrieved chunks to JSON file (default: F). Options: T/F, True/False, true/false",
         )
+        parser.add_argument(
+            "--no-insert",
+            action="store_true",
+            help="Skip document insertion to knowledge base (default: False). Use this to only perform queries without inserting documents.",
+        )
 
         try:
             args: Namespace = parser.parse_known_args()[0]
@@ -42,12 +47,14 @@ class CliOptions:
                 test="2",
                 summary="T",
                 save_json="F",
+                no_insert=False,
             )
 
         self.debug: bool = args.debug
         self.test: str = args.test
         self.summary: bool = self._parse_bool_string(args.summary)
         self.save_json: bool = self._parse_bool_string(args.save_json)
+        self.no_insert: bool = args.no_insert
 
     def _parse_bool_string(self, value: str) -> bool:
         """Convert string representation to boolean."""

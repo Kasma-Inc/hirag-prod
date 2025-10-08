@@ -278,7 +278,7 @@ def print_chunks_user_friendly(chunks):
         print()
 
 
-async def index(test_id="2", summary=True, save_json=False):
+async def index(test_id="2", summary=True, save_json=False, no_insert=False):
     index = await HiRAG.create()
 
     await index.set_language("en")  # en | cn
@@ -289,15 +289,18 @@ async def index(test_id="2", summary=True, save_json=False):
         document_path = [document_path]
         document_meta = [document_meta]
 
-    for dp, dm in zip(document_path, document_meta):
-        await index.insert_to_kb(
-            file_id="test_id",
-            document_path=dp,
-            content_type=content_type,
-            document_meta=dm,
-            workspace_id="test_workspace",
-            knowledge_base_id="test_pg",
-        )
+    if not no_insert:
+        for dp, dm in zip(document_path, document_meta):
+            await index.insert_to_kb(
+                file_id="test_id",
+                document_path=dp,
+                content_type=content_type,
+                document_meta=dm,
+                workspace_id="test_workspace",
+                knowledge_base_id="test_pg",
+            )
+    else:
+        print("Skipping document insertion (--no-insert flag enabled)")
 
     if isinstance(query, str):
         query = [query]
@@ -306,29 +309,47 @@ async def index(test_id="2", summary=True, save_json=False):
         for q in query:
             ret = await index.query(
                 query=q,
-                summary=summary,
+                summary=False,
                 workspace_id="test_workspace",
                 knowledge_base_id="test_pg",
-                threshold=0.001,
-                strategy="hybrid",
+                threshold=0.0,
+                strategy="raw",
                 translation=["en", "zh-TW", "zh"],
-                translator="qwen",
+                translator_type="qwen",
+            )
+
+            print("———————————————————— Raw Results ————————————————————\n")
+            print_chunks_user_friendly(ret["chunks"])
+
+            filtered_ret = await index.apply_strategy_to_chunks(
+                chunks_dict=ret,
+                strategy="hybrid",
+                filter_by_clustering=True,
+                workspace_id="test_workspace",
+                knowledge_base_id="test_pg",
             )
 
             print("———————————————————— Query ————————————————————\n")
             print(f"Query: {q}\n")
             print("———————————————————— Chunks ————————————————————\n")
-            print_chunks_user_friendly(ret["chunks"])
+            print_chunks_user_friendly(filtered_ret["chunks"])
+
+            filtered_ret["summary"] = await index.generate_summary(
+                workspace_id="test_workspace",
+                knowledge_base_id="test_pg",
+                chunks=filtered_ret["chunks"],
+                query=query,
+            )
 
             # Save chunks to JSON file if enabled
             if save_json:
                 save_chunks_to_json(
-                    ret["chunks"], q, f"logs/{test_id}_retrieved_chunks.json"
+                    filtered_ret["chunks"], q, f"logs/{test_id}_retrieved_chunks.json"
                 )
 
             if summary:
                 print("———————————————————— Summary ————————————————————\n")
-                print(ret["summary"])
+                print(filtered_ret["summary"])
             print("\n\n")
 
 
@@ -338,14 +359,16 @@ def main():
 
     # Print available tests for user reference
     print(f"\nRunning test: {cli_options.test}")
-    print(f"Summary: {cli_options.summary}\n")
-    print(f"Save JSON: {cli_options.save_json}\n")
+    print(f"Summary: {cli_options.summary}")
+    print(f"Save JSON: {cli_options.save_json}")
+    print(f"No Insert: {cli_options.no_insert}\n")
 
     asyncio.run(
         index(
             cli_options.test,
             cli_options.summary,
             cli_options.save_json,
+            cli_options.no_insert,
         )
     )
 

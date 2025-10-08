@@ -5,6 +5,7 @@ import logging
 import numbers
 import os
 import re
+from chunk import Chunk
 from functools import wraps
 from hashlib import md5
 from typing import (
@@ -393,8 +394,106 @@ async def _limited_gather_with_factory(
 
 
 # extract <ref>index</ref> tags in-order
-def extract_ref_indices(text: str) -> list[int]:
+def extract_ref_indices(text: str) -> List[list[int]]:
     """Extract <ref>index</ref> tags in-order and return their integer indices."""
     if not text:
+        return [[]]
+    return [[int(m)] for m in re.findall(r"<ref>\s*(\d+)\s*</ref>", text)]
+
+
+async def extract_ref_indices_from_markdown(
+    text: str,
+    chunk_list: List[Chunk],
+    threshold: float = 0.8,
+    concurrency: int = 4,
+) -> List[List[int]]:
+    """Extract text segments immediately preceding each [slot](x) inside fenced ```markdown blocks,
+    then, for each segment, rerank against the given chunk_list and return indices
+    of chunks passing threshold (>= threshold). If none pass, return the single best.
+
+    Returns:
+        List[List[int]]: citations per extracted segment, each a list of indices into chunk_list.
+    """
+    if not text:
         return []
-    return [int(m) for m in re.findall(r"<ref>\s*(\d+)\s*</ref>", text)]
+
+    markdown_blocks = re.findall(
+        r"```markdown\s*(.*?)\s*```", text, flags=re.DOTALL | re.IGNORECASE
+    )
+    if not markdown_blocks:
+        return []
+
+    markdown_content = "\n".join(markdown_blocks)
+    texts_to_cite: list[str] = []
+
+    last_slot_end: int = 0
+    for m in re.finditer(r"\[slot\]\((\d+)\)", markdown_content):
+        start = m.start()
+        i = start - 1
+        while i >= 0 and markdown_content[i].isspace():
+            i -= 1
+
+        end_term = i
+
+        prev_term = -1
+        j = end_term - 1
+        while j >= 0:
+            ch = markdown_content[j]
+            if ch == "\n":
+                prev_term = j
+                break
+            j -= 1
+
+        prev_term = max(prev_term, last_slot_end)
+        snippet = markdown_content[prev_term + 1 : end_term + 1].strip()
+
+        snippet = re.sub(r"^(?:>\s*)?(?:[-*+]\s+|\d+\.\s+|#{1,6}\s+)\s*", "", snippet)
+
+        texts_to_cite.append(snippet)
+        last_slot_end = m.end()
+
+    if not texts_to_cite or not chunk_list:
+        return [[] for _ in texts_to_cite]
+
+    from hirag_prod.resources.functions import get_reranker
+
+    reranker = get_reranker()
+
+    items = [{"text": c["text"], "list_index": i} for i, c in enumerate(chunk_list)]
+
+    async def _rank_one(q: str):
+        try:
+            reranked = await reranker.rerank(q, items, key="text")
+            return reranked or []
+        except Exception as e:
+            log_error_info(logging.ERROR, "Reranking failed", e)
+            return []
+
+    factories = [lambda q=q: _rank_one(q) for q in texts_to_cite]
+    reranked_lists = await _limited_gather_with_factory(
+        factories, limit=concurrency, max_retries=3, retry_delay=1.0
+    )
+
+    results: List[List[int]] = []
+    for reranked in reranked_lists:
+        if not reranked:
+            results.append([])
+            continue
+        indices = [
+            element.get("list_index")
+            for element in reranked
+            if element.get("relevance_score", 0.0) >= threshold
+        ]
+        if indices:
+            seen = set()
+            selected = []
+            for idx in indices:
+                if idx is not None and idx not in seen:
+                    seen.add(idx)
+                    selected.append(idx)
+            results.append(selected)
+        else:
+            best = reranked[0].get("list_index")
+            results.append([best] if best is not None else [])
+
+    return results

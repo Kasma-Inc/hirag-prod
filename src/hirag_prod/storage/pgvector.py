@@ -11,7 +11,7 @@ from sqlalchemy.orm import load_only
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.configs.functions import get_init_config
+from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.resources.functions import (
     get_db_engine,
@@ -23,13 +23,8 @@ from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, 
 from hirag_prod.schema.graph import create_graph
 from hirag_prod.schema.node import create_node
 from hirag_prod.storage.base_vdb import BaseVDB
-from hirag_prod.storage.retrieval_strategy_provider import RetrievalStrategyProvider
 
 logger = logging.getLogger(__name__)
-
-THRESHOLD_DISTANCE = get_init_config().default_distance_threshold
-TOPK = get_init_config().default_query_top_k
-TOPN = get_init_config().default_query_top_n
 
 
 # extends to implement PostgreSQL-based vdb with pgvector support
@@ -41,7 +36,6 @@ class PGVector(BaseVDB):
 
     Attributes:
         embedding_func (Optional[AsyncEmbeddingFunction]): Function to generate text embeddings.
-        strategy_provider (RetrievalStrategyProvider): Handles result ranking.
         vector_type (str): Type of vector storage ('vector' or 'halfvec').
         tables (dict): Mapping of table names to model classes.
     """
@@ -49,11 +43,9 @@ class PGVector(BaseVDB):
     def __init__(
         self,
         embedding_func: Optional[AsyncEmbeddingFunction],
-        strategy_provider: "RetrievalStrategyProvider",
         vector_type: Literal["vector", "halfvec"] = "halfvec",
     ):
         self.embedding_func = embedding_func
-        self.strategy_provider = strategy_provider
         self.vector_type = vector_type
         self.tables = {
             "Chunks": Chunk,
@@ -79,10 +71,9 @@ class PGVector(BaseVDB):
     def create(
         cls,
         embedding_func: Optional[AsyncEmbeddingFunction],
-        strategy_provider: "RetrievalStrategyProvider",
         vector_type: Literal["vector", "halfvec"] = "halfvec",
     ):
-        instance = cls(embedding_func, strategy_provider, vector_type=vector_type)
+        instance = cls(embedding_func, vector_type=vector_type)
         return instance
 
     # batch upserts text embeddings into the specified table
@@ -462,7 +453,7 @@ class PGVector(BaseVDB):
         self,
         table_name: str,
         where: Dict[str, Any],
-    ):
+    ) -> bool:
         # Clean all rows matching the where criteria
         # where {"key": "value"}
         model = self.get_model(table_name)
@@ -479,6 +470,7 @@ class PGVector(BaseVDB):
             logger.info(
                 f"[clean_table] Cleaned {rows_deleted} rows from table '{table_name}', elapsed={elapsed:.3f}s"
             )
+            return rows_deleted != 0
 
     async def upsert_file(
         self,
@@ -531,20 +523,23 @@ class PGVector(BaseVDB):
         workspace_id: str,
         knowledge_base_id: str,
         table_name: str,
-        topk: Optional[int] = TOPK,
-        topn: Optional[int] = TOPN,
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
         uri_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
-        distance_threshold: Optional[float] = THRESHOLD_DISTANCE,
+        distance_threshold: Optional[float] = None,
     ) -> List[dict]:
         if isinstance(query, str):
             query = [query]
 
-        if topk is None:
-            topk = self.strategy_provider.default_topk
-        if topn is None:
-            topn = self.strategy_provider.default_topn
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
+        distance_threshold = (
+            distance_threshold
+            if distance_threshold
+            else get_hi_rag_config().default_distance_threshold
+        )
 
         if topn > topk:
             raise ValueError(f"topn ({topn}) must be <= topk ({topk})")

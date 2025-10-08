@@ -4,14 +4,10 @@ import logging
 import statistics
 import time
 from collections import defaultdict
-from typing import Any, Dict, List
-
-from hirag_prod.configs.functions import get_init_config
-
-TOPN = get_init_config().default_query_top_n
-TOPK = get_init_config().default_query_top_k
+from typing import Any, Dict, List, Optional
 
 from hirag_prod import HiRAG
+from hirag_prod.configs.functions import get_hi_rag_config
 
 # Configure logging with more detailed format
 logging.basicConfig(
@@ -147,7 +143,7 @@ async def extract_chunk_ids_from_graph_retrieval(
 
 
 async def rerank_chunks_with_query(
-    index: HiRAG, chunk_ids: List[str], query: str, topn: int = 5
+    index: HiRAG, chunk_ids: List[str], query: str, topn: Optional[int] = None
 ) -> List[str]:
     """
     Rerank retrieved chunks using the same VoyageAI reranker as the system
@@ -164,6 +160,8 @@ async def rerank_chunks_with_query(
     """
     if not chunk_ids:
         return []
+
+    topn = topn if topn is not None else get_hi_rag_config().default_query_top_n
 
     if len(chunk_ids) <= topn:
         # If we have few chunks, get their texts and return them
@@ -266,6 +264,9 @@ async def evaluate_single_question_graphrag(
     question = question_data["question"]
     supporting_facts = question_data["supporting_facts"]
 
+    topn = get_hi_rag_config().default_query_top_n
+    topk = get_hi_rag_config().default_query_top_k
+
     logger.info(
         f"[{question_idx + 1}/{total_questions}] Processing: {question[:100]}..."
     )
@@ -282,12 +283,12 @@ async def evaluate_single_question_graphrag(
         try:
             # Perform entity and relation retrieval
             logger.debug(f"[{question_idx + 1}] Retrieving entities...")
-            entities = await index.query_entities(question, topk=TOPK, topn=TOPN)
+            entities = await index.query_entities(question, topk=topk, topn=topn)
             logger.debug(f"[{question_idx + 1}] Retrieved {len(entities)} entities")
 
             logger.debug(f"[{question_idx + 1}] Retrieving relations...")
             neighbors, relations = await index.query_relations(
-                question, topk=TOPK, topn=TOPN
+                question, topk=topk, topn=topn
             )
             logger.debug(
                 f"[{question_idx + 1}] Retrieved {len(neighbors)} neighbors, {len(relations)} relations"
@@ -306,7 +307,7 @@ async def evaluate_single_question_graphrag(
         # Rerank chunks using the same reranker as the system
         logger.debug(f"[{question_idx + 1}] Reranking chunks...")
         retrieved_chunks = await rerank_chunks_with_query(
-            index, chunk_ids, question, topn=TOPN
+            index, chunk_ids, question, topn=topn
         )
 
         retrieval_time = time.time() - start_time

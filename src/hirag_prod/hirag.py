@@ -52,9 +52,7 @@ from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
-    LanceDB,
     NetworkXGDB,
-    RetrievalStrategyProvider,
 )
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
@@ -100,18 +98,18 @@ class DocumentProcessor:
 
         async with self.metrics.track_operation("clear_document"):
             where_dict = {
-                "documentId": document_id,
-                "workspaceId": workspace_id,
-                "knowledgeBaseId": knowledge_base_id,
-            }
-            await self.storage.clean_vdb_document(where=where_dict)
-
-            where_dict = {
                 "documentKey": document_id,
                 "workspaceId": workspace_id,
                 "knowledgeBaseId": knowledge_base_id,
             }
-            await self.storage.clean_vdb_file(where=where_dict)
+            is_exist = await self.storage.clean_vdb_file(where=where_dict)
+            if is_exist:
+                where_dict = {
+                    "documentId": document_id,
+                    "workspaceId": workspace_id,
+                    "knowledgeBaseId": knowledge_base_id,
+                }
+                await self.storage.clean_vdb_document(where=where_dict)
 
         return self.metrics.metrics
 
@@ -145,6 +143,12 @@ class DocumentProcessor:
                         await self.job_status_tracker.set_job_status(
                             job_id=job_id, status=JobStatus.FAILED
                         )
+                        await self.clear_document(
+                            document_id=document_meta["documentKey"],
+                            workspace_id=workspace_id,
+                            knowledge_base_id=knowledge_base_id,
+                        )
+
                     except Exception as e:
                         log_error_info(
                             logging.ERROR,
@@ -336,7 +340,7 @@ class DocumentProcessor:
             except Exception as e:
                 log_error_info(
                     logging.ERROR,
-                    f"Failed to loading document {document_path}",
+                    f"Failed to load document {document_path}",
                     e,
                     raise_error=True,
                     new_error_class=DocumentProcessingError,
@@ -496,16 +500,9 @@ class HiRAG:
     ) -> None:
         # Build VDB by type
         if vdb is None:
-            if get_hi_rag_config().vdb_type == "lancedb":
-                vdb = await LanceDB.create(
-                    embedding_func=get_embedding_service().create_embeddings,
-                    db_url=get_hi_rag_config().vector_db_path,
-                    strategy_provider=RetrievalStrategyProvider(),
-                )
-            elif get_hi_rag_config().vdb_type == "pgvector":
+            if get_hi_rag_config().vdb_type == "pgvector":
                 vdb = PGVector.create(
                     embedding_func=get_embedding_service().create_embeddings,
-                    strategy_provider=RetrievalStrategyProvider(),
                     vector_type="halfvec",
                 )
 
@@ -1042,6 +1039,11 @@ class HiRAG:
                     await self._processor.job_status_tracker.set_job_status(
                         job_id=job_id, status=JobStatus.FAILED
                     )
+                    await self._processor.clear_document(
+                        document_id=document_id,
+                        workspace_id=workspace_id,
+                        knowledge_base_id=knowledge_base_id,
+                    )
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
@@ -1057,6 +1059,34 @@ class HiRAG:
 
         return await self._query_service.query_chunks(*args, **kwargs)
 
+    async def apply_strategy_to_chunks(
+        self,
+        chunks_dict: Dict[str, Any],
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        workspace_id: Optional[str] = None,
+        knowledge_base_id: Optional[str] = None,
+        filter_by_clustering: bool = True,
+    ) -> Dict[str, Any]:
+        """Apply retrieval strategy to a given set of chunks"""
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+
+        query = chunks_dict.get("query", "")
+        chunks = chunks_dict.get("chunks", [])
+        if not query:
+            raise HiRAGException("Query text is required in chunks_dict")
+        if not chunks:
+            raise HiRAGException("Chunks are required in chunks_dict")
+
+        return await self._query_service.apply_strategy_to_chunks(
+            chunks=chunks,
+            query=query,
+            strategy=strategy,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            filter_by_clustering=filter_by_clustering,
+        )
+
     async def query(
         self,
         query: str,
@@ -1066,7 +1096,7 @@ class HiRAG:
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
         translator_type: Literal["google", "qwen"] = "qwen",
-        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         filter_by_clustering: bool = True,
     ) -> Dict[str, Any]:
         """Query all types of data"""
@@ -1116,6 +1146,8 @@ class HiRAG:
             strategy=strategy,
             filter_by_clustering=filter_by_clustering,
         )
+
+        query_results["query"] = query_list
 
         # Filter chunks by threshold on relevance score
         if threshold > 0.0 and query_results.get("chunks"):

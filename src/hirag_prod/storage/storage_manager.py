@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import select
 
 from hirag_prod._utils import log_error_info, retry_async
-from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
+from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import (
@@ -16,13 +16,10 @@ from hirag_prod.schema import (
 from hirag_prod.storage import (
     BaseGDB,
     BaseVDB,
-    LanceDB,
 )
 from hirag_prod.storage.pgvector import PGVector
 
 logger = logging.getLogger("HiRAG")
-TOPK = get_init_config().default_query_top_k
-TOPN = get_init_config().default_query_top_n
 
 
 class StorageManager:
@@ -61,8 +58,9 @@ class StorageManager:
         await self.vdb.clean_table(table_name="Nodes", where=where)
 
     @retry_async()
-    async def clean_vdb_file(self, where: Dict[str, Any]) -> None:
-        await self.vdb.clean_table(table_name="Files", where=where)
+    async def clean_vdb_file(self, where: Dict[str, Any]) -> bool:
+        is_exist = await self.vdb.clean_table(table_name="Files", where=where)
+        return is_exist
 
     @retry_async()
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
@@ -168,13 +166,15 @@ class StorageManager:
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Chunks",
-            topk=topk or TOPK,
-            topn=topn or TOPN,
+            topk=topk,
+            topn=topn,
             columns_to_select=[
                 "text",
                 "uri",
@@ -195,13 +195,16 @@ class StorageManager:
         topk: int = None,
         topn: int = None,
     ) -> List[Dict[str, Any]]:
+        topk = topk if topk else get_hi_rag_config().default_query_top_k
+        topn = topn if topn else get_hi_rag_config().default_query_top_n
+
         rows = await self.vdb.query(
             query=query,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
             table_name="Triplets",
-            topk=topk if topk else TOPK,
-            topn=topn if topn else TOPN,
+            topk=topk,
+            topn=topn,
             columns_to_select=["source", "target", "description", "fileName"],
         )
         return rows
@@ -227,9 +230,7 @@ class StorageManager:
     async def health_check(self) -> Dict[str, bool]:
         health: Dict[str, bool] = {}
         try:
-            if isinstance(self.vdb, LanceDB):
-                await self.vdb.db.table_names()
-            elif isinstance(self.vdb, PGVector):
+            if isinstance(self.vdb, PGVector):
                 async with get_resource_manager().get_session_maker()() as s:
                     await s.execute(select(1))
             health["vdb"] = True

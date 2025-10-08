@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -103,7 +103,7 @@ class QueryService:
 
     async def filter_chunks_by_cluster(
         self, workspace_id: str, knowledge_base_id: str, chunks: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    ) -> List[Dict[str, Any]]:
         # Apply clustering
         chunk_ids = [
             chunk.get("documentKey") for chunk in chunks if chunk.get("documentKey")
@@ -117,7 +117,7 @@ class QueryService:
         # Print cluster info
         logger.info(f"Clustering result: {cluster_info}")
         if not clusters:
-            return chunks
+            return chunks, []
 
         # Id to chunk map
         id_to_chunk = {
@@ -131,36 +131,26 @@ class QueryService:
         outlier_chunks = []
         for cluster_id, chunk_keys in clusters.items():
             latest_chunks = []
+            latest_timestamp = datetime.min
             for chunk_key in chunk_keys:
                 chunk = id_to_chunk.get(chunk_key)
                 if chunk:
-                    if (len(latest_chunks) == 0) or (
-                        (chunk.get("extractedTimestamp", None) is not None)
-                        and (
-                            (latest_chunks[0].get("extractedTimestamp", None) is None)
-                            or (
-                                chunk["extractedTimestamp"]
-                                > latest_chunks[0]["extractedTimestamp"]
-                            )
-                        )
-                    ):
+                    timestamp = (
+                        chunk.get("extractedTimestamp", datetime.min) or datetime.min
+                    )
+                    if not latest_chunks or timestamp > latest_timestamp:
                         latest_chunks = [chunk]
-                    elif chunk.get("extractedTimestamp", datetime.min) == latest_chunks[
-                        0
-                    ].get("extractedTimestamp", datetime.min):
+                        latest_timestamp = timestamp
+                    elif timestamp == latest_timestamp:
                         latest_chunks.append(chunk)
             # According to logic, all chunks in latest_chunks should have the same fileName
             filtered_chunks.extend(latest_chunks)
-
-        for chunk in chunks:
-            if chunk not in filtered_chunks:
-                outlier_chunks.append(chunk)
 
         logger.info(
             f"After clustering filter: {len(filtered_chunks)} chunks kept, {len(outlier_chunks)} outliers"
         )
 
-        return filtered_chunks, outlier_chunks
+        return filtered_chunks
 
     async def recall_chunks(self, *args, **kwargs) -> Dict[str, Any]:
         """Recall chunks and return both raw results and extracted chunk_ids.
@@ -170,28 +160,12 @@ class QueryService:
                 - "chunks": raw chunk search results
                 - "chunk_ids": list of document_key values
         """
-        # Extract workspace_id and knowledge_base_id from kwargs for clustering
-        filter_by_clustering = kwargs.pop("filter_by_clustering", False)
-        workspace_id = kwargs.get("workspace_id")
-        knowledge_base_id = kwargs.get("knowledge_base_id")
-
         chunks = await self.query_chunks(*args, **kwargs)
         chunk_ids = [c.get("documentKey") for c in chunks if c.get("documentKey")]
-
-        if filter_by_clustering:
-            if not workspace_id or not knowledge_base_id:
-                logger.warning(
-                    "workspace_id and knowledge_base_id are required for clustering filter"
-                )
-            else:
-                chunks, outlier_chunks = await self.filter_chunks_by_cluster(
-                    workspace_id, knowledge_base_id, chunks
-                )
 
         return {
             "chunks": chunks,
             "chunk_ids": chunk_ids,
-            "outlier_chunks": outlier_chunks,
         }
 
     async def query_triplets(self, *args, **kwargs) -> List[Dict[str, Any]]:
@@ -269,12 +243,12 @@ class QueryService:
         by_id = {row.get("documentKey"): row for row in rows}
         return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
-    async def dual_recall_with_pagerank(
+    async def pagerank_chunks(
         self,
         query: Union[str, List[str]],
+        query_chunks: List[Dict[str, Any]],
         workspace_id: str,
         knowledge_base_id: str,
-        filter_by_clustering: bool,
         topk: Optional[int] = None,
         topn: Optional[int] = None,
         link_top_k: Optional[int] = None,
@@ -298,17 +272,9 @@ class QueryService:
 
         damping = damping or get_hi_rag_config().default_pagerank_damping
 
-        # Path 1: chunk recall (rerank happens in VDB query)
-        chunk_recall = await self.recall_chunks(
-            query,
-            topk=topk,
-            topn=topn,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-            filter_by_clustering=filter_by_clustering,
-        )
-        query_chunks = chunk_recall["chunks"]
-        query_chunk_ids = chunk_recall["chunk_ids"]
+        query_chunk_ids = [
+            c.get("documentKey") for c in query_chunks if c.get("documentKey")
+        ]
 
         # Path 2: triplet recall -> entity seeds
         triplet_recall = await self.recall_triplets(
@@ -323,7 +289,7 @@ class QueryService:
 
         # Build passage weights from chunk ranks (approximate DPR)
         passage_weights: Dict[str, float] = {}
-        if chunk_recall["chunk_ids"]:
+        if query_chunk_ids:
             # Inverse-rank weights then min-max normalize
             raw_weights = []
             for rank, cid in enumerate(query_chunk_ids):
@@ -426,59 +392,12 @@ class QueryService:
             pr_ids, workspace_id=workspace_id, knowledge_base_id=knowledge_base_id
         )
 
-        pr_rows, outlier_rows = await self.filter_chunks_by_cluster(
-            workspace_id, knowledge_base_id, pr_rows
-        )
-
         pr_score_map = {cid: score for cid, score in pr_ranked}
         for row in pr_rows:
             row["pagerank_score"] = pr_score_map.get(row.get("documentKey"), 0.0)
 
         return {
             "pagerank": pr_rows,
-            "outlier_chunks": outlier_rows,
-            "query_top": query_chunks,
-        }
-
-    async def dual_recall_with_rerank(
-        self,
-        query: Union[str, List[str]],
-        workspace_id: str,
-        knowledge_base_id: str,
-        filter_by_clustering: bool,
-        topk: Optional[int] = None,
-        topn: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Two-path retrieval + Reranking fusion."""
-        topk = topk or get_hi_rag_config().default_query_top_k
-        topn = topn or get_hi_rag_config().default_query_top_n
-
-        # Path 1: chunk recall
-        chunk_recall = await self.recall_chunks(
-            query,
-            topk=topk,
-            topn=topn,
-            workspace_id=workspace_id,
-            knowledge_base_id=knowledge_base_id,
-            filter_by_clustering=filter_by_clustering,
-        )
-        query_chunks = chunk_recall["chunks"]
-
-        # rerank
-        if query_chunks:
-            try:
-                reranked_chunks = await apply_reranking(
-                    query=query,
-                    results=query_chunks,
-                    topk=topk,
-                    topn=topn,
-                    rerank_with_time=True,
-                )
-                query_chunks = reranked_chunks
-            except Exception as e:
-                log_error_info(logging.ERROR, "Failed to rerank chunks", e)
-
-        return {
             "query_top": query_chunks,
         }
 
@@ -488,77 +407,103 @@ class QueryService:
         knowledge_base_id: str,
         query: Union[str, List[str]],
         filter_by_clustering: bool,
-        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         topk: Optional[int] = None,
         topn: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Query Strategy"""
-        if strategy == "reranker":
-            result = await self.dual_recall_with_rerank(
-                topk=topk,
-                topn=topn,
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+
+        chunk_recall = await self.recall_chunks(
+            query=query,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            topk=topk,
+            topn=topn,
+        )
+
+        if strategy == "raw":
+            return chunk_recall
+
+        chunks = chunk_recall.get("chunks", [])
+        return await self.apply_strategy_to_chunks(
+            chunks=chunks,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            query=query,
+            filter_by_clustering=filter_by_clustering,
+            strategy=strategy,
+            topk=topk,
+            topn=topn,
+        )
+
+    async def apply_strategy_to_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        workspace_id: str,
+        knowledge_base_id: str,
+        query: Union[str, List[str]],
+        filter_by_clustering: bool,
+        strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
+        topk: Optional[int] = None,
+        topn: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Apply reranking to an existing list of chunks."""
+        if not chunks:
+            return {"chunks": [], "outliers": []}
+
+        topk = topk or get_hi_rag_config().default_query_top_k
+        topn = topn or get_hi_rag_config().default_query_top_n
+
+        result = {"chunks": chunks, "outliers": []}
+
+        # If pagerank or hybrid, do pagerank first
+        if strategy in ["pagerank", "hybrid"]:
+            pagerank_result = await self.pagerank_chunks(
                 query=query,
+                query_chunks=chunks,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
-            )
-            result["chunks"] = result.get("query_top", [])
-            return result
-        elif strategy == "pagerank":
-            result = await self.dual_recall_with_pagerank(
                 topk=topk,
                 topn=topn,
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
             )
             result["chunks"] = (
-                result.get("pagerank")
-                if result.get("pagerank")
-                else result.get("query_top", [])
-            )
-            return result
-        elif strategy == "hybrid":
-            # First get pagerank results
-            pagerank_result = await self.dual_recall_with_pagerank(
-                topk=topk,
-                topn=topn,
-                query=query,
-                workspace_id=workspace_id,
-                knowledge_base_id=knowledge_base_id,
-                filter_by_clustering=filter_by_clustering,
-            )
-
-            # Use pagerank results if available, otherwise fall back to query_top
-            chunks_to_rerank = (
                 pagerank_result.get("pagerank")
                 if pagerank_result.get("pagerank")
                 else pagerank_result.get("query_top", [])
             )
+            logger.info(f"After pagerank: {len(result['chunks'])} chunks")
 
-            # Apply reranking to the pagerank results
-            if chunks_to_rerank:
-                try:
-                    topk = topk or get_hi_rag_config().default_query_top_k
-                    topn = topn or get_hi_rag_config().default_query_top_n
-                    reranked_chunks = await apply_reranking(
-                        query=query,
-                        results=chunks_to_rerank,
-                        topk=topk,
-                        topn=topn,
-                        rerank_with_time=True,
-                    )
-                    chunks_to_rerank = reranked_chunks
-                except Exception as e:
-                    log_error_info(
-                        logging.ERROR, "Failed to rerank chunks in hybrid strategy", e
-                    )
+        # If filter by clustering, apply clustering filter
+        if filter_by_clustering:
+            result["chunks"] = await self.filter_chunks_by_cluster(
+                workspace_id, knowledge_base_id, result["chunks"]
+            )
+            logger.info(f"After clustering filter: {len(result['chunks'])} chunks")
 
-            return {
-                "chunks": chunks_to_rerank,
-                "pagerank": pagerank_result.get("pagerank", []),
-                "query_top": pagerank_result.get("query_top", []),
-            }
-        else:
-            raise ValueError(f"Unknown query strategy: {strategy}")
+        # If reranker or hybrid, do reranking
+        if strategy in ["reranker", "hybrid"]:
+            try:
+                result["chunks"] = await apply_reranking(
+                    query=query,
+                    results=result["chunks"],
+                    topk=topk,
+                    topn=topn,
+                    rerank_with_time=True,
+                )
+                logger.info(f"After reranking: {len(result['chunks'])} chunks")
+            except Exception as e:
+                log_error_info(
+                    logging.ERROR, "Failed to rerank chunks in apply_strategy", e
+                )
+
+        # Get the outliers
+        filtered_chunk_ids = {c.get("documentKey") for c in result["chunks"]}
+        outlier_chunks = []
+        for c in chunks:
+            if c.get("documentKey") not in filtered_chunk_ids:
+                outlier_chunks.append(c)
+        result["outliers"] = outlier_chunks
+
+        return result
