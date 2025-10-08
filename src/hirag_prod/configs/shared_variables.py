@@ -2,8 +2,6 @@ import multiprocessing.synchronize
 from multiprocessing.sharedctypes import Synchronized
 from typing import Dict
 
-from hirag_prod.configs.functions import get_envs
-
 
 class SharedVariables:
     def __init__(self, is_main_process: bool = True, **kwargs) -> None:
@@ -13,15 +11,12 @@ class SharedVariables:
         self.rate_limiter_wait_lock_dict: Dict[
             str, multiprocessing.synchronize.Lock
         ] = kwargs.get("rate_limiter_wait_lock_dict", {})
-
-        enable_token_count = get_envs().get("ENABLE_TOKEN_COUNT", False)
-        if enable_token_count:
-            self.input_token_count_dict: Dict[str, multiprocessing.synchronize.Lock] = (
-                kwargs.get("input_token_count_dict", {})
-            )
-            self.output_token_count_dict: Dict[
-                str, multiprocessing.synchronize.Lock
-            ] = kwargs.get("output_token_count_dict", {})
+        self.input_token_count_dict: Dict[str, multiprocessing.synchronize.Lock] = (
+            kwargs.get("input_token_count_dict", {})
+        )
+        self.output_token_count_dict: Dict[str, multiprocessing.synchronize.Lock] = (
+            kwargs.get("output_token_count_dict", {})
+        )
 
         if is_main_process:
             from hirag_prod import _llm
@@ -48,20 +43,6 @@ class SharedVariables:
                 if rate_limiter_name not in self.rate_limiter_wait_lock_dict:
                     self.rate_limiter_wait_lock_dict[rate_limiter_name] = (
                         multiprocessing.Lock()
-                    )
-                if (
-                    enable_token_count
-                    and rate_limiter_name not in self.input_token_count_dict
-                ):
-                    self.input_token_count_dict[rate_limiter_name] = (
-                        multiprocessing.Value("i", 0)
-                    )
-                if (
-                    enable_token_count
-                    and rate_limiter_name not in self.output_token_count_dict
-                ):
-                    self.output_token_count_dict[rate_limiter_name] = (
-                        multiprocessing.Value("i", 0)
                     )
 
     def to_dict(self):
