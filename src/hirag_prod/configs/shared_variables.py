@@ -44,6 +44,14 @@ class SharedVariables:
                     self.rate_limiter_wait_lock_dict[rate_limiter_name] = (
                         multiprocessing.Lock()
                     )
+                if rate_limiter_name not in self.input_token_count_dict:
+                    self.input_token_count_dict[rate_limiter_name] = (
+                        multiprocessing.Value("i", 0)
+                    )
+                if rate_limiter_name not in self.output_token_count_dict:
+                    self.output_token_count_dict[rate_limiter_name] = (
+                        multiprocessing.Value("i", 0)
+                    )
 
     def to_dict(self):
         return {
