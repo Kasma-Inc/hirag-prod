@@ -386,7 +386,14 @@ class ChatCompletion(metaclass=SingletonMeta):
             )
 
         # Track token usage
-        self._token_tracker.track_usage(response.usage, model, prompt)
+        token_usage = self._token_tracker.track_usage(response.usage, model, prompt)
+        if get_env().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict[
+                model
+            ] += token_usage.prompt_tokens
+            get_shared_variables().output_token_count_dict[
+                model
+            ] += token_usage.completion_tokens
 
         if response_format is None:
             return response.choices[0].message.content
@@ -477,7 +484,14 @@ class LocalChatService:
                 self.total_tokens = usage_dict["total_tokens"]
 
         usage_data = UsageData(response["usage"])
-        self._token_tracker.track_usage(usage_data, model, prompt)
+        token_usage = self._token_tracker.track_usage(usage_data, model, prompt)
+        if get_env().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict[
+                model
+            ] += token_usage.prompt_tokens
+            get_shared_variables().output_token_count_dict[
+                model
+            ] += token_usage.completion_tokens
 
         return response["choices"][0]["message"]["content"]
 
@@ -667,6 +681,15 @@ class EmbeddingService(metaclass=SingletonMeta):
         response = await self.client.embeddings.create(
             model=model, input=texts, encoding_format="float"
         )
+        token_usage = response.usage
+        if get_env().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict[
+                model
+            ] += token_usage.prompt_tokens
+            get_shared_variables().output_token_count_dict[model] += (
+                token_usage.total_tokens - token_usage.prompt_tokens
+            )
+
         return np.array([dp.embedding for dp in response.data])
 
     async def create_embeddings(
@@ -765,6 +788,7 @@ class LocalEmbeddingService:
     ) -> np.ndarray:
         """Create embeddings for a single batch of texts (internal method)"""
         embeddings_list = await self.client.create_embeddings(texts)
+
         return np.array(embeddings_list)
 
     async def create_embeddings(
