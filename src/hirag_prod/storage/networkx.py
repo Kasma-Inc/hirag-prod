@@ -11,7 +11,6 @@ from hirag_prod._utils import _limited_gather_with_factory, log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.schema import Entity, Relation
 from hirag_prod.storage.base_gdb import BaseGDB
-from hirag_prod.summarization import BaseSummarizer, TrancatedAggregateSummarizer
 
 
 @dataclass
@@ -20,7 +19,6 @@ class NetworkXGDB(BaseGDB):
     graph: nx.DiGraph
     llm_func: Callable
     llm_model_name: str
-    summarizer: Optional[BaseSummarizer]
 
     @classmethod
     def create(
@@ -28,22 +26,16 @@ class NetworkXGDB(BaseGDB):
         path: str,
         llm_func: Callable,
         llm_model_name: str = "gpt-4o-mini",
-        summarizer: Optional[BaseSummarizer] = None,
     ):
         if not os.path.exists(path):
             graph = nx.DiGraph()
         else:
-            graph = cls.load(path)
-        if summarizer is None:
-            summarizer = TrancatedAggregateSummarizer(
-                extract_func=llm_func, llm_model_name=llm_model_name
-            )
+            graph = cls.load(path)  
         return cls(
             path=path,
             graph=graph,
             llm_func=llm_func,
             llm_model_name=llm_model_name,
-            summarizer=summarizer,
         )
 
     async def _upsert_node(
