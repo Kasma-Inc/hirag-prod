@@ -14,7 +14,6 @@ from hirag_prod.schema import (
     Relation,
 )
 from hirag_prod.storage import (
-    BaseGDB,
     BaseVDB,
 )
 from hirag_prod.storage.pgvector import PGVector
@@ -28,10 +27,8 @@ class StorageManager:
     def __init__(
         self,
         vdb: BaseVDB,
-        gdb: BaseGDB,
     ):
         self.vdb = vdb
-        self.gdb = gdb
         self.files_table = None
 
     async def initialize(self) -> None:
@@ -238,16 +235,7 @@ class StorageManager:
             log_error_info(logging.WARNING, "VDB health check failed", e)
             health["vdb"] = False
 
-        try:
-            await self.gdb.health_check() if hasattr(self.gdb, "health_check") else None
-            health["gdb"] = True
-        except Exception as e:
-            log_error_info(logging.WARNING, "GDB health check failed", e)
-            health["gdb"] = False
         return health
 
     async def cleanup(self) -> None:
-        try:
-            await self.gdb.clean_up()
-        except Exception as e:
-            log_error_info(logging.WARNING, "Cleanup failed", e)
+        pass
