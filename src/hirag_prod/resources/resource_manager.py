@@ -417,3 +417,8 @@ class ResourceManager:
         finally:
             if ensure_init_lock:
                 self._ensure_init_lock().release()
+
+    @classmethod
+    def reset(cls):
+        del cls._instance
+        cls._instance = None

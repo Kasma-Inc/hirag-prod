@@ -3,7 +3,10 @@ from typing import Dict, List, Union
 
 import httpx
 
+from ..rate_limiter import RateLimiter
 from .base import Reranker
+
+rate_limiter = RateLimiter()
 
 
 class ApiReranker(Reranker):
@@ -12,6 +15,9 @@ class ApiReranker(Reranker):
         self.endpoint = endpoint
         self.model = model
 
+    @rate_limiter.limit(
+        "reranker", "RERANKER_RATE_LIMIT", "RERANKER_RATE_LIMIT_TIME_UNIT"
+    )
     async def rerank(
         self,
         query: Union[str, List[str]],

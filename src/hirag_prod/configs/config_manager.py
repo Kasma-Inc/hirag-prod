@@ -9,6 +9,7 @@ from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
 from hirag_prod.configs.qwen_translator_config import QwenTranslatorConfig
 from hirag_prod.configs.reranker_config import RerankConfig
+from hirag_prod.configs.shared_variables import SharedVariables
 
 
 class ConfigManager:
@@ -26,12 +27,16 @@ class ConfigManager:
         self,
         cli_options_dict: Optional[Dict] = None,
         config_dict: Optional[Dict] = None,
+        shared_variable_dict: Optional[Dict] = None,
     ) -> None:
         if getattr(self, "_created", False):
             return
 
+        self.is_main_process: bool = (
+            config_dict["is_main_process"] if config_dict is not None else True
+        )
         self.debug: bool = cli_options_dict["debug"]
-        self.envs: Envs = Envs(**config_dict if config_dict else {})
+        self.envs: Envs = Envs(**config_dict if config_dict is not None else {})
         self.hi_rag_config = HiRAGConfig(**self.envs.model_dump())
         self.embedding_config: EmbeddingConfig = EmbeddingConfig(
             **self.envs.model_dump()
@@ -85,7 +90,17 @@ class ConfigManager:
                 "postgresql+asyncpg://", "postgresql://", 1
             )
 
+        self.shared_variables: SharedVariables = SharedVariables(
+            self.is_main_process,
+            **shared_variable_dict if shared_variable_dict is not None else {},
+        )
+
         self._created: bool = True
+
+    @classmethod
+    def reset(cls):
+        del cls._instance
+        cls._instance = None
 
     @property
     def qwen_translator_config(self) -> QwenTranslatorConfig:

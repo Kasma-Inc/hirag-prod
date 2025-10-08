@@ -6,7 +6,10 @@ from typing import Dict, List, Union
 
 import httpx
 
+from ..rate_limiter import RateLimiter
 from .base import Reranker
+
+rate_limiter = RateLimiter()
 
 
 class LocalReranker(Reranker):
@@ -25,6 +28,9 @@ class LocalReranker(Reranker):
         self.timeout = timeout
         self.logger = logging.getLogger(__name__)
 
+    @rate_limiter.limit(
+        "reranker", "RERANKER_RATE_LIMIT", "RERANKER_RATE_LIMIT_TIME_UNIT"
+    )
     async def _call_api(self, query: str, documents: List[str]) -> List[dict]:
         """Async API call to avoid blocking the event loop"""
         headers = {

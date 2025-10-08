@@ -1,15 +1,11 @@
-import asyncio
 import logging
 import threading
-import weakref
 from abc import ABC
 from dataclasses import dataclass
-from functools import wraps
 from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import httpx
 import numpy as np
-from aiolimiter import AsyncLimiter
 from openai import APIConnectionError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel
 from tenacity import (
@@ -27,6 +23,7 @@ from hirag_prod.configs.functions import (
     get_llm_config,
 )
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.rate_limiter import RateLimiter
 
 # ============================================================================
 # Constants
@@ -83,68 +80,7 @@ class TokenUsage:
 # Rate Limiting
 # ============================================================================
 
-
-class RateLimiterManager:
-    """Manages rate limiters for async operations"""
-
-    @staticmethod
-    def get_or_create_limiter(
-        instance, limiter_attr: str, max_rate: int, time_period: int
-    ) -> AsyncLimiter:
-        """Get existing limiter or create new one for current event loop"""
-        loop_attr = f"{limiter_attr}_loop"
-
-        # Get current event loop
-        try:
-            current_loop = asyncio.get_running_loop()
-        except RuntimeError as e:
-            # No running loop, create a new limiter
-            log_error_info(
-                logging.INFO,
-                "No running event loop, create a new limiter",
-                e,
-                debug_only=True,
-            )
-            limiter = AsyncLimiter(max_rate=max_rate, time_period=time_period)
-            setattr(instance, limiter_attr, limiter)
-            setattr(instance, loop_attr, None)
-            return limiter
-
-        # Check if we have a limiter and if it's for the current loop
-        if (
-            hasattr(instance, limiter_attr)
-            and hasattr(instance, loop_attr)
-            and getattr(instance, limiter_attr) is not None
-        ):
-            stored_loop_ref = getattr(instance, loop_attr)
-            # If stored loop reference exists and is the same as current loop
-            if stored_loop_ref is not None and stored_loop_ref() is current_loop:
-                return getattr(instance, limiter_attr)
-
-        # Create new limiter for current loop
-        limiter = AsyncLimiter(max_rate=max_rate, time_period=time_period)
-        setattr(instance, limiter_attr, limiter)
-        # Store weak reference to current loop to avoid circular references
-        setattr(instance, loop_attr, weakref.ref(current_loop))
-        return limiter
-
-
-def rate_limited(max_rate: int, time_period: int, limiter_attr: str):
-    """Decorator for rate limiting async methods"""
-
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(self, *args, **kwargs):
-            limiter = RateLimiterManager.get_or_create_limiter(
-                self, limiter_attr, max_rate, time_period
-            )
-            async with limiter:
-                return await func(self, *args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
+rate_limiter = RateLimiter()
 
 # Retry decorator for API calls
 api_retry = retry(
@@ -196,7 +132,9 @@ class BaseAPIClient(ABC, metaclass=SingletonABCMeta):
 
     def __init__(self, config: Union[EmbeddingConfig, LLMConfig]):
         if not hasattr(self, "_initialized"):
-            self._client = AsyncOpenAI(api_key=config.api_key, base_url=config.base_url)
+            self._client = AsyncOpenAI(
+                api_key=config.api_key, base_url=config.base_url, max_retries=0
+            )
             self._initialized = True
 
     @property
@@ -408,11 +346,7 @@ class ChatCompletion(metaclass=SingletonMeta):
 
     T = TypeVar("T", bound=BaseModel)
 
-    @rate_limited(
-        max_rate=APIConstants.DEFAULT_RATE_LIMIT,
-        time_period=APIConstants.DEFAULT_RATE_PERIOD,
-        limiter_attr="_completion_limiter",
-    )
+    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
     @api_retry
     async def complete(
         self,
@@ -507,6 +441,7 @@ class LocalChatService:
             f"🔧 LocalChatService initialized with model: {get_llm_config().model_name}"
         )
 
+    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
     async def complete(
         self,
         prompt: str,
@@ -721,10 +656,8 @@ class EmbeddingService(metaclass=SingletonMeta):
                 f"🔧 EmbeddingService already initialized, keeping existing batch_size={self.default_batch_size}"
             )
 
-    @rate_limited(
-        max_rate=APIConstants.DEFAULT_RATE_LIMIT,
-        time_period=APIConstants.DEFAULT_RATE_PERIOD,
-        limiter_attr="_embedding_limiter",
+    @rate_limiter.limit(
+        "embedding", "EMBEDDING_RATE_LIMIT", "EMBEDDING_RATE_LIMIT_TIME_UNIT"
     )
     @api_retry
     async def _create_embeddings_batch(
@@ -824,6 +757,9 @@ class LocalEmbeddingService:
             f"🔧 LocalEmbeddingService initialized with batch_size={self.default_batch_size}"
         )
 
+    @rate_limiter.limit(
+        "embedding", "EMBEDDING_RATE_LIMIT", "EMBEDDING_RATE_LIMIT_TIME_UNIT"
+    )
     async def _create_embeddings_batch(
         self, texts: List[str], model: str = ""
     ) -> np.ndarray:

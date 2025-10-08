@@ -4,6 +4,9 @@ from openai import AsyncOpenAI
 
 from hirag_prod._utils import logger
 from hirag_prod.configs.functions import get_qwen_translator_config
+from hirag_prod.rate_limiter import RateLimiter
+
+rate_limiter = RateLimiter()
 
 LANGUAGE_MAPPING = {
     "en": "English",
@@ -46,7 +49,10 @@ class QwenTranslator:
         if self._client is None:
             config = get_qwen_translator_config()
             self._client = AsyncOpenAI(
-                api_key=config.api_key, base_url=config.base_url, timeout=config.timeout
+                api_key=config.api_key,
+                base_url=config.base_url,
+                timeout=config.timeout,
+                max_retries=0,
             )
             logger.info(f"🌐 Using Qwen Translator with model: {config.model_name}")
         return self._client
@@ -86,6 +92,11 @@ class QwenTranslator:
         else:
             return await self._translate_single(text, dest, src)
 
+    @rate_limiter.limit(
+        "qwen_translator",
+        "QWEN_TRANSLATOR_RATE_LIMIT",
+        "QWEN_TRANSLATOR_RATE_LIMIT_TIME_UNIT",
+    )
     async def _translate_single(
         self, text: str, dest: str = "English", src: str = "Auto"
     ) -> QwenTranslated:

@@ -134,9 +134,16 @@ class QueryService:
             for chunk_key in chunk_keys:
                 chunk = id_to_chunk.get(chunk_key)
                 if chunk:
-                    if not latest_chunks or chunk.get(
-                        "extractedTimestamp", datetime.min
-                    ) > latest_chunks[0].get("extractedTimestamp", datetime.min):
+                    if (len(latest_chunks) == 0) or (
+                        (chunk.get("extractedTimestamp", None) is not None)
+                        and (
+                            (latest_chunks[0].get("extractedTimestamp", None) is None)
+                            or (
+                                chunk["extractedTimestamp"]
+                                > latest_chunks[0]["extractedTimestamp"]
+                            )
+                        )
+                    ):
                         latest_chunks = [chunk]
                     elif chunk.get("extractedTimestamp", datetime.min) == latest_chunks[
                         0

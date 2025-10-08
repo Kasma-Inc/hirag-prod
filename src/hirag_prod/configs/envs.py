@@ -68,6 +68,15 @@ class Envs(BaseSettings):
 
     KNOWLEDGE_BASE_SEARCH_BATCH_SIZE: int = 10000
 
+    LLM_RATE_LIMIT: float = 1
+    LLM_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
+    EMBEDDING_RATE_LIMIT: float = 1
+    EMBEDDING_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
+    RERANKER_RATE_LIMIT: float = 1
+    RERANKER_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
+    QWEN_TRANSLATOR_RATE_LIMIT: float = 60
+    QWEN_TRANSLATOR_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":
         if self.EMBEDDING_SERVICE_TYPE == "openai":

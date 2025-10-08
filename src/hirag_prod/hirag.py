@@ -454,13 +454,14 @@ class HiRAG:
         cls,
         cli_options_dict: Optional[Dict] = None,
         config_dict: Optional[Dict] = None,
+        shared_variable_dict: Optional[Dict] = None,
         resource_dict: Optional[Dict] = None,
         **kwargs,
     ) -> "HiRAG":
         """Create HiRAG instance"""
         if not cli_options_dict:
             cli_options_dict: Dict = CliOptions().to_dict()
-        initialize_config_manager(cli_options_dict, config_dict)
+        initialize_config_manager(cli_options_dict, config_dict, shared_variable_dict)
         await initialize_resource_manager(resource_dict)
         instance = cls()
         await instance._initialize(**kwargs)
