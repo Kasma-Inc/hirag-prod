@@ -19,8 +19,10 @@ from hirag_prod._utils import log_error_info
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.functions import (
     get_embedding_config,
+    get_envs,
     get_init_config,
     get_llm_config,
+    get_shared_variables,
 )
 from hirag_prod.configs.llm_config import LLMConfig
 from hirag_prod.rate_limiter import RateLimiter
@@ -193,6 +195,14 @@ class LocalEmbeddingClient:
 
         response.raise_for_status()
         result = response.json()
+
+        if get_envs().ENABLE_TOKEN_COUNT:
+            # embedding model only needs to count the prompt tokens
+            get_shared_variables().input_token_count_dict["embedding"].value += (
+                result["usage"]["prompt_tokens"]
+                if result["usage"]["prompt_tokens"] is not None
+                else 0
+            )
 
         # Extract embeddings from response
         if "data" in result:
@@ -387,13 +397,17 @@ class ChatCompletion(metaclass=SingletonMeta):
 
         # Track token usage
         token_usage = self._token_tracker.track_usage(response.usage, model, prompt)
-        if get_env().ENABLE_TOKEN_COUNT:
-            get_shared_variables().input_token_count_dict[
-                model
-            ] += token_usage.prompt_tokens
-            get_shared_variables().output_token_count_dict[
-                model
-            ] += token_usage.completion_tokens
+        if get_envs().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict["llm"].value += (
+                token_usage.prompt_tokens
+                if token_usage.prompt_tokens is not None
+                else 0
+            )
+            get_shared_variables().output_token_count_dict["llm"].value += (
+                token_usage.completion_tokens
+                if token_usage.completion_tokens is not None
+                else 0
+            )
 
         if response_format is None:
             return response.choices[0].message.content
@@ -485,13 +499,17 @@ class LocalChatService:
 
         usage_data = UsageData(response["usage"])
         token_usage = self._token_tracker.track_usage(usage_data, model, prompt)
-        if get_env().ENABLE_TOKEN_COUNT:
-            get_shared_variables().input_token_count_dict[
-                model
-            ] += token_usage.prompt_tokens
-            get_shared_variables().output_token_count_dict[
-                model
-            ] += token_usage.completion_tokens
+        if get_envs().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict["llm"].value += (
+                token_usage.prompt_tokens
+                if token_usage.prompt_tokens is not None
+                else 0
+            )
+            get_shared_variables().output_token_count_dict["llm"].value += (
+                token_usage.completion_tokens
+                if token_usage.completion_tokens is not None
+                else 0
+            )
 
         return response["choices"][0]["message"]["content"]
 
@@ -682,13 +700,11 @@ class EmbeddingService(metaclass=SingletonMeta):
             model=model, input=texts, encoding_format="float"
         )
         token_usage = response.usage
-        if get_env().ENABLE_TOKEN_COUNT:
+        if get_envs().ENABLE_TOKEN_COUNT:
+            # embedding model only needs to count the prompt tokens
             get_shared_variables().input_token_count_dict[
-                model
-            ] += token_usage.prompt_tokens
-            get_shared_variables().output_token_count_dict[model] += (
-                token_usage.total_tokens - token_usage.prompt_tokens
-            )
+                "embedding"
+            ].value += token_usage.prompt_tokens
 
         return np.array([dp.embedding for dp in response.data])
 
@@ -789,6 +805,7 @@ class LocalEmbeddingService:
         """Create embeddings for a single batch of texts (internal method)"""
         embeddings_list = await self.client.create_embeddings(texts)
 
+        # token counter moves to LocalEmbeddingClient.create_embeddings()
         return np.array(embeddings_list)
 
     async def create_embeddings(

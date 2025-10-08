@@ -3,6 +3,8 @@ from typing import Dict, List, Union
 
 import httpx
 
+from hirag_prod.configs.functions import get_envs, get_shared_variables
+
 from ..rate_limiter import RateLimiter
 from .base import Reranker
 
@@ -89,6 +91,11 @@ class ApiReranker(Reranker):
                             # Keep the maximum score for each document
                             if idx not in max_scores or score > max_scores[idx]:
                                 max_scores[idx] = score
+
+            if get_envs().ENABLE_TOKEN_COUNT:
+                get_shared_variables().input_token_count_dict["reranker"].value += (
+                    response.json().get("usage", {}).get("total_tokens", 0)
+                )
 
             # Create final reranked list with max scores
             reranked = []

@@ -3,7 +3,11 @@ from typing import Optional, Union
 from openai import AsyncOpenAI
 
 from hirag_prod._utils import logger
-from hirag_prod.configs.functions import get_qwen_translator_config
+from hirag_prod.configs.functions import (
+    get_envs,
+    get_qwen_translator_config,
+    get_shared_variables,
+)
 from hirag_prod.rate_limiter import RateLimiter
 
 rate_limiter = RateLimiter()
@@ -126,6 +130,21 @@ class QwenTranslator:
                 timeout=config.timeout,
                 extra_body={"translation_options": translation_options},
             )
+            if get_envs().ENABLE_TOKEN_COUNT:
+                get_shared_variables().input_token_count_dict[
+                    "qwen_translator"
+                ].value += (
+                    response.usage.prompt_tokens
+                    if response.usage.prompt_tokens is not None
+                    else 0
+                )
+                get_shared_variables().output_token_count_dict[
+                    "qwen_translator"
+                ].value += (
+                    response.usage.completion_tokens
+                    if response.usage.completion_tokens is not None
+                    else 0
+                )
 
             translated = self.QwenTranslated(
                 text=response.choices[0].message.content,
