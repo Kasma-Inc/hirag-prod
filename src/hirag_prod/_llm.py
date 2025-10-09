@@ -357,7 +357,12 @@ class ChatCompletion(metaclass=SingletonMeta):
     T = TypeVar("T", bound=BaseModel)
 
     @api_retry
-    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
+    @rate_limiter.limit(
+        "llm",
+        "LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "LLM_RATE_LIMIT",
+        "LLM_RATE_LIMIT_TIME_UNIT",
+    )
     async def complete(
         self,
         model: str,
@@ -462,7 +467,12 @@ class LocalChatService:
             f"🔧 LocalChatService initialized with model: {get_llm_config().model_name}"
         )
 
-    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
+    @rate_limiter.limit(
+        "llm",
+        "LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "LLM_RATE_LIMIT",
+        "LLM_RATE_LIMIT_TIME_UNIT",
+    )
     async def complete(
         self,
         prompt: str,
@@ -690,7 +700,10 @@ class EmbeddingService(metaclass=SingletonMeta):
 
     @api_retry
     @rate_limiter.limit(
-        "embedding", "EMBEDDING_RATE_LIMIT", "EMBEDDING_RATE_LIMIT_TIME_UNIT"
+        "embedding",
+        "EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "EMBEDDING_RATE_LIMIT",
+        "EMBEDDING_RATE_LIMIT_TIME_UNIT",
     )
     async def _create_embeddings_batch(
         self, texts: List[str], model: str = APIConstants.DEFAULT_EMBEDDING_MODEL
@@ -797,7 +810,10 @@ class LocalEmbeddingService:
         )
 
     @rate_limiter.limit(
-        "embedding", "EMBEDDING_RATE_LIMIT", "EMBEDDING_RATE_LIMIT_TIME_UNIT"
+        "embedding",
+        "EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "EMBEDDING_RATE_LIMIT",
+        "EMBEDDING_RATE_LIMIT_TIME_UNIT",
     )
     async def _create_embeddings_batch(
         self, texts: List[str], model: str = ""

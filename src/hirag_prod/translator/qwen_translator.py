@@ -98,6 +98,7 @@ class QwenTranslator:
 
     @rate_limiter.limit(
         "qwen_translator",
+        "QWEN_TRANSLATOR_RATE_LIMIT_MIN_INTERVAL_SECONDS",
         "QWEN_TRANSLATOR_RATE_LIMIT",
         "QWEN_TRANSLATOR_RATE_LIMIT_TIME_UNIT",
     )

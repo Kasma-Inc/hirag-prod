@@ -8,6 +8,9 @@ class SharedVariables:
         self.rate_limiter_last_call_time_dict: Dict[str, Synchronized[float]] = (
             kwargs.get("rate_limiter_last_call_time_dict", {})
         )
+        self.rate_limiter_call_time_queue_dict: Dict[
+            str, multiprocessing.Queue[float]
+        ] = kwargs.get("rate_limiter_call_time_queue_dict", {})
         self.rate_limiter_wait_lock_dict: Dict[
             str, multiprocessing.synchronize.Lock
         ] = kwargs.get("rate_limiter_wait_lock_dict", {})
@@ -39,6 +42,10 @@ class SharedVariables:
                 if rate_limiter_name not in self.rate_limiter_last_call_time_dict:
                     self.rate_limiter_last_call_time_dict[rate_limiter_name] = (
                         multiprocessing.Value("d", 0.0)
+                    )
+                if rate_limiter_name not in self.rate_limiter_call_time_queue_dict:
+                    self.rate_limiter_call_time_queue_dict[rate_limiter_name] = (
+                        multiprocessing.Queue()
                     )
                 if rate_limiter_name not in self.rate_limiter_wait_lock_dict:
                     self.rate_limiter_wait_lock_dict[rate_limiter_name] = (

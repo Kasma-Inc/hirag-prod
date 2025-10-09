@@ -66,14 +66,18 @@ class Envs(BaseSettings):
 
     KNOWLEDGE_BASE_SEARCH_BATCH_SIZE: int = 10000
 
-    LLM_RATE_LIMIT: float = 1
-    LLM_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
-    EMBEDDING_RATE_LIMIT: float = 1
-    EMBEDDING_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
-    RERANKER_RATE_LIMIT: float = 1
-    RERANKER_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "second"
-    QWEN_TRANSLATOR_RATE_LIMIT: float = 60
+    LLM_RATE_LIMIT: int = 60
+    LLM_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+    LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
+    EMBEDDING_RATE_LIMIT: int = 60
+    EMBEDDING_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+    EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
+    RERANKER_RATE_LIMIT: int = 60
+    RERANKER_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+    RERANKER_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
+    QWEN_TRANSLATOR_RATE_LIMIT: int = 60
     QWEN_TRANSLATOR_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+    QWEN_TRANSLATOR_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":

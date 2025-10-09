@@ -31,7 +31,10 @@ class LocalReranker(Reranker):
         self.logger = logging.getLogger(__name__)
 
     @rate_limiter.limit(
-        "reranker", "RERANKER_RATE_LIMIT", "RERANKER_RATE_LIMIT_TIME_UNIT"
+        "reranker",
+        "RERANKER_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "RERANKER_RATE_LIMIT",
+        "RERANKER_RATE_LIMIT_TIME_UNIT",
     )
     async def _call_api(self, query: str, documents: List[str]) -> List[dict]:
         """Async API call to avoid blocking the event loop"""
