@@ -175,7 +175,7 @@ async def cross_language_search(
         if len(matched_sentence_list_to_embed) > 0:
             str_list_dict_to_embed["matched_sentence"] = matched_sentence_list_to_embed
 
-        str_embedding_np_array_dict: Dict[str, np.ndarray] = (
+        str_embedding_np_array_dict: Dict[str, List[np.ndarray]] = (
             await create_embeddings_batch(str_list_dict_to_embed)
         )
         if ("matched_keyword" in str_list_dict_to_embed) and (

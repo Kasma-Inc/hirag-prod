@@ -62,28 +62,30 @@ def normalize_tokenize_text(text: str) -> Tuple[List[str], List[int], List[int]]
 
 async def create_embeddings_batch(
     str_list_dict: Dict[str, List[str]],
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, List[np.ndarray]]:
     if len(str_list_dict) == 0:
         return {}
     item_list: List[Tuple[str, List[str]]] = list(str_list_dict.items())
     input_str_list: List[str] = []
     for item in item_list:
         input_str_list.extend(item[1])
+    input_str_list = list(set(input_str_list))
     embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
         input_str_list
     )
     embedding_np_array_dict: Dict[str, np.ndarray] = {}
-    current_index: int = 0
+    for i, input_str in enumerate(input_str_list):
+        embedding_np_array_dict[input_str] = embedding_np_array[i]
+    result_dict: Dict[str, List[np.ndarray]] = {}
     for item in item_list:
-        embedding_np_array_dict[item[0]] = embedding_np_array[
-            current_index : current_index + len(item[1])
+        result_dict[item[0]] = [
+            embedding_np_array_dict[input_str] for input_str in item[1]
         ]
-        current_index += len(item[1])
-    return embedding_np_array_dict
+    return result_dict
 
 
 async def validate_similarity(
-    str_embedding_np_array: np.ndarray,
+    str_embedding_np_array: List[np.ndarray],
     search_embedding_np_array: np.ndarray,
     matched_list_dict_batch: List[
         Dict[str, Optional[List[Optional[Union[int, Tuple[int, int]]]]]]

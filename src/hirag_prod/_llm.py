@@ -356,8 +356,8 @@ class ChatCompletion(metaclass=SingletonMeta):
 
     T = TypeVar("T", bound=BaseModel)
 
-    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
     @api_retry
+    @rate_limiter.limit("llm", "LLM_RATE_LIMIT", "LLM_RATE_LIMIT_TIME_UNIT")
     async def complete(
         self,
         model: str,
@@ -688,10 +688,10 @@ class EmbeddingService(metaclass=SingletonMeta):
                 f"🔧 EmbeddingService already initialized, keeping existing batch_size={self.default_batch_size}"
             )
 
+    @api_retry
     @rate_limiter.limit(
         "embedding", "EMBEDDING_RATE_LIMIT", "EMBEDDING_RATE_LIMIT_TIME_UNIT"
     )
-    @api_retry
     async def _create_embeddings_batch(
         self, texts: List[str], model: str = APIConstants.DEFAULT_EMBEDDING_MODEL
     ) -> np.ndarray:
