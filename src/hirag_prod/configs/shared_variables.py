@@ -2,8 +2,6 @@ import multiprocessing.synchronize
 from multiprocessing.sharedctypes import Synchronized
 from typing import Dict
 
-from hirag_prod.configs.functions import get_envs
-
 
 class SharedVariables:
     def __init__(self, is_main_process: bool = True, **kwargs) -> None:

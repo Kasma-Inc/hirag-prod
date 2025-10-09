@@ -396,7 +396,7 @@ class ChatCompletion(metaclass=SingletonMeta):
             )
 
         # Track token usage
-        token_usage = token_usage = self._token_tracker.track_usage(response.usage, model, prompt)
+        token_usage = self._token_tracker.track_usage(response.usage, model, prompt)
         if get_envs().ENABLE_TOKEN_COUNT:
             get_shared_variables().input_token_count_dict["llm"].value += (
                 token_usage.prompt_tokens
@@ -408,13 +408,6 @@ class ChatCompletion(metaclass=SingletonMeta):
                 if token_usage.completion_tokens is not None
                 else 0
             )
-        if get_env().ENABLE_TOKEN_COUNT:
-            get_shared_variables().input_token_count_dict[
-                model
-            ] += token_usage.prompt_tokens
-            get_shared_variables().output_token_count_dict[
-                model
-            ] += token_usage.completion_tokens
 
         if response_format is None:
             return response.choices[0].message.content
@@ -505,7 +498,18 @@ class LocalChatService:
                 self.total_tokens = usage_dict["total_tokens"]
 
         usage_data = UsageData(response["usage"])
-        self._token_tracker.track_usage(usage_data, model, prompt)
+        token_usage = self._token_tracker.track_usage(usage_data, model, prompt)
+        if get_envs().ENABLE_TOKEN_COUNT:
+            get_shared_variables().input_token_count_dict["llm"].value += (
+                token_usage.prompt_tokens
+                if token_usage.prompt_tokens is not None
+                else 0
+            )
+            get_shared_variables().output_token_count_dict["llm"].value += (
+                token_usage.completion_tokens
+                if token_usage.completion_tokens is not None
+                else 0
+            )
 
         return response["choices"][0]["message"]["content"]
 
@@ -695,6 +699,13 @@ class EmbeddingService(metaclass=SingletonMeta):
         response = await self.client.embeddings.create(
             model=model, input=texts, encoding_format="float"
         )
+        token_usage = response.usage
+        if get_envs().ENABLE_TOKEN_COUNT:
+            # embedding model only needs to count the prompt tokens
+            get_shared_variables().input_token_count_dict[
+                "embedding"
+            ].value += token_usage.prompt_tokens
+
         return np.array([dp.embedding for dp in response.data])
 
     async def create_embeddings(
@@ -793,6 +804,8 @@ class LocalEmbeddingService:
     ) -> np.ndarray:
         """Create embeddings for a single batch of texts (internal method)"""
         embeddings_list = await self.client.create_embeddings(texts)
+
+        # token counter moves to LocalEmbeddingClient.create_embeddings()
         return np.array(embeddings_list)
 
     async def create_embeddings(
