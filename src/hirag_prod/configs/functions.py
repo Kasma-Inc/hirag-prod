@@ -62,9 +62,11 @@ def get_init_config() -> InitEnvs:
 
 def get_document_converter_config(
     converter_type: Literal["dots_ocr"],
-) -> Union[DotsOCRConfig]:
+) -> Optional[DotsOCRConfig]:
     if converter_type == "dots_ocr":
-        return ConfigManager().dots_ocr_config
+        return get_config_manager().dots_ocr_config
+    else:
+        return None
 
 
 def get_cloud_storage_config(
