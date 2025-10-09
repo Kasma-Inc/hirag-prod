@@ -16,7 +16,7 @@ from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,
-    get_translator,
+    get_qwen_translator,
 )
 from hirag_prod.schema import Base as PGBase
 from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, Triplets
@@ -115,7 +115,7 @@ class PGVector(BaseVDB):
                         ) = normalize_tokenize_text(texts_to_upsert[i])
                     if with_translation:
                         row["translation"] = (
-                            await get_translator().translate(
+                            await get_qwen_translator().translate(
                                 texts_to_upsert[i], dest="en"
                             )
                         ).text
