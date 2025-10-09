@@ -4,6 +4,7 @@ from urllib.parse import unquote, urlparse
 
 import json_repair
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_config_manager, get_llm_config
@@ -62,14 +63,15 @@ def _find_first_cell_containing(ws, needle: str) -> Optional[Tuple[int, int]]:
     return None
 
 
-def _find_cell_by_xy(ws, x_label: str, y_label: str) -> Optional[Tuple[int, int]]:
+def _find_cell_by_xy(ws, x_label: str, y_label: str) -> Optional[Tuple[str, str]]:
     x_pos = _find_first_cell_containing(ws, x_label) if x_label else None
     y_pos = _find_first_cell_containing(ws, y_label) if y_label else None
 
     if x_pos and y_pos:
         row = x_pos[0] if x_pos[1] < y_pos[1] else y_pos[0]
         column = y_pos[1] if x_pos[1] < y_pos[1] else x_pos[1]
-        return (row, column)
+        column_letter = get_column_letter(column)
+        return (str(row), str(column_letter))
     else:
         return None
 
@@ -100,7 +102,7 @@ async def _extract_excel_cell_coord_by_llm(
 
 async def annotate_excel_cell_bbox(
     text_to_cite: str, chunk_like: Dict
-) -> Optional[List[int]]:
+) -> Optional[List[str]]:
     """
     Compute numeric bbox for an excel_sheet chunk:
     - Uses LLM to get x/y labels from the sentence and the chunk's LaTeX.
@@ -136,13 +138,12 @@ async def annotate_excel_cell_bbox(
         )
         if not (x_label or y_label):
             return None
-        breakpoint()
         pos = _find_cell_by_xy(ws, x_label, y_label)
         if not pos:
             return None
 
         row_idx, col_idx = pos[0], pos[1]
-        return [int(col_idx), int(row_idx)]
+        return [col_idx, row_idx]
     except Exception as e:
         log_error_info(logging.ERROR, "annotate_excel_cell_bbox failed", e)
         return None
