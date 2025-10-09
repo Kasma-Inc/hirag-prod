@@ -201,9 +201,25 @@ async def cross_language_search(
                     matched_sentence_list_to_embed
                 )
 
-            str_embedding_np_array_dict: Dict[str, np.ndarray] = (
+            str_embedding_np_array_dict: Dict[str, List[np.ndarray]] = (
                 await create_embeddings_batch(str_list_dict_to_embed)
             )
+            if ("matched_keyword" in str_list_dict_to_embed) and (
+                len(search_embedding_np_array_dict["search_keyword"]) > 0
+            ):
+                await validate_similarity(
+                    str_embedding_np_array_dict["matched_keyword"],
+                    search_embedding_np_array_dict["search_keyword"],
+                    matched_keyword_index_list_dict_batch,
+                )
+            if ("matched_sentence" in str_list_dict_to_embed) and (
+                len(search_embedding_np_array_dict["search_sentence"]) > 0
+            ):
+                await validate_similarity(
+                    str_embedding_np_array_dict["matched_sentence"],
+                    search_embedding_np_array_dict["search_sentence"],
+                    matched_sentence_index_list_dict_batch,
+                )
             if ("matched_keyword" in str_list_dict_to_embed) and (
                 len(search_embedding_np_array_dict["search_keyword"]) > 0
             ):
