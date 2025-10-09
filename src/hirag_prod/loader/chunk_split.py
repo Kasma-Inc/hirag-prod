@@ -757,13 +757,6 @@ def _transform_bbox_dims(bbox: List[float], height) -> List[float]:
     return [x_0, height - y_0, x_1, height - y_1]
 
 
-def _transform_bbox_dims_list(
-    bboxes: Optional[List[List[float]]],
-    height: Optional[float],
-) -> Optional[List[List[float]]]:
-    return [_transform_bbox_dims(bbox, height) for bbox in bboxes]
-
-
 def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
     ToC = []
     vis_items = set()

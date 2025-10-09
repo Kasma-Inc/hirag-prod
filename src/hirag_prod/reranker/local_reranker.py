@@ -6,6 +6,8 @@ from typing import Dict, List, Union
 
 import httpx
 
+from hirag_prod.configs.functions import get_envs, get_shared_variables
+
 from ..rate_limiter import RateLimiter
 from .base import Reranker
 
@@ -77,6 +79,10 @@ class LocalReranker(Reranker):
                 )
 
             result = response.json()
+            if get_envs().ENABLE_TOKEN_COUNT:
+                get_shared_variables().input_token_count_dict[
+                    "reranker"
+                ].value += result.get("usage", {}).get("total_tokens", 0)
             return result.get("results", [])
 
     async def rerank(

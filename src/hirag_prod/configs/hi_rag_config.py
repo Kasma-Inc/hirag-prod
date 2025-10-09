@@ -12,10 +12,7 @@ class HiRAGConfig(BaseSettings):
     )
 
     # Database configuration
-    vector_db_path: str = "kb/hirag.db"
-    graph_db_path: str = "kb/hirag.gpickle"
     vdb_type: Literal["pgvector"] = "pgvector"
-    gdb_type: Literal["networkx"] = "networkx"
 
     # Chunking configuration
     chunk_size: int = 1200

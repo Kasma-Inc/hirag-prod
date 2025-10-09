@@ -50,9 +50,7 @@ from hirag_prod.resources.functions import (
 )
 from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
 from hirag_prod.storage import (
-    BaseGDB,
     BaseVDB,
-    NetworkXGDB,
 )
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
@@ -483,21 +481,7 @@ class HiRAG:
 
         logger.info(f"Language set to {get_config_manager().language}")
 
-    async def set_db_paths(self, vector_db_path: str, graph_db_path: str) -> None:
-        """Set the database paths for the HiRAG instance"""
-        get_hi_rag_config().vector_db_path = vector_db_path
-        get_hi_rag_config().graph_db_path = graph_db_path
-
-        # Reinitialize storage with new paths
-        await self._reinitialize_storage()
-
-        logger.info(
-            f"Database paths updated - VDB: {get_hi_rag_config().vector_db_path}, GDB: {get_hi_rag_config().graph_db_path}"
-        )
-
-    async def _create_storage_manager(
-        self, vdb: Optional[BaseVDB] = None, gdb: Optional[BaseGDB] = None
-    ) -> None:
+    async def _create_storage_manager(self, vdb: Optional[BaseVDB] = None) -> None:
         # Build VDB by type
         if vdb is None:
             if get_hi_rag_config().vdb_type == "pgvector":
@@ -506,17 +490,8 @@ class HiRAG:
                     vector_type="halfvec",
                 )
 
-        # Build GDB by type
-        if gdb is None:
-            if get_hi_rag_config().gdb_type == "networkx":
-                gdb = NetworkXGDB.create(
-                    path=get_hi_rag_config().graph_db_path,
-                    llm_func=get_chat_service().complete,
-                )
-
         self._storage = StorageManager(
             vdb,
-            gdb,
         )
         await self._storage.initialize()
 
@@ -530,11 +505,9 @@ class HiRAG:
         if self._query_service:
             self._query_service.storage = self._storage
 
-    # TODO: Enable initializing all resources (embedding_service, chat_service, vdb, gdb, etc.)
-    # outside of the HiRAG class for better management of resources
     async def _initialize(self, **kwargs) -> None:
         """Initialize all components"""
-        await self._create_storage_manager(kwargs.get("vdb"), kwargs.get("gdb"))
+        await self._create_storage_manager(kwargs.get("vdb"))
 
         # Initialize other components
         chunker = FixTokenChunk(
@@ -1238,11 +1211,6 @@ class HiRAG:
     def vdb(self):
         """Backward compatibility: access vector database"""
         return self._storage.vdb if self._storage else None
-
-    @property
-    def gdb(self):
-        """Backward compatibility: access graph database"""
-        return self._storage.gdb if self._storage else None
 
     # ========================================================================
     # DPR-like recall API
