@@ -42,7 +42,7 @@ class ConfigManager:
             **self.envs.model_dump()
         )
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
-        self.reranker_config: RerankConfig = RerankConfig(**self.envs.model_dump())
+        self._reranker_config: Optional[RerankConfig] = None
         self._translator_config: Optional[TranslatorConfig] = None
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._aws_config: Optional[AWSConfig] = None
@@ -129,3 +129,10 @@ class ConfigManager:
         if not self._oss_config:
             self._oss_config = OSSConfig(**self.envs.model_dump())
         return self._oss_config
+
+    @property
+    def reranker_config(self) -> RerankConfig:
+        """Getter for reranker_config"""
+        if not self._reranker_config:
+            self._reranker_config = RerankConfig(**self.envs.model_dump())
+        return self._reranker_config

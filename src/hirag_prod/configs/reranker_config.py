@@ -8,6 +8,7 @@ class RerankConfig(BaseSettings):
     """Reranker configuration"""
 
     model_config = ConfigDict(
+        alias_generator=lambda x: x.upper(),
         populate_by_name=True,
         extra="ignore",
     )

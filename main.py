@@ -314,8 +314,7 @@ async def index(test_id="2", summary=True, save_json=False, no_insert=False):
                 knowledge_base_id="test_pg",
                 threshold=0.0,
                 strategy="raw",
-                translation=["en", "zh-TW", "zh"],
-                translator_type="qwen",
+                translation=["en", "zh"],
             )
 
             print("———————————————————— Raw Results ————————————————————\n")
