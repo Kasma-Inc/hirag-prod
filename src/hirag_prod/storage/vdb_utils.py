@@ -108,7 +108,7 @@ async def get_table_info_by_scope(
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[str, Any]] = None,
-    additional_where_clause_list: Optional[Any] = None,
+    additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
     limit: Optional[int] = None,
 ) -> list[dict[str, Any]]:
@@ -120,7 +120,7 @@ async def get_table_info_by_scope(
         workspace_id: The id of the workspace that the table is from
         columns_to_select: The columns to select from the table
         additional_data_to_select: Additional data to select from the table
-        additional_where_clause_list: Additional where clause list to use
+        additional_where_clause: Additional where clause list to use
         order_by: The order by clause to use
         limit: The limit to use for pagination
 
@@ -145,7 +145,7 @@ async def get_table_info_by_scope(
             key_column="documentKey",
             columns_to_select=columns_to_select,
             additional_data_to_select=additional_data_to_select,
-            additional_where_clause_list=additional_where_clause_list,
+            additional_where_clause=additional_where_clause,
             order_by=order_by,
             limit=limit,
         )
@@ -184,7 +184,7 @@ async def get_item_info_by_scope(
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[str, Any]] = None,
-    additional_where_clause_list: Optional[Any] = None,
+    additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
     limit: Optional[int] = None,
 ) -> list[dict[str, Any]]:
@@ -195,7 +195,7 @@ async def get_item_info_by_scope(
         workspace_id=workspace_id,
         columns_to_select=columns_to_select,
         additional_data_to_select=additional_data_to_select,
-        additional_where_clause_list=additional_where_clause_list,
+        additional_where_clause=additional_where_clause,
         order_by=order_by,
         limit=limit,
     )

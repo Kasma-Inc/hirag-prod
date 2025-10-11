@@ -612,7 +612,7 @@ class PGVector(BaseVDB):
         key_column: str = "documentKey",
         columns_to_select: Optional[List[str]] = None,
         additional_data_to_select: Optional[Dict[str, Any]] = None,
-        additional_where_clause_list: Optional[Any] = None,
+        additional_where_clause: Optional[Any] = None,
         order_by: Optional[List[Any]] = None,
         limit: Optional[int] = None,
     ) -> List[dict]:
@@ -637,8 +637,8 @@ class PGVector(BaseVDB):
                 stmt = stmt.where(model.workspaceId == workspace_id)
             if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
                 stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
-            if additional_where_clause_list is not None:
-                stmt = stmt.where(additional_where_clause_list)
+            if additional_where_clause is not None:
+                stmt = stmt.where(additional_where_clause)
             if order_by is not None:
                 stmt = stmt.order_by(*order_by)
             if limit is not None:
