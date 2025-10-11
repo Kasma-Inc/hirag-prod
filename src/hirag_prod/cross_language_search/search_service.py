@@ -2,7 +2,7 @@ import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import numpy as np
-from sqlalchemy import case, func, tuple_
+from sqlalchemy import and_, case, func, tuple_
 from sqlalchemy.sql.functions import coalesce
 
 from hirag_prod.configs.functions import get_envs
@@ -31,6 +31,11 @@ async def cross_language_search(
     search_content: str,
     ai_search: bool = True,
 ) -> AsyncGenerator[List[Dict[str, Any]], None]:
+    search_embedding_np_array_dict: Optional[Dict[str, np.ndarray]] = None
+    search_keyword_list_original: Optional[List[str]] = None
+    search_keyword_list: Optional[List[str]] = None
+    search_sentence_list_original: Optional[List[str]] = None
+    search_sentence_list: Optional[List[str]] = None
     if ai_search:
         (
             synonym_list,
@@ -66,7 +71,7 @@ async def cross_language_search(
             ),
         )
 
-        search_embedding_np_array_dict: Dict[str, np.ndarray] = {
+        search_embedding_np_array_dict = {
             "search_keyword": np.concatenate(
                 [keyword_embedding_np_array_original, keyword_embedding_np_array]
             ),
@@ -83,6 +88,20 @@ async def cross_language_search(
     last_cursor: Optional[Any] = None
     batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
     while True:
+        if ai_search:
+            additional_where_clause: Optional[Any] = last_cursor
+        else:
+            if last_cursor is None:
+                additional_where_clause: Optional[Any] = func.lower(Item.text).like(
+                    f"%{search_content.lower()}%", escape="\\"
+                )
+            else:
+                additional_where_clause: Optional[Any] = and_(
+                    last_cursor,
+                    func.lower(Item.text).like(
+                        f"%{search_content.lower()}%", escape="\\"
+                    ),
+                )
         chunk_list = await get_item_info_by_scope(
             knowledge_base_id=knowledge_base_id,
             workspace_id=workspace_id,
@@ -121,16 +140,7 @@ async def cross_language_search(
                 and len(search_embedding_np_array_dict["search_sentence"]) > 0
                 else None
             ),
-            additional_where_clause=(
-                last_cursor
-                if ai_search
-                else and_(
-                    last_cursor,
-                    func.lower(Item.text).like(
-                        f"%{search_content.lower()}%", escape="\\"
-                    ),
-                )
-            ),
+            additional_where_clause=additional_where_clause,
             order_by=[
                 Item.type,
                 Item.fileName,
@@ -220,22 +230,6 @@ async def cross_language_search(
                     search_embedding_np_array_dict["search_sentence"],
                     matched_sentence_index_list_dict_batch,
                 )
-            if ("matched_keyword" in str_list_dict_to_embed) and (
-                len(search_embedding_np_array_dict["search_keyword"]) > 0
-            ):
-                await validate_similarity(
-                    str_embedding_np_array_dict["matched_keyword"],
-                    search_embedding_np_array_dict["search_keyword"],
-                    matched_keyword_index_list_dict_batch,
-                )
-            if ("matched_sentence" in str_list_dict_to_embed) and (
-                len(search_embedding_np_array_dict["search_sentence"]) > 0
-            ):
-                await validate_similarity(
-                    str_embedding_np_array_dict["matched_sentence"],
-                    search_embedding_np_array_dict["search_sentence"],
-                    matched_sentence_index_list_dict_batch,
-                )
             del str_list_dict_to_embed
 
             embedding_similar_chunk_info_dict: Dict[int, float] = {}
@@ -287,12 +281,12 @@ async def cross_language_search(
                         matched_blocks.append(block)
                     else:
                         similar_block_tuple_list.append((block, result_tuple[1]))
-                similar_block_tuple_list.sort(key=lambda x: x[1])
+            similar_block_tuple_list.sort(key=lambda x: x[1])
 
-                if (len(matched_blocks) > 0) or (len(similar_block_tuple_list) > 0):
-                    yield matched_blocks + [
-                        block_tuple[0] for block_tuple in similar_block_tuple_list
-                    ]
+            if (len(matched_blocks) > 0) or (len(similar_block_tuple_list) > 0):
+                yield matched_blocks + [
+                    block_tuple[0] for block_tuple in similar_block_tuple_list
+                ]
         else:
             matched_blocks: List[Dict[str, Any]] = []
             for chunk in chunk_list:
@@ -303,77 +297,74 @@ async def cross_language_search(
                     flags=re.IGNORECASE,
                 )
                 block = {
-                    "markdown": (markdown),
+                    "markdown": markdown,
                     "chunk": chunk,
                 }
                 matched_blocks.append(block)
-                if len(matched_blocks) > 0:
-                    yield matched_blocks
+            if len(matched_blocks) > 0:
+                yield matched_blocks
 
-        if len(chunk_list) < batch_size:
-            break
-        else:
-            last_cursor = tuple_(
-                Item.type,
-                Item.fileName,
-                coalesce(Item.pageNumber, -1),
-                (
-                    -Item.bbox[2]
-                    if chunk_list[-1]["type"] in ["pdf", "image"]
-                    else coalesce(Item.bbox[1], -1.0)
-                ),
-                (
-                    Item.bbox[1]
-                    if chunk_list[-1]["type"] in ["pdf", "image"]
-                    else coalesce(Item.bbox[2], -1.0)
-                ),
-                -coalesce(Item.bbox[4], -1.0),
-                coalesce(Item.bbox[3], -1.0),
-                Item.chunkIdx,
-            ) > (
-                chunk_list[-1]["type"],
-                chunk_list[-1]["fileName"],
-                (
-                    chunk_list[-1]["pageNumber"]
-                    if chunk_list[-1]["pageNumber"] is not None
-                    else -1
-                ),
-                (
-                    -chunk_list[-1]["bbox"][1]
-                    if chunk_list[-1]["type"] in ["pdf", "image"]
-                    else (
-                        chunk_list[-1]["bbox"][0]
-                        if (
-                            (chunk_list[-1]["bbox"] is not None)
-                            and (len(chunk_list[-1]["bbox"]) > 0)
-                        )
-                        else -1.0
-                    )
-                ),
-                (
+        last_cursor = tuple_(
+            Item.type,
+            Item.fileName,
+            coalesce(Item.pageNumber, -1),
+            (
+                -Item.bbox[2]
+                if chunk_list[-1]["type"] in ["pdf", "image"]
+                else coalesce(Item.bbox[1], -1.0)
+            ),
+            (
+                Item.bbox[1]
+                if chunk_list[-1]["type"] in ["pdf", "image"]
+                else coalesce(Item.bbox[2], -1.0)
+            ),
+            -coalesce(Item.bbox[4], -1.0),
+            coalesce(Item.bbox[3], -1.0),
+            Item.chunkIdx,
+        ) > (
+            chunk_list[-1]["type"],
+            chunk_list[-1]["fileName"],
+            (
+                chunk_list[-1]["pageNumber"]
+                if chunk_list[-1]["pageNumber"] is not None
+                else -1
+            ),
+            (
+                -chunk_list[-1]["bbox"][1]
+                if chunk_list[-1]["type"] in ["pdf", "image"]
+                else (
                     chunk_list[-1]["bbox"][0]
-                    if chunk_list[-1]["type"] in ["pdf", "image"]
-                    else (
-                        chunk_list[-1]["bbox"][1]
-                        if (
-                            (chunk_list[-1]["bbox"] is not None)
-                            and (len(chunk_list[-1]["bbox"]) > 1)
-                        )
-                        else -1.0
+                    if (
+                        (chunk_list[-1]["bbox"] is not None)
+                        and (len(chunk_list[-1]["bbox"]) > 0)
                     )
-                ),
-                -(
-                    chunk_list[-1]["bbox"][3]
-                    if (chunk_list[-1]["bbox"] is not None)
-                    and (len(chunk_list[-1]["bbox"]) > 3)
                     else -1.0
-                ),
-                (
-                    chunk_list[-1]["bbox"][2]
-                    if (chunk_list[-1]["bbox"] is not None)
-                    and (len(chunk_list[-1]["bbox"]) > 2)
+                )
+            ),
+            (
+                chunk_list[-1]["bbox"][0]
+                if chunk_list[-1]["type"] in ["pdf", "image"]
+                else (
+                    chunk_list[-1]["bbox"][1]
+                    if (
+                        (chunk_list[-1]["bbox"] is not None)
+                        and (len(chunk_list[-1]["bbox"]) > 1)
+                    )
                     else -1.0
-                ),
-                chunk_list[-1]["chunkIdx"],
-            )
+                )
+            ),
+            -(
+                chunk_list[-1]["bbox"][3]
+                if (chunk_list[-1]["bbox"] is not None)
+                and (len(chunk_list[-1]["bbox"]) > 3)
+                else -1.0
+            ),
+            (
+                chunk_list[-1]["bbox"][2]
+                if (chunk_list[-1]["bbox"] is not None)
+                and (len(chunk_list[-1]["bbox"]) > 2)
+                else -1.0
+            ),
+            chunk_list[-1]["chunkIdx"],
+        )
     del search_embedding_np_array_dict
