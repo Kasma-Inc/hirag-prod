@@ -5,8 +5,8 @@ from openai import AsyncOpenAI
 from hirag_prod._utils import logger
 from hirag_prod.configs.functions import (
     get_envs,
-    get_qwen_translator_config,
     get_shared_variables,
+    get_translator_config,
 )
 from hirag_prod.rate_limiter import RateLimiter
 
@@ -51,7 +51,7 @@ class QwenTranslator:
     def _get_client(self) -> AsyncOpenAI:
         """Get or create the OpenAI client for Qwen translation."""
         if self._client is None:
-            config = get_qwen_translator_config()
+            config = get_translator_config()
             self._client = AsyncOpenAI(
                 api_key=config.api_key,
                 base_url=config.base_url,
@@ -97,10 +97,10 @@ class QwenTranslator:
             return await self._translate_single(text, dest, src)
 
     @rate_limiter.limit(
-        "qwen_translator",
-        "QWEN_TRANSLATOR_RATE_LIMIT_MIN_INTERVAL_SECONDS",
-        "QWEN_TRANSLATOR_RATE_LIMIT",
-        "QWEN_TRANSLATOR_RATE_LIMIT_TIME_UNIT",
+        "translator",
+        "TRANSLATOR_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+        "TRANSLATOR_RATE_LIMIT",
+        "TRANSLATOR_RATE_LIMIT_TIME_UNIT",
     )
     async def _translate_single(
         self, text: str, dest: str = "English", src: str = "Auto"
@@ -121,7 +121,7 @@ class QwenTranslator:
             messages = [{"role": "user", "content": f"{text}"}]
             translation_options = {"source_lang": src_lang, "target_lang": dest_lang}
 
-            config = get_qwen_translator_config()
+            config = get_translator_config()
             client = self._get_client()
             response = await client.chat.completions.create(
                 model=config.model_name,
@@ -132,16 +132,12 @@ class QwenTranslator:
                 extra_body={"translation_options": translation_options},
             )
             if get_envs().ENABLE_TOKEN_COUNT:
-                get_shared_variables().input_token_count_dict[
-                    "qwen_translator"
-                ].value += (
+                get_shared_variables().input_token_count_dict["translator"].value += (
                     response.usage.prompt_tokens
                     if response.usage.prompt_tokens is not None
                     else 0
                 )
-                get_shared_variables().output_token_count_dict[
-                    "qwen_translator"
-                ].value += (
+                get_shared_variables().output_token_count_dict["translator"].value += (
                     response.usage.completion_tokens
                     if response.usage.completion_tokens is not None
                     else 0
