@@ -60,6 +60,10 @@ class StorageManager:
         return is_exist
 
     @retry_async()
+    async def has_graph_edges(self, workspace_id: str, knowledge_base_id: str) -> bool:
+        return await self.vdb.has_graph_edges(workspace_id, knowledge_base_id)
+
+    @retry_async()
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return

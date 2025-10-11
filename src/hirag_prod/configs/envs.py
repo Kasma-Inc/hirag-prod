@@ -29,6 +29,7 @@ class Envs(BaseSettings):
     EMBEDDING_DIMENSION: int
     USE_HALF_VEC: bool = True
     ENABLE_TOKEN_COUNT: bool = False
+    CONSTRUCT_GRAPH: bool = False
 
     EMBEDDING_SERVICE_TYPE: Literal["openai", "local"] = "openai"
     EMBEDDING_BASE_URL: Optional[str] = None

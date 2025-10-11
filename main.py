@@ -337,7 +337,7 @@ async def index(test_id="2", summary=True, save_json=False, no_insert=False):
                 workspace_id="test_workspace",
                 knowledge_base_id="test_pg",
                 chunks=filtered_ret["chunks"],
-                query=query,
+                query=q,
             )
 
             # Save chunks to JSON file if enabled
