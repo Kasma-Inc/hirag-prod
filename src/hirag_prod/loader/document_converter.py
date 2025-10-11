@@ -120,6 +120,39 @@ def _poll_dots_job_status(
     logger.error(f"Job {job_id} polling timed out after {timeout} seconds")
     return False
 
+def get_token_usage(
+    job_id: str,
+    timeout: int = 10,
+    retries: int = 3,
+) -> bool:
+    config = get_document_converter_config("dots_ocr")
+    base_url = config.base_url
+    api_key = config.api_key
+    
+    status_url = f"{base_url.rstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Model-Name": config.model_name,
+        "Entry-Point": f"/token-usage/{job_id}",
+    }
+    
+    try:
+        response = requests.get(status_url, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        status_data = response.json()
+        logger.info(f"Token usage for job {job_id}: {status_data}")
+        # Add data to token usage
+        return True
+    
+    except Exception as e:
+        log_error_info(
+            logging.ERROR,
+            f"Failed to get token usage for job {job_id}",
+            e,
+            raise_error=True,
+        )
+        return False
+    
 
 def convert(
     converter_type: Literal["dots_ocr"],
@@ -230,6 +263,8 @@ def convert(
                     return None
 
                 logger.info(f"Job {job_id} completed successfully")
+            
+            
 
             else:
                 raise ValueError("No job ID found in the response for async processing")
