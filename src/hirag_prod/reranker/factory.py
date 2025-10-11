@@ -1,5 +1,6 @@
 from typing import Optional
 
+from hirag_prod.configs.functions import get_reranker_config
 from hirag_prod.configs.reranker_config import RerankConfig
 
 from .api_reranker import ApiReranker
@@ -12,7 +13,7 @@ def create_reranker(
 ) -> Reranker:
     # Fallback to environment-based config if no config provided (for backward compatibility)
     if reranker_config is None:
-        reranker_config = RerankConfig()
+        reranker_config = get_reranker_config()
 
     # Allow override of type if explicitly provided
     if reranker_type is not None:
