@@ -14,11 +14,11 @@ class SharedVariables:
         self.rate_limiter_wait_lock_dict: Dict[
             str, multiprocessing.synchronize.Lock
         ] = kwargs.get("rate_limiter_wait_lock_dict", {})
-        self.input_token_count_dict: Dict[str, multiprocessing.synchronize.Lock] = (
-            kwargs.get("input_token_count_dict", {})
+        self.input_token_count_dict: Dict[str, Synchronized[int]] = kwargs.get(
+            "input_token_count_dict", {}
         )
-        self.output_token_count_dict: Dict[str, multiprocessing.synchronize.Lock] = (
-            kwargs.get("output_token_count_dict", {})
+        self.output_token_count_dict: Dict[str, Synchronized[int]] = kwargs.get(
+            "output_token_count_dict", {}
         )
 
         if is_main_process:
