@@ -2,10 +2,9 @@ from typing import Optional
 
 from hirag_prod.configs.functions import get_reranker_config
 from hirag_prod.configs.reranker_config import RerankConfig
-
-from .api_reranker import ApiReranker
-from .base import Reranker
-from .local_reranker import LocalReranker
+from hirag_prod.reranker.api_reranker import ApiReranker
+from hirag_prod.reranker.base import Reranker
+from hirag_prod.reranker.local_reranker import LocalReranker
 
 
 def create_reranker(

@@ -187,6 +187,20 @@ def get_test(id: str):
         ]
         return document_paths, content_type, document_metas, query
 
+    elif id == "png" or id == "9":
+        document_path = f"oss://graxy-dev/ofnil/tmp/user/2e9946d0-eb85-4508-b499-feda899d0314/aliyun-截图.png"
+        content_type = "multimodal/image"
+        document_meta = {
+            "type": "png",
+            "fileName": "aliyun-截图.png",
+            "uri": document_path,
+            "private": False,
+            "createdBy": "png_test",
+            "updatedBy": "png_test",
+        }
+        query = "What is depicted in the image?"
+        return document_path, content_type, document_meta, query
+
     else:
         # Default to small.pdf if test not found
         document_path = f"s3://monkeyocr/test/input/test_pdf/small.pdf"

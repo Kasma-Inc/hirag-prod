@@ -102,6 +102,9 @@ class Envs(BaseSettings):
     TRANSLATOR_RATE_LIMIT: int = 60
     TRANSLATOR_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
     TRANSLATOR_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
+    DOTS_OCR_RATE_LIMIT: int = 60
+    DOTS_OCR_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
+    DOTS_OCR_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":

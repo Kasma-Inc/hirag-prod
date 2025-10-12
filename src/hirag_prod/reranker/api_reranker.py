@@ -4,9 +4,8 @@ from typing import Dict, List, Union
 import httpx
 
 from hirag_prod.configs.functions import get_envs, get_shared_variables
-
-from ..rate_limiter import RateLimiter
-from .base import Reranker
+from hirag_prod.rate_limiter import RateLimiter
+from hirag_prod.reranker.base import Reranker
 
 rate_limiter = RateLimiter()
 

@@ -311,7 +311,7 @@ class DocumentProcessor:
 
                     else:
                         raise DocumentProcessingError(
-                            "Invalid document format returned by loader"
+                            f"Invalid document format after chunking, expected list or DoclingDocument, got {type(json_doc)}"
                         )
 
                     # Extract timestamp from items
