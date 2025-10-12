@@ -18,6 +18,9 @@ class HiRAGConfig(BaseSettings):
     chunk_size: int = 1200
     chunk_overlap: int = 200
 
+    # whether to construct graph
+    construct_graph: bool = False
+
     # Batch processing configuration
     embedding_batch_size: int = 1000
     entity_upsert_concurrency: int = 32

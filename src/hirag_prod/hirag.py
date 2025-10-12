@@ -116,13 +116,15 @@ class DocumentProcessor:
         content_type: str,
         workspace_id: str,
         knowledge_base_id: str,
-        with_graph: bool = True,
+        construct_graph: Optional[bool] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         job_id: Optional[str] = None,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
+        if construct_graph is None:
+            construct_graph = get_hi_rag_config().construct_graph
         async with self.metrics.track_operation(f"process_document"):
             # Load and chunk document
             chunks, file, items = await self._load_and_chunk_document(
@@ -178,7 +180,7 @@ class DocumentProcessor:
             await self._process_chunks(chunks, items, workspace_id, knowledge_base_id)
 
             # Process graph data
-            if with_graph:
+            if construct_graph:
                 await self._construct_kg(chunks)
 
             # Mark as complete
@@ -903,7 +905,7 @@ class HiRAG:
         workspace_id: str,
         knowledge_base_id: str,
         content_type: str,
-        with_graph: bool = True,
+        construct_graph: Optional[bool] = None,
         file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
@@ -918,7 +920,7 @@ class HiRAG:
             workspace_id: workspace id
             knowledge_base_id: knowledge base id
             content_type: document type
-            with_graph: whether to process graph data (entities and relations)
+            construct_graph: whether to construct graph for GraphRAG (optional, high cost operation)
             file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
@@ -933,6 +935,9 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        if construct_graph is None:
+            construct_graph = get_hi_rag_config().construct_graph
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
@@ -978,7 +983,7 @@ class HiRAG:
             metrics = await self._processor.process_document(
                 document_path=document_path,
                 content_type=content_type,
-                with_graph=with_graph,
+                construct_graph=construct_graph,
                 document_meta=document_meta,
                 loader_configs=loader_configs,
                 job_id=job_id,
@@ -1049,6 +1054,10 @@ class HiRAG:
             raise HiRAGException("Query text is required in chunks_dict")
         if not chunks:
             raise HiRAGException("Chunks are required in chunks_dict")
+
+        has_graph = await self._storage.has_graph_edges(workspace_id, knowledge_base_id)
+        if not has_graph:
+            strategy = "reranker"
 
         return await self._query_service.apply_strategy_to_chunks(
             chunks=chunks,

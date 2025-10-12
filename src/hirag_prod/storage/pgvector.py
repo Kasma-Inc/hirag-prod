@@ -724,3 +724,15 @@ class PGVector(BaseVDB):
                 )
 
             await conn.run_sync(_create)
+
+    async def has_graph_edges(self, workspace_id: str, knowledge_base_id: str) -> bool:
+        GraphModel = self.get_model("Graph")
+        async with get_db_session_maker()() as session:
+            stmt = (
+                select(1)
+                .select_from(GraphModel)
+                .where(GraphModel.workspaceId == workspace_id)
+                .where(GraphModel.knowledgeBaseId == knowledge_base_id)
+                .limit(1)
+            )
+            return (await session.execute(stmt)).first() is not None
