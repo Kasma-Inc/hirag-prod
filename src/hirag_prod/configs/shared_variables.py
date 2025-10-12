@@ -23,6 +23,7 @@ class SharedVariables:
 
         if is_main_process:
             from hirag_prod import _llm
+            from hirag_prod.loader import document_converter
             from hirag_prod.rate_limiter import RATE_LIMITER_NAME_SET
             from hirag_prod.reranker import api_reranker, local_reranker
             from hirag_prod.translator import qwen_translator
@@ -37,6 +38,14 @@ class SharedVariables:
             RATE_LIMITER_NAME_SET.update(
                 qwen_translator.rate_limiter.rate_limiter_name_set
             )
+            RATE_LIMITER_NAME_SET.update(
+                document_converter.rate_limiter.rate_limiter_name_set
+            )
+
+            if "internvl" not in self.input_token_count_dict:
+                self.input_token_count_dict["internvl"] = multiprocessing.Value("i", 0)
+            if "internvl" not in self.output_token_count_dict:
+                self.output_token_count_dict["internvl"] = multiprocessing.Value("i", 0)
 
             for rate_limiter_name in RATE_LIMITER_NAME_SET:
                 if rate_limiter_name not in self.rate_limiter_last_call_time_dict:

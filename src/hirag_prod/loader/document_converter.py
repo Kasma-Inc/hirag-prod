@@ -12,9 +12,15 @@ import requests
 from docling_core.types import DoclingDocument
 
 from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_document_converter_config
+from hirag_prod.configs.functions import (
+    get_document_converter_config,
+    get_envs,
+    get_shared_variables,
+)
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
+from hirag_prod.rate_limiter import RateLimiter
 
+rate_limiter = RateLimiter()
 logger: logging.Logger = logging.getLogger(__name__)
 
 # TODO: Fix dots_ocr/ dir DNE problem, now using docling's as temp solution
@@ -121,6 +127,53 @@ def _poll_dots_job_status(
     return False
 
 
+def _get_dots_token_usage(
+    job_id: str,
+    timeout: int = 10,
+    retries: int = 3,
+) -> Optional[Dict[str, Any]]:
+    config = get_document_converter_config("dots_ocr")
+    base_url = config.base_url
+    api_key = config.api_key
+
+    status_url = f"{base_url.rstrip('/')}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Model-Name": config.model_name,
+        "Entry-Point": f"/token_usage/{job_id}",
+    }
+
+    for attempt in range(retries):
+        try:
+            response = requests.get(status_url, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            status_data = response.json()
+            logger.info(f"Token usage for job {job_id}: {status_data}")
+            # Add data to token usage
+            return status_data
+
+        except Exception as e:
+            if attempt < retries - 1:
+                logger.warning(
+                    f"Failed to get token usage for job {job_id} (attempt {attempt + 1}/{retries}): {e}"
+                )
+                time.sleep(1)  # Wait 1 second before retrying
+            else:
+                log_error_info(
+                    logging.ERROR,
+                    f"Failed to get token usage for job {job_id} after {retries} attempts",
+                    e,
+                    raise_error=True,
+                )
+                return None
+
+
+@rate_limiter.limit(
+    "dotsocr",
+    "DOTS_OCR_RATE_LIMIT_MIN_INTERVAL_SECONDS",
+    "DOTS_OCR_RATE_LIMIT",
+    "DOTS_OCR_RATE_LIMIT_TIME_UNIT",
+)
 def convert(
     converter_type: Literal["dots_ocr"],
     input_file_path: str,
@@ -230,6 +283,32 @@ def convert(
                     return None
 
                 logger.info(f"Job {job_id} completed successfully")
+                token_usage_dict = _get_dots_token_usage(
+                    job_id=job_id,
+                    timeout=get_document_converter_config(converter_type).timeout,
+                    retries=get_document_converter_config(
+                        converter_type
+                    ).polling_retries,
+                )
+
+                if not token_usage_dict:
+                    logger.warning(f"Failed to retrieve token usage for job {job_id}")
+                else:
+                    if get_envs().ENABLE_TOKEN_COUNT:
+                        dots_tokens = token_usage_dict.get("dotsocr", {})
+                        internal_tokens = token_usage_dict.get("InternVL3_5-2B", {})
+                        get_shared_variables().input_token_count_dict[
+                            "dotsocr"
+                        ].value += dots_tokens.get("prompt_tokens", 0)
+                        get_shared_variables().output_token_count_dict[
+                            "dotsocr"
+                        ].value += dots_tokens.get("completion_tokens", 0)
+                        get_shared_variables().input_token_count_dict[
+                            "internvl"
+                        ].value += internal_tokens.get("prompt_tokens", 0)
+                        get_shared_variables().output_token_count_dict[
+                            "internvl"
+                        ].value += internal_tokens.get("completion_tokens", 0)
 
             else:
                 raise ValueError("No job ID found in the response for async processing")
