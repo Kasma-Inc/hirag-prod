@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import re
@@ -19,7 +20,6 @@ from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
-import html
 
 logger = logging.getLogger(__name__)
 
@@ -676,7 +676,7 @@ def obtain_docling_md_bbox(
 
         # Try exact match first
         start_pos = original_content.find(clean_item_text, search_start)
-        
+
         # Then try html escape match
         if start_pos == -1:
             escaped_item = html.escape(clean_item_text)

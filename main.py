@@ -186,7 +186,7 @@ def get_test(id: str):
             "What duties do owners have for maintaining and inspecting fire service installations under regulation 8 of Cap 95B, including any exceptions?",
         ]
         return document_paths, content_type, document_metas, query
-    
+
     elif id == "formula_md" or id == "9":
         document_path = f"oss://graxy-dev/ofnil/tmp/user/2e9946d0-eb85-4508-b499-feda899d0314/95e2ddda-f905-4d3f-abd1-8a4e9eee401f/数据结构.md"
         filename = "数据结构.md"
