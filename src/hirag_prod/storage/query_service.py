@@ -104,6 +104,13 @@ class QueryService:
     async def filter_chunks_by_cluster(
         self, workspace_id: str, knowledge_base_id: str, chunks: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
+        # Verify that chunks require clustering
+        if len(chunks) <= get_hi_rag_config().clustering_n_clusters:
+            logger.info(
+                f"Chunk Count ({len(chunks)}) <= Cluster Count ({get_hi_rag_config().clustering_n_clusters}), skipping clustering"
+            )
+            return chunks
+
         # Apply clustering
         chunk_ids = [
             chunk.get("documentKey") for chunk in chunks if chunk.get("documentKey")
