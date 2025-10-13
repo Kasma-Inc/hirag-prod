@@ -11,7 +11,7 @@ from sqlalchemy.orm import load_only
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.configs.functions import get_envs, get_hi_rag_config
 from hirag_prod.cross_language_search.functions import normalize_tokenize_text
 from hirag_prod.resources.functions import (
     get_db_engine,
@@ -101,6 +101,14 @@ class PGVector(BaseVDB):
 
             # Get valid column names for the table
             valid_columns = set(model.__table__.columns.keys())
+            translations_text_list = None
+
+            if with_translation:
+                if get_envs().TRANSLATOR_SERVICE_TYPE == "local":
+                    translated_list = await get_translator().translate(
+                        texts_to_upsert, dest="en"
+                    )
+                    translations_text_list = [t.text for t in translated_list]
 
             with tqdm(
                 total=len(properties_list), desc="Processing texts", leave=False
@@ -113,18 +121,24 @@ class PGVector(BaseVDB):
                             row["token_start_index_list"],
                             row["token_end_index_list"],
                         ) = normalize_tokenize_text(texts_to_upsert[i])
+
                     if with_translation:
-                        row["translation"] = (
-                            await get_translator().translate(
-                                texts_to_upsert[i], dest="en"
-                            )
-                        ).text
+                        if get_envs().TRANSLATOR_SERVICE_TYPE == "local":
+                            row["translation"] = translations_text_list[i]
+                        else:
+                            row["translation"] = (
+                                await get_translator().translate(
+                                    texts_to_upsert[i], dest="en"
+                                )
+                            ).text
+
                         if with_tokenization:
                             (
                                 row["translation_token_list"],
                                 row["translation_token_start_index_list"],
                                 row["translation_token_end_index_list"],
                             ) = normalize_tokenize_text(row["translation"])
+
                     vec = self._to_list(embs[i])
                     row["vector"] = vec
                     row["updatedAt"] = now

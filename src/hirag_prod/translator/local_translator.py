@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, List, Optional, Union
 
 import httpx
@@ -104,7 +105,7 @@ class LocalTranslator:
             raise ValueError(f"Unsupported language: {lang}")
 
     async def translate(
-        self, text, dest: str = "English", src: str = "Auto"
+        self, text: Union[str, list[str]], dest: str = "English", src: str = "Auto"
     ) -> Union[LocalTranslated, list[LocalTranslated]]:
         """
         Translate text or list of texts.
@@ -193,11 +194,24 @@ class LocalTranslator:
             raise RuntimeError(f"Translation failed: {e}")
 
     async def _translate_batch(
-        self, texts: list[str], dest: str = "English", src: str = "Auto"
+        self,
+        texts: list[str],
+        dest: str = "English",
+        src: str = "Auto",
+        max_concurrency: int = 1000,
     ) -> list[LocalTranslated]:
-        """Translate a batch of texts."""
-        results = []
-        for text in texts:
-            translated_text = await self._translate_single(text, dest, src)
-            results.append(translated_text)
+        if not texts:
+            return []
+        sem = asyncio.Semaphore(max_concurrency)
+
+        async def worker(t: str):
+            async with sem:
+                return await self._translate_single(t, dest, src)
+
+        from tqdm.asyncio import tqdm_asyncio
+
+        results = await tqdm_asyncio.gather(
+            *[worker(t) for t in texts],
+            desc="Translating",
+        )
         return results
