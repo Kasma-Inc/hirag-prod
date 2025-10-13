@@ -651,38 +651,38 @@ def chunk_docling_document(
 def _fuzzy_find_text(
     needle: str, haystack: str, start_pos: int = 0, threshold: float = 0.8
 ) -> Optional[tuple[int, int]]:
-    
+
     if not needle or not haystack:
         return None
-    
+
     needle_len = len(needle)
     search_window = haystack[start_pos:]
-    
+
     # Limit search to reasonable window to avoid performance issues
     max_search_len = min(len(search_window), needle_len * 3 + 1000)
     search_text = search_window[:max_search_len]
-    
+
     best_ratio = 0.0
     best_match_pos = None
-    
+
     # Slide window across the search text
     for i in range(len(search_text) - needle_len + 1):
-        window = search_text[i:i + needle_len]
+        window = search_text[i : i + needle_len]
         ratio = SequenceMatcher(None, needle, window).ratio()
-        
+
         if ratio > best_ratio and ratio >= threshold:
             best_ratio = ratio
             best_match_pos = i
-            
+
             # If we find a very good match, stop early
             if ratio > 0.95:
                 break
-    
+
     if best_match_pos is not None:
         actual_start = start_pos + best_match_pos
         actual_end = actual_start + needle_len
         return (actual_start, actual_end)
-    
+
     return None
 
 
@@ -724,7 +724,9 @@ def obtain_docling_md_bbox(
 
         # Try fuzzy matching if exact matches fail
         if start_pos == -1:
-            fuzzy_result = _fuzzy_find_text(clean_item_text, original_content, search_start)
+            fuzzy_result = _fuzzy_find_text(
+                clean_item_text, original_content, search_start
+            )
             if fuzzy_result:
                 start_pos, end_pos = fuzzy_result
                 id2pos[item.documentKey] = (start_pos, end_pos)
@@ -744,17 +746,19 @@ def obtain_docling_md_bbox(
     for i in range(len(items)):
         item = items[i]
         if id2pos[item.documentKey] is None:
-            logger.warning(f"Could not find position for item idx {item.chunkIdx}, using fallback by getting position between neighbor items.")
-            
+            logger.warning(
+                f"Could not find position for item idx {item.chunkIdx}, using fallback by getting position between neighbor items."
+            )
+
             # Special case: only one item, assign full range
             if len(items) == 1:
                 id2pos[item.documentKey] = (0, len(original_content))
                 continue
-            
+
             # Try to get the position between previous and next items
             prev_pos = None
             next_pos = None
-            
+
             # Get previous item's position
             if i == 0:
                 # First item - use start of document
@@ -763,7 +767,7 @@ def obtain_docling_md_bbox(
                 # Get previous item's end position
                 prev_item = items[i - 1]
                 prev_pos = id2pos.get(prev_item.documentKey)
-            
+
             # Get next item's position
             if i == len(items) - 1:
                 # Last item - use end of document
@@ -772,12 +776,14 @@ def obtain_docling_md_bbox(
                 # Get next item's start position
                 next_item = items[i + 1]
                 next_pos = id2pos.get(next_item.documentKey)
-            
+
             # Assign position if we have valid boundaries
             if prev_pos and next_pos:
                 id2pos[item.documentKey] = (prev_pos[1], next_pos[0])
             else:
-                logger.warning(f"Could not find fallback position for item idx {item.chunkIdx}, leaving bbox as (0, 0) to avoid errors.")
+                logger.warning(
+                    f"Could not find fallback position for item idx {item.chunkIdx}, leaving bbox as (0, 0) to avoid errors."
+                )
                 id2pos[item.documentKey] = (0, 0)
 
     # Update items with bbox information (character positions)
