@@ -306,8 +306,7 @@ class DocumentProcessor:
                         )
 
                         if content_type == "text/markdown":
-                            raw_md = generated_md.text
-                            items = obtain_docling_md_bbox(json_doc, raw_md, items)
+                            items = obtain_docling_md_bbox(json_doc, items)
 
                     else:
                         raise DocumentProcessingError(

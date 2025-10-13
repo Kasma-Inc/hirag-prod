@@ -19,6 +19,7 @@ from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
+import html
 
 logger = logging.getLogger(__name__)
 
@@ -648,7 +649,6 @@ def chunk_docling_document(
 
 def obtain_docling_md_bbox(
     docling_doc: DoclingDocument,
-    raw_md: str,
     items: List[Item] = None,
 ) -> List[Item]:
     """
@@ -659,11 +659,7 @@ def obtain_docling_md_bbox(
     if not items:
         return []
 
-    original_content = raw_md
-
-    if not original_content:
-        # Fallback to exported markdown if original content is not available
-        original_content = docling_doc.export_to_markdown()
+    original_content = docling_doc.export_to_text()
 
     # Create a mapping to store character positions for each item
     id2pos = {}
@@ -673,12 +669,19 @@ def obtain_docling_md_bbox(
     for item in items:
         # Clean the item text for better matching (remove extra whitespace)
         clean_item_text = item.text.strip()
+        match_length = len(clean_item_text)
         if not clean_item_text:
             id2pos[item.documentKey] = None
             continue
 
         # Try exact match first
         start_pos = original_content.find(clean_item_text, search_start)
+        
+        # Then try html escape match
+        if start_pos == -1:
+            escaped_item = html.escape(clean_item_text)
+            start_pos = original_content.find(escaped_item, search_start)
+            match_length = len(escaped_item)
 
         if start_pos == -1:
             # If exact match fails, try with normalized
@@ -694,11 +697,11 @@ def obtain_docling_md_bbox(
                 id2pos[item.documentKey] = None
                 continue
 
-        end_pos = start_pos + len(clean_item_text)
+        end_pos = start_pos + match_length
         id2pos[item.documentKey] = (start_pos, end_pos)
 
         # Move search start forward to avoid overlapping matches
-        search_start = start_pos + len(clean_item_text)
+        search_start = start_pos + match_length
 
     # Update items with bbox information (character positions)
     updated_items = []

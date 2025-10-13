@@ -202,7 +202,7 @@ def get_test(id: str):
         query = "这道题的题解时间复杂度是什么？"
         return document_path, content_type, document_meta, query
 
-    elif id == "png" or id == "9":
+    elif id == "png" or id == "10":
         document_path = f"oss://graxy-dev/ofnil/tmp/user/2e9946d0-eb85-4508-b499-feda899d0314/aliyun-截图.png"
         content_type = "multimodal/image"
         document_meta = {
