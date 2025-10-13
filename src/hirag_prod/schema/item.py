@@ -20,6 +20,7 @@ class Item(Base):
     )
     workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    text_normalized: Mapped[str] = mapped_column(Text, nullable=False)
     # From FileMetadata
     fileName: Mapped[str] = mapped_column(String, nullable=False)
     uri: Mapped[str] = mapped_column(String, nullable=False)
@@ -46,6 +47,7 @@ class Item(Base):
         ARRAY(Integer), nullable=False
     )
     translation: Mapped[str] = mapped_column(Text, nullable=False)
+    translation_normalized: Mapped[str] = mapped_column(Text, nullable=False)
     translation_token_list: Mapped[List[str]] = mapped_column(
         ARRAY(String), nullable=False
     )

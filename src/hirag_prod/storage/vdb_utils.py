@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from rich.console import Console
 
@@ -107,7 +107,7 @@ async def get_table_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
-    additional_data_to_select: Optional[Dict[str, Any]] = None,
+    additional_data_to_select: Optional[Dict[Union[str, Tuple[str, ...]], Any]] = None,
     additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
     limit: Optional[int] = None,
@@ -183,7 +183,7 @@ async def get_item_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
-    additional_data_to_select: Optional[Dict[str, Any]] = None,
+    additional_data_to_select: Optional[Dict[Union[str, Tuple[str, ...]], Any]] = None,
     additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
     limit: Optional[int] = None,

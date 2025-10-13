@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import networkx as nx
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import load_only
 from tqdm import tqdm
@@ -109,6 +109,7 @@ class PGVector(BaseVDB):
                     row = dict(properties_list[i] or {})
                     if with_tokenization:
                         (
+                            row["text_normalized"],
                             row["token_list"],
                             row["token_start_index_list"],
                             row["token_end_index_list"],
@@ -121,6 +122,7 @@ class PGVector(BaseVDB):
                         ).text
                         if with_tokenization:
                             (
+                                row["translation_normalized"],
                                 row["translation_token_list"],
                                 row["translation_token_start_index_list"],
                                 row["translation_token_end_index_list"],
@@ -611,25 +613,38 @@ class PGVector(BaseVDB):
         table_name: str,
         key_column: str = "documentKey",
         columns_to_select: Optional[List[str]] = None,
-        additional_data_to_select: Optional[Dict[str, Any]] = None,
+        additional_data_to_select: Optional[
+            Dict[Union[str, Tuple[str, ...]], Any]
+        ] = None,
         additional_where_clause: Optional[Any] = None,
         order_by: Optional[List[Any]] = None,
         limit: Optional[int] = None,
     ) -> List[dict]:
         model = self.get_model(table_name)
         entity_to_select_list: List[Any] = [model]
-        additional_data_key_list: List[str] = []
+        from_clause: Any = model.__table__
+        additional_data_key_list: List[Union[str, Tuple[str, ...]]] = []
         if additional_data_to_select is not None:
             for k, v in additional_data_to_select.items():
                 additional_data_key_list.append(k)
-                entity_to_select_list.append(v)
+                if isinstance(k, str):
+                    entity_to_select_list.append(text(k))
+                    from_clause = from_clause.join(v.alias(k), literal(True))
+                else:
+                    for return_value_name in k:
+                        entity_to_select_list.append(getattr(v.c, return_value_name))
+                    from_clause = from_clause.join(v, literal(True))
         if columns_to_select is None:  # query all if nothing provided
             columns_to_select = [
                 c for c in model.__table__.columns.keys() if c != "vector"
             ]
         async with get_db_session_maker()() as session:
-            stmt = select(*entity_to_select_list).options(
-                load_only(*[getattr(model, column) for column in columns_to_select])
+            stmt = (
+                select(*entity_to_select_list)
+                .options(
+                    load_only(*[getattr(model, column) for column in columns_to_select])
+                )
+                .select_from(from_clause)
             )
             if key_value:
                 stmt = stmt.where(getattr(model, key_column).in_(key_value))
@@ -654,8 +669,15 @@ class PGVector(BaseVDB):
                     if not hasattr(r[0], col):
                         continue
                     rec[col] = getattr(r[0], col)
-                for i in range(1, len(r)):
-                    rec[additional_data_key_list[i - 1]] = r[i]
+                index: int = 0
+                for additional_data_key in additional_data_key_list:
+                    if isinstance(additional_data_key, str):
+                        rec[additional_data_key] = r[index + 1]
+                        index += 1
+                    else:
+                        for return_value_name in additional_data_key:
+                            rec[return_value_name] = r[index + 1]
+                            index += 1
                 out.append(rec)
             return out
 
