@@ -97,50 +97,42 @@ class LocalReranker(Reranker):
         if not items:
             return []
 
+        def add_timestamp_to_query(query: str) -> str:
+            return f"{query}\n\n[Timestamp: {datetime.now().isoformat()}]"
+
+        if isinstance(query, str):
+            query = [query]
+
         if rerank_with_time:
             docs = [
                 f"{item.get(key, '')}\n\n[Timestamp: {item.get('extractedTimestamp', 'N/A')}]"
                 for item in items
             ]
-            query = f"{query}\n\n[Timestamp: {datetime.now().isoformat()}]"
+            query = [add_timestamp_to_query(q) for q in query]
+
         else:
             docs = [item.get(key, "") for item in items]
 
-        # Handle single query case
-        if isinstance(query, str):
-            results = await self._call_api(query, docs)
-            reranked = []
+        max_scores = {}
+
+        # Process each query and track maximum scores
+        for single_query in query:
+            results = await self._call_api(single_query, docs)
             for r in results:
                 idx = r.get("index")
                 if idx is not None and 0 <= idx < len(items):
-                    item = items[idx].copy()
-                    item["relevance_score"] = r.get("relevance_score", 0.0)
-                    reranked.append(item)
-            reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-            return reranked
+                    score = r.get("relevance_score", 0.0)
+                    # Keep the maximum score for each document
+                    if idx not in max_scores or score > max_scores[idx]:
+                        max_scores[idx] = score
 
-        # Handle list of queries case - find max relevance score among all queries
-        else:
-            max_scores = {}
+        # Create final reranked list with max scores
+        reranked = []
+        for idx, score in max_scores.items():
+            item = items[idx].copy()
+            item["relevance_score"] = score
+            reranked.append(item)
 
-            # Process each query and track maximum scores
-            for single_query in query:
-                results = await self._call_api(single_query, docs)
-                for r in results:
-                    idx = r.get("index")
-                    if idx is not None and 0 <= idx < len(items):
-                        score = r.get("relevance_score", 0.0)
-                        # Keep the maximum score for each document
-                        if idx not in max_scores or score > max_scores[idx]:
-                            max_scores[idx] = score
-
-            # Create final reranked list with max scores
-            reranked = []
-            for idx, score in max_scores.items():
-                item = items[idx].copy()
-                item["relevance_score"] = score
-                reranked.append(item)
-
-            # Sort by score descending and return
-            reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-            return reranked
+        # Sort by score descending and return
+        reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return reranked
