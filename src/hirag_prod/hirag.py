@@ -1053,7 +1053,8 @@ class HiRAG:
         if not query:
             raise HiRAGException("Query text is required in chunks_dict")
         if not chunks:
-            raise HiRAGException("Chunks are required in chunks_dict")
+            logging.warning("No chunks provided in chunks_dict")
+            return {"query": query, "chunks": []}
 
         has_graph = await self._storage.has_graph_edges(workspace_id, knowledge_base_id)
         if not has_graph:
