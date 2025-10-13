@@ -216,7 +216,19 @@ class ResourceManager:
 
         postgres_url: str = get_config_manager().postgres_url_async
 
-        logging.info(f"Using database URL: {postgres_url.split('@')[0]}@***")
+        def get_masked(db_url: str) -> str:
+            """Mask credentials in the database URL for logging purposes."""
+            masked_url = db_url
+            if "://" in db_url and "@" in db_url:
+                # Find the :// and @ to mask credentials
+                proto_end = db_url.find("://") + 3
+                at_pos = db_url.find("@", proto_end)
+                colon_pos = db_url.find(":", proto_end)
+                if colon_pos != -1 and at_pos != -1 and colon_pos < at_pos:
+                    masked_url = db_url[: colon_pos + 1] + "****" + db_url[at_pos:]
+            return masked_url
+
+        logging.info(f"Using database URL: {get_masked(postgres_url)}")
 
         # Create async engine with connection pool
 
