@@ -28,10 +28,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.reranker import Reranker, create_reranker
 from hirag_prod.resources.functions import timing_logger
-from hirag_prod.resources.postgres_functions import (
-    precise_search_by_search_sentence_list,
-    search_by_search_keyword_list,
-)
+from hirag_prod.resources.postgres_functions import search_by_search_list
 from hirag_prod.schema import Base
 from hirag_prod.translator.local_translator import LocalTranslator
 from hirag_prod.translator.qwen_translator import QwenTranslator
@@ -260,8 +257,7 @@ class ResourceManager:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS plpython3u;"))
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
             await conn.run_sync(Base.metadata.create_all)
-            await conn.execute(search_by_search_keyword_list)
-            await conn.execute(precise_search_by_search_sentence_list)
+            await conn.execute(search_by_search_list)
 
         logging.info(f"✅ Database engine initialized successfully")
 

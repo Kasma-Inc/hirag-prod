@@ -2,12 +2,11 @@ import logging
 import math
 import time
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import networkx as nx
-from sqlalchemy import delete, func, literal, select, text
+from sqlalchemy import Subquery, delete, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import load_only
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
@@ -627,16 +626,79 @@ class PGVector(BaseVDB):
         table_name: str,
         key_column: str = "documentKey",
         columns_to_select: Optional[List[str]] = None,
+        additional_columns_to_select_in_subquery: Optional[List[str]] = None,
         additional_data_to_select: Optional[
             Dict[Union[str, Tuple[str, ...]], Any]
         ] = None,
+        where_clause: Optional[Any] = None,
         additional_where_clause: Optional[Any] = None,
         order_by: Optional[List[Any]] = None,
+        additional_sql_generator: Optional[
+            Callable[
+                [Optional[Any]],
+                Tuple[Optional[Dict[Union[str, Tuple[str, ...]], Any]], Optional[Any]],
+            ]
+        ] = None,
+        order_by_generator: Optional[
+            Callable[[Optional[Any]], Optional[List[Any]]]
+        ] = None,
         limit: Optional[int] = None,
+        use_subquery: bool = False,
     ) -> List[dict]:
         model = self.get_model(table_name)
-        entity_to_select_list: List[Any] = [model]
-        from_clause: Any = model.__table__
+        if columns_to_select is None:  # query all if nothing provided
+            columns_to_select = [
+                c for c in model.__table__.columns.keys() if c != "vector"
+            ]
+        if use_subquery:
+            columns_to_select_in_subquery: List[str] = columns_to_select.copy()
+            if additional_columns_to_select_in_subquery is not None:
+                columns_to_select_in_subquery.extend(
+                    additional_columns_to_select_in_subquery
+                )
+
+        def add_where_clause(statement: Any) -> Any:
+            if key_value:
+                statement = statement.where(getattr(model, key_column).in_(key_value))
+            if workspace_id and hasattr(model, "workspaceId"):
+                statement = statement.where(model.workspaceId == workspace_id)
+            if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
+                statement = statement.where(model.knowledgeBaseId == knowledge_base_id)
+            if where_clause is not None:
+                statement = statement.where(where_clause)
+            return statement
+
+        subquery: Optional[Subquery] = None
+        if use_subquery:
+            stmt: Any = select(
+                *[
+                    getattr(model, column_name)
+                    for column_name in columns_to_select_in_subquery
+                ]
+            )
+            stmt = add_where_clause(stmt)
+            subquery: Subquery = stmt.subquery()
+
+        if (
+            (additional_data_to_select is None) or (additional_where_clause is None)
+        ) and (additional_sql_generator is not None):
+            additional_data_to_select_generated, additional_where_clause_generated = (
+                additional_sql_generator(None if not use_subquery else subquery.c)
+            )
+            if additional_data_to_select is None:
+                additional_data_to_select = additional_data_to_select_generated
+            if additional_where_clause is None:
+                additional_where_clause = additional_where_clause_generated
+
+        if (order_by is None) and (order_by_generator is not None):
+            order_by = order_by_generator(None if not use_subquery else subquery.c)
+
+        entity_to_select_list: List[Any] = (
+            [getattr(model, column_name) for column_name in columns_to_select]
+            if not use_subquery
+            else [getattr(subquery.c, column_name) for column_name in columns_to_select]
+        )
+        from_clause: Any = model.__table__ if not use_subquery else subquery
         additional_data_key_list: List[Union[str, Tuple[str, ...]]] = []
         if additional_data_to_select is not None:
             for k, v in additional_data_to_select.items():
@@ -648,49 +710,35 @@ class PGVector(BaseVDB):
                     for return_value_name in k:
                         entity_to_select_list.append(getattr(v.c, return_value_name))
                     from_clause = from_clause.join(v, literal(True))
-        if columns_to_select is None:  # query all if nothing provided
-            columns_to_select = [
-                c for c in model.__table__.columns.keys() if c != "vector"
-            ]
-        async with get_db_session_maker()() as session:
-            stmt = (
-                select(*entity_to_select_list)
-                .options(
-                    load_only(*[getattr(model, column) for column in columns_to_select])
-                )
-                .select_from(from_clause)
-            )
-            if key_value:
-                stmt = stmt.where(getattr(model, key_column).in_(key_value))
-            if workspace_id and hasattr(model, "workspaceId"):
-                stmt = stmt.where(model.workspaceId == workspace_id)
-            if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
-                stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
-            if additional_where_clause is not None:
-                stmt = stmt.where(additional_where_clause)
-            if order_by is not None:
-                stmt = stmt.order_by(*order_by)
-            if limit is not None:
-                stmt = stmt.limit(limit)
+        stmt: Any = select(*entity_to_select_list)
+        stmt = stmt.select_from(from_clause)
+        if not use_subquery:
+            stmt = add_where_clause(stmt)
+        if additional_where_clause is not None:
+            stmt = stmt.where(additional_where_clause)
+        if order_by is not None:
+            stmt = stmt.order_by(*order_by)
+        if limit is not None:
+            stmt = stmt.limit(limit)
 
+        async with get_db_session_maker()() as session:
             result = await session.execute(stmt)
             rows = list(result.all())
 
             out: List[dict] = []
             for r in rows:
                 rec = {}
-                for col in columns_to_select:
-                    if not hasattr(r[0], col):
-                        continue
-                    rec[col] = getattr(r[0], col)
                 index: int = 0
+                for col in columns_to_select:
+                    rec[col] = r[index]
+                    index += 1
                 for additional_data_key in additional_data_key_list:
                     if isinstance(additional_data_key, str):
-                        rec[additional_data_key] = r[index + 1]
+                        rec[additional_data_key] = r[index]
                         index += 1
                     else:
                         for return_value_name in additional_data_key:
-                            rec[return_value_name] = r[index + 1]
+                            rec[return_value_name] = r[index]
                             index += 1
                 out.append(rec)
             return out

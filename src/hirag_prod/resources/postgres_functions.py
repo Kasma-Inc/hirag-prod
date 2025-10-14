@@ -1,13 +1,18 @@
 from sqlalchemy import TextClause, text
 
-search_by_search_keyword_list: TextClause = text(
-    """CREATE OR REPLACE FUNCTION search_by_search_keyword_list (original_token_list character varying[], translation_token_list character varying[], search_keyword_list_original character varying[], search_keyword_list character varying[])
+search_by_search_list: TextClause = text(
+    """CREATE OR REPLACE FUNCTION search_by_search_list (original_token_list character varying[], translation_token_list character varying[], original_text_normalized text, translation_normalized text, search_keyword_list_original character varying[], search_keyword_list character varying[], search_sentence_list_original character varying[], search_sentence_list character varying[])
 RETURNS TABLE(
     matched_index_list_original integer[],
-    matched_index_list_translation integer[]
+    matched_index_list_translation integer[],
+    fuzzy_match_start_index_list_original INTEGER[],
+    fuzzy_match_end_index_list_original INTEGER[],
+    fuzzy_match_start_index_list_translation INTEGER[],
+    fuzzy_match_end_index_list_translation INTEGER[]
 ) AS $$
-    from typing import List, Optional
+    from typing import List, Dict, Tuple, Optional
     from rapidfuzz import fuzz
+    from rapidfuzz.distance import ScoreAlignment
 
     def find_keyword_matches(
         word_list: List[str],
@@ -29,39 +34,6 @@ RETURNS TABLE(
             return sorted(matched_index_set)
         else:
             return None
-
-    matched_index_list_original: Optional[List[int]] = find_keyword_matches(
-        original_token_list, search_keyword_list_original
-    )
-    matched_index_list_translation: Optional[List[int]] = None
-    if len(search_keyword_list) > 0:
-        if matched_index_list_original is not None:
-            matched_index_list_original = find_keyword_matches(
-                original_token_list,
-                search_keyword_list,
-                matched_index_list_original,
-            )
-        else:
-            matched_index_list_translation = find_keyword_matches(
-                translation_token_list, search_keyword_list
-            )
-
-    yield matched_index_list_original, matched_index_list_translation
-$$ LANGUAGE plpython3u;
-"""
-)
-
-precise_search_by_search_sentence_list: TextClause = text(
-    """CREATE OR REPLACE FUNCTION precise_search_by_search_sentence_list (original_text_normalized text, translation_normalized text, search_sentence_list_original character varying[], search_sentence_list character varying[])
-RETURNS TABLE(
-    fuzzy_match_start_index_list_original INTEGER[],
-    fuzzy_match_end_index_list_original INTEGER[],
-    fuzzy_match_start_index_list_translation INTEGER[],
-    fuzzy_match_end_index_list_translation INTEGER[]
-) AS $$
-    from typing import List, Dict, Tuple, Optional
-    from rapidfuzz import fuzz
-    from rapidfuzz.distance import ScoreAlignment
 
     def find_sentence_matches(
         text_normalized: str, search_list: List[str]
@@ -102,6 +74,22 @@ RETURNS TABLE(
         else:
             return None, None
 
+    matched_index_list_original: Optional[List[int]] = find_keyword_matches(
+        original_token_list, search_keyword_list_original
+    )
+    matched_index_list_translation: Optional[List[int]] = None
+    if len(search_keyword_list) > 0:
+        if matched_index_list_original is not None:
+            matched_index_list_original = find_keyword_matches(
+                original_token_list,
+                search_keyword_list,
+                matched_index_list_original,
+            )
+        else:
+            matched_index_list_translation = find_keyword_matches(
+                translation_token_list, search_keyword_list
+            )
+
     fuzzy_match_start_index_list_original, fuzzy_match_end_index_list_original = find_sentence_matches(
         original_text_normalized, search_sentence_list_original
     )
@@ -120,7 +108,7 @@ RETURNS TABLE(
                 translation_normalized, search_sentence_list
             )
 
-    yield fuzzy_match_start_index_list_original, fuzzy_match_end_index_list_original, fuzzy_match_start_index_list_translation, fuzzy_match_send_index_list_translation
+    yield matched_index_list_original, matched_index_list_translation, fuzzy_match_start_index_list_original, fuzzy_match_end_index_list_original, fuzzy_match_start_index_list_translation, fuzzy_match_send_index_list_translation
 $$ LANGUAGE plpython3u;
 """
 )

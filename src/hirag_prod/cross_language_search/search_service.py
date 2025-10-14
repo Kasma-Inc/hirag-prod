@@ -1,5 +1,4 @@
 import re
-import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -86,65 +85,60 @@ async def cross_language_search(
 
     last_cursor: Optional[Any] = None
     batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
-    additional_data_to_select: Optional[Dict[Union[str, Tuple[str, ...]], Any]] = None
-    additional_where_clause_ai_search_base: Optional[Any] = None
-    if ai_search:
-        search_by_search_keyword_list_postgres_function: (
-            Any
-        ) = func.search_by_search_keyword_list(
-            Item.token_list,
-            Item.translation_token_list,
+
+    def additional_sql_generator(
+        subquery_column: Optional[Any],
+    ) -> Tuple[Optional[Dict[Union[str, Tuple[str, ...]], Any]], Optional[Any]]:
+        if not ai_search:
+            return None, None
+        elif subquery_column is None:
+            return None, None
+        search_by_search_list_postgres_function: Any = func.search_by_search_list(
+            subquery_column.token_list,
+            subquery_column.translation_token_list,
+            subquery_column.text_normalized,
+            subquery_column.translation_normalized,
             search_keyword_list_original,
             search_keyword_list,
-        ).table_valued(
-            "matched_index_list_original",
-            "matched_index_list_translation",
-            type_=ARRAY(Integer),
-        )
-        precise_search_by_search_sentence_list_postgres_function: (
-            Any
-        ) = func.precise_search_by_search_sentence_list(
-            Item.text_normalized,
-            Item.translation_normalized,
             search_sentence_list_original,
             search_sentence_list,
         ).table_valued(
+            "matched_index_list_original",
+            "matched_index_list_translation",
             "fuzzy_match_start_index_list_original",
             "fuzzy_match_end_index_list_original",
             "fuzzy_match_start_index_list_translation",
             "fuzzy_match_end_index_list_translation",
             type_=ARRAY(Integer),
         )
-        additional_data_to_select = {
+        additional_data_to_select: Dict[Union[str, Tuple[str, ...]], Any] = {
             (
                 "matched_index_list_original",
                 "matched_index_list_translation",
-            ): search_by_search_keyword_list_postgres_function,
-            (
                 "fuzzy_match_start_index_list_original",
                 "fuzzy_match_end_index_list_original",
                 "fuzzy_match_start_index_list_translation",
                 "fuzzy_match_end_index_list_translation",
-            ): precise_search_by_search_sentence_list_postgres_function,
+            ): search_by_search_list_postgres_function,
         }
-        additional_where_clause_ai_search_base = or_(
-            search_by_search_keyword_list_postgres_function.c.matched_index_list_original.is_not(
+        additional_where_clause: Any = or_(
+            search_by_search_list_postgres_function.c.matched_index_list_original.is_not(
                 None
             ),
-            search_by_search_keyword_list_postgres_function.c.matched_index_list_translation.is_not(
+            search_by_search_list_postgres_function.c.matched_index_list_translation.is_not(
                 None
             ),
-            precise_search_by_search_sentence_list_postgres_function.c.fuzzy_match_start_index_list_original.is_not(
+            search_by_search_list_postgres_function.c.fuzzy_match_start_index_list_original.is_not(
                 None
             ),
-            precise_search_by_search_sentence_list_postgres_function.c.fuzzy_match_start_index_list_translation.is_not(
+            search_by_search_list_postgres_function.c.fuzzy_match_start_index_list_translation.is_not(
                 None
             ),
         )
         if len(search_embedding_np_array_dict["search_sentence"]) > 0:
             get_search_sentence_cosine_distance_postgres_function: Any = func.least(
                 *[
-                    Item.vector.cosine_distance(sentence_embedding)
+                    subquery_column.vector.cosine_distance(sentence_embedding)
                     for sentence_embedding in search_embedding_np_array_dict[
                         "search_sentence"
                     ]
@@ -153,29 +147,53 @@ async def cross_language_search(
             additional_data_to_select["search_sentence_cosine_distance"] = (
                 get_search_sentence_cosine_distance_postgres_function
             )
-            additional_where_clause_ai_search_base = or_(
-                additional_where_clause_ai_search_base,
+            additional_where_clause = or_(
+                additional_where_clause,
                 text("search_sentence_cosine_distance < 0.4"),
             )
+        return additional_data_to_select, additional_where_clause
+
     while True:
         if ai_search:
-            additional_where_clause: Optional[Any] = (
-                additional_where_clause_ai_search_base
-            )
-            if last_cursor is not None:
-                additional_where_clause = and_(
-                    additional_where_clause,
-                    last_cursor,
-                )
+            where_clause: Optional[Any] = last_cursor
         else:
-            additional_where_clause: Optional[Any] = func.lower(Item.text).like(
+            where_clause: Optional[Any] = func.lower(Item.text).like(
                 f"%{search_content.lower()}%", escape="\\"
             )
             if last_cursor is not None:
-                additional_where_clause = and_(
-                    additional_where_clause,
+                where_clause = and_(
+                    where_clause,
                     last_cursor,
                 )
+
+        def order_by_generator(object_to_select: Optional[Any]) -> Optional[List[Any]]:
+            if not ai_search:
+                object_to_select = Item
+            elif object_to_select is None:
+                return None
+            return [
+                object_to_select.type,
+                object_to_select.fileName,
+                coalesce(object_to_select.pageNumber, -1),
+                case(
+                    (
+                        object_to_select.type.in_(["pdf", "image"]),
+                        -object_to_select.bbox[2],
+                    ),
+                    else_=coalesce(object_to_select.bbox[1], -1.0),
+                ),
+                case(
+                    (
+                        object_to_select.type.in_(["pdf", "image"]),
+                        object_to_select.bbox[1],
+                    ),
+                    else_=coalesce(object_to_select.bbox[2], -1.0),
+                ),
+                -coalesce(object_to_select.bbox[4], -1.0),
+                coalesce(object_to_select.bbox[3], -1.0),
+                object_to_select.chunkIdx,
+            ]
+
         chunk_list = await get_item_info_by_scope(
             knowledge_base_id=knowledge_base_id,
             workspace_id=workspace_id,
@@ -199,25 +217,16 @@ async def cross_language_search(
                 "translation_token_start_index_list",
                 "translation_token_end_index_list",
             ],
-            additional_data_to_select=additional_data_to_select,
-            additional_where_clause=additional_where_clause,
-            order_by=[
-                Item.type,
-                Item.fileName,
-                coalesce(Item.pageNumber, -1),
-                case(
-                    (Item.type.in_(["pdf", "image"]), -Item.bbox[2]),
-                    else_=coalesce(Item.bbox[1], -1.0),
-                ),
-                case(
-                    (Item.type.in_(["pdf", "image"]), Item.bbox[1]),
-                    else_=coalesce(Item.bbox[2], -1.0),
-                ),
-                -coalesce(Item.bbox[4], -1.0),
-                coalesce(Item.bbox[3], -1.0),
-                Item.chunkIdx,
-            ],
+            additional_columns_to_select_in_subquery=(
+                ["vector"]
+                if len(search_embedding_np_array_dict["search_sentence"]) > 0
+                else None
+            ),
+            where_clause=where_clause,
+            additional_sql_generator=additional_sql_generator,
+            order_by_generator=order_by_generator,
             limit=batch_size,
+            use_subquery=ai_search,
         )
 
         if len(chunk_list) == 0:
@@ -270,22 +279,9 @@ async def cross_language_search(
                 processed_chunk_list
             )
 
-            matched_sentence_list_to_embed, matched_sentence_index_list_dict_batch = (
-                await precise_search_by_search_sentence_list(
-                    processed_chunk_list,
-                    search_sentence_list_original,
-                    search_sentence_list,
-                )
-            )
-            if len(matched_sentence_list_to_embed) > 0:
-                str_list_dict_to_embed["matched_sentence"] = (
-                    matched_sentence_list_to_embed
-                )
-
             str_embedding_np_array_dict: Dict[str, List[np.ndarray]] = (
                 await create_embeddings_batch(str_list_dict_to_embed)
             )
-
             await validate_similarity(
                 str_embedding_np_array_dict,
                 search_embedding_np_array_dict,

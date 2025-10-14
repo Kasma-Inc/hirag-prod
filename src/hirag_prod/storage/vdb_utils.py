@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from rich.console import Console
 
@@ -107,10 +107,20 @@ async def get_table_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
+    additional_columns_to_select_in_subquery: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[Union[str, Tuple[str, ...]], Any]] = None,
+    where_clause: Optional[Any] = None,
     additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
+    additional_sql_generator: Optional[
+        Callable[
+            [Optional[Any]],
+            Tuple[Optional[Dict[Union[str, Tuple[str, ...]], Any]], Optional[Any]],
+        ]
+    ] = None,
+    order_by_generator: Optional[Callable[[Optional[Any]], Optional[List[Any]]]] = None,
     limit: Optional[int] = None,
+    use_subquery: bool = False,
 ) -> list[dict[str, Any]]:
     """Get table info by scope (knowledgeBaseId and workspaceId).
 
@@ -119,10 +129,15 @@ async def get_table_info_by_scope(
         knowledge_base_id: The id of the knowledge base that the table is from
         workspace_id: The id of the workspace that the table is from
         columns_to_select: The columns to select from the table
+        additional_columns_to_select_in_subquery: Additional columns to select in the subquery
         additional_data_to_select: Additional data to select from the table
+        where_clause: The where clause to use
         additional_where_clause: Additional where clause list to use
         order_by: The order by clause to use
+        additional_sql_generator: Additional SQL generator to use
+        order_by_generator: Order by generator to use
         limit: The limit to use for pagination
+        use_subquery: Whether to use a subquery or not
 
     Returns:
         A list of dicts of the table rows if found, otherwise an empty list.
@@ -144,10 +159,15 @@ async def get_table_info_by_scope(
             table_name=table_name,
             key_column="documentKey",
             columns_to_select=columns_to_select,
+            additional_columns_to_select_in_subquery=additional_columns_to_select_in_subquery,
             additional_data_to_select=additional_data_to_select,
+            where_clause=where_clause,
             additional_where_clause=additional_where_clause,
             order_by=order_by,
+            additional_sql_generator=additional_sql_generator,
+            order_by_generator=order_by_generator,
             limit=limit,
+            use_subquery=use_subquery,
         )
         return results
     except Exception as e:
@@ -183,10 +203,20 @@ async def get_item_info_by_scope(
     knowledge_base_id: str,
     workspace_id: str,
     columns_to_select: Optional[List[str]] = None,
+    additional_columns_to_select_in_subquery: Optional[List[str]] = None,
     additional_data_to_select: Optional[Dict[Union[str, Tuple[str, ...]], Any]] = None,
+    where_clause: Optional[Any] = None,
     additional_where_clause: Optional[Any] = None,
     order_by: Optional[List[Any]] = None,
+    additional_sql_generator: Optional[
+        Callable[
+            [Optional[Any]],
+            Tuple[Optional[Dict[Union[str, Tuple[str, ...]], Any]], Optional[Any]],
+        ]
+    ] = None,
+    order_by_generator: Optional[Callable[[Optional[Any]], Optional[List[Any]]]] = None,
     limit: Optional[int] = None,
+    use_subquery: bool = False,
 ) -> list[dict[str, Any]]:
     """Get item info by scope (knowledgeBaseId and workspaceId)."""
     return await get_table_info_by_scope(
@@ -194,8 +224,13 @@ async def get_item_info_by_scope(
         knowledge_base_id=knowledge_base_id,
         workspace_id=workspace_id,
         columns_to_select=columns_to_select,
+        additional_columns_to_select_in_subquery=additional_columns_to_select_in_subquery,
         additional_data_to_select=additional_data_to_select,
+        where_clause=where_clause,
         additional_where_clause=additional_where_clause,
         order_by=order_by,
+        additional_sql_generator=additional_sql_generator,
+        order_by_generator=order_by_generator,
         limit=limit,
+        use_subquery=use_subquery,
     )
