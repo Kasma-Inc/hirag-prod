@@ -50,7 +50,8 @@ dependencies = [
     "googletrans==4.0.2",
     "rapidfuzz==3.14.1",
     "opencc==1.1.9",
-    "hanlp==2.1.2"
+    "hanlp==2.1.2",
+    "langchain_community==0.3.31",
 ]
 
 [tool.uv.sources]
