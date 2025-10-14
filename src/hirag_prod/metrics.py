@@ -29,7 +29,7 @@ class ProcessingMetrics:
             "total_relations": self.total_relations,
             "processing_time": self.processing_time,
             "error_count": self.error_count,
-            "job_id": self.job_id,
+            "file_id": self.file_id,
         }
 
 
