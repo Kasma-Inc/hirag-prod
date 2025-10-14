@@ -119,7 +119,7 @@ class DocumentProcessor:
         construct_graph: Optional[bool] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
-        job_id: Optional[str] = None,
+        file_id: Optional[str] = None,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
@@ -137,10 +137,10 @@ class DocumentProcessor:
 
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
-                if self.job_status_tracker and job_id:
+                if self.job_status_tracker and file_id:
                     try:
                         await self.job_status_tracker.set_job_status(
-                            job_id=job_id, status=JobStatus.FAILED
+                            file_id=file_id, status=JobStatus.FAILED
                         )
                         await self.clear_document(
                             document_id=document_meta["documentKey"],
@@ -157,13 +157,13 @@ class DocumentProcessor:
                 return self.metrics.metrics
 
             self.metrics.metrics.total_chunks = len(chunks)
-            self.metrics.metrics.job_id = job_id or ""
+            self.metrics.metrics.file_id = file_id or ""
 
             # Update job -> processing as soon as we know
-            if self.job_status_tracker and job_id:
+            if self.job_status_tracker and file_id:
                 try:
                     await self.job_status_tracker.set_job_status(
-                        job_id=job_id,
+                        file_id=file_id,
                         status=JobStatus.PROCESSING,
                     )
                 except Exception as e:
@@ -184,10 +184,10 @@ class DocumentProcessor:
                 await self._construct_kg(chunks)
 
             # Mark as complete
-            if self.job_status_tracker and job_id:
+            if self.job_status_tracker and file_id:
                 try:
                     await self.job_status_tracker.set_job_status(
-                        job_id=job_id, status=JobStatus.COMPLETED
+                        file_id=file_id, status=JobStatus.COMPLETED
                     )
                 except Exception as e:
                     log_error_info(
@@ -908,7 +908,6 @@ class HiRAG:
         file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
-        job_id: Optional[str] = None,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
@@ -923,7 +922,6 @@ class HiRAG:
             file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
-            job_id: job id
             loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
@@ -955,18 +953,18 @@ class HiRAG:
         document_meta["updatedAt"] = datetime.now()
 
         if (
-            job_id
+            file_id
             and self._processor
             and self._processor.job_status_tracker is not None
         ):
             try:
                 await self._processor.job_status_tracker.set_job_status(
-                    job_id=job_id,
+                    file_id=file_id,
                     status=JobStatus.PROCESSING,
                 )
             except Exception as e:
                 log_error_info(
-                    logging.WARNING, f"Failed to initialize external job {job_id}", e
+                    logging.WARNING, f"Failed to initialize external job {file_id}", e
                 )
 
         try:
@@ -985,7 +983,7 @@ class HiRAG:
                 construct_graph=construct_graph,
                 document_meta=document_meta,
                 loader_configs=loader_configs,
-                job_id=job_id,
+                file_id=file_id,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
                 loader_type=loader_type,
@@ -995,8 +993,8 @@ class HiRAG:
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
 
-            if job_id and not metrics.job_id:
-                metrics.job_id = job_id
+            if file_id and not metrics.file_id:
+                metrics.file_id = file_id
             return metrics
 
         except Exception as e:
@@ -1009,11 +1007,11 @@ class HiRAG:
             if (
                 self._processor
                 and self._processor.job_status_tracker is not None
-                and job_id
+                and file_id
             ):
                 try:
                     await self._processor.job_status_tracker.set_job_status(
-                        job_id=job_id, status=JobStatus.FAILED
+                        file_id=file_id, status=JobStatus.FAILED
                     )
                     await self._processor.clear_document(
                         document_id=document_id,
