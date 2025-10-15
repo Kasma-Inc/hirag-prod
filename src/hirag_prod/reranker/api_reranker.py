@@ -1,5 +1,4 @@
-from datetime import datetime
-from typing import Dict, List, Union
+from typing import List
 
 import httpx
 
@@ -22,90 +21,31 @@ class ApiReranker(Reranker):
         "RERANKER_RATE_LIMIT",
         "RERANKER_RATE_LIMIT_TIME_UNIT",
     )
-    async def rerank(
-        self,
-        query: Union[str, List[str]],
-        items: List[Dict],
-        key: str = "text",
-        rerank_with_time=False,
-    ) -> List[Dict]:
-        if not items:
-            return []
+    async def _call_api(self, query: str, documents: List[str]) -> List[dict]:
+        """Async API call to avoid blocking the event loop"""
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}",
+        }
 
-        if rerank_with_time:
-            documents = [
-                f"{item.get(key, '')}\n\n[Timestamp: {item.get('extractedTimestamp', 'N/A')}]"
-                for item in items
-            ]
-            query = f"{query}\n\n[Timestamp: {datetime.now().isoformat()}]"
-        else:
-            documents = [item.get(key, "") for item in items]
+        payload = {
+            "query": query,
+            "documents": documents,
+            "model": self.model,
+        }
 
-        # Handle single query case
-        if isinstance(query, str):
-            async with httpx.AsyncClient(timeout=3600.0) as client:
-                response = await client.post(
-                    self.endpoint,
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "query": query,
-                        "documents": documents,
-                        "model": self.model,
-                    },
+        async with httpx.AsyncClient(timeout=3600.0) as client:
+            response = await client.post(self.endpoint, headers=headers, json=payload)
+
+            if response.status_code != 200:
+                error_text = response.text
+                raise Exception(
+                    f"Reranker API error {response.status_code}: {error_text}"
                 )
-                response.raise_for_status()
 
-                results = response.json().get("data", [])
-                reranked = []
-                for r in results:
-                    idx = r.get("index")
-                    if idx is not None and 0 <= idx < len(items):
-                        item = items[idx].copy()
-                        item["relevance_score"] = r.get("relevance_score", 0.0)
-                        reranked.append(item)
-                reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-                return reranked
-
-        # Handle list of queries case - find max relevance score among all queries
-        else:
-            # Initialize scores for each document
-            max_scores = {}
-
-            async with httpx.AsyncClient(timeout=3600.0) as client:
-                # Process each query and track maximum scores
-                for single_query in query:
-                    response = await client.post(
-                        self.endpoint,
-                        headers={"Authorization": f"Bearer {self.api_key}"},
-                        json={
-                            "query": single_query,
-                            "documents": documents,
-                            "model": self.model,
-                        },
-                    )
-                    response.raise_for_status()
-
-                    results = response.json().get("data", [])
-                    for r in results:
-                        idx = r.get("index")
-                        if idx is not None and 0 <= idx < len(items):
-                            score = r.get("relevance_score", 0.0)
-                            # Keep the maximum score for each document
-                            if idx not in max_scores or score > max_scores[idx]:
-                                max_scores[idx] = score
-
+            result = response.json()
             if get_envs().ENABLE_TOKEN_COUNT:
-                get_shared_variables().input_token_count_dict["reranker"].value += (
-                    response.json().get("usage", {}).get("total_tokens", 0)
-                )
-
-            # Create final reranked list with max scores
-            reranked = []
-            for idx, score in max_scores.items():
-                item = items[idx].copy()
-                item["relevance_score"] = score
-                reranked.append(item)
-
-            # Sort by score descending and return top n
-            reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-            return reranked
+                get_shared_variables().input_token_count_dict[
+                    "reranker"
+                ].value += result.get("usage", {}).get("total_tokens", 0)
+            return result.get("data", [])

@@ -487,7 +487,6 @@ class QueryService:
             result["chunks"] = await self.filter_chunks_by_cluster(
                 workspace_id, knowledge_base_id, result["chunks"]
             )
-            logger.info(f"After clustering filter: {len(result['chunks'])} chunks")
 
         # If reranker or hybrid, do reranking
         if strategy in ["reranker", "hybrid"]:

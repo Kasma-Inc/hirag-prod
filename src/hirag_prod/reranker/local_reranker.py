@@ -1,8 +1,7 @@
 """Local deployment reranker implementation"""
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Union
+from typing import List
 
 import httpx
 
@@ -86,53 +85,3 @@ class LocalReranker(Reranker):
                     "reranker"
                 ].value += result.get("usage", {}).get("total_tokens", 0)
             return result.get("results", [])
-
-    async def rerank(
-        self,
-        query: Union[str, List[str]],
-        items: List[Dict],
-        key: str = "text",
-        rerank_with_time=False,
-    ) -> List[Dict]:
-        if not items:
-            return []
-
-        def add_timestamp_to_query(query: str) -> str:
-            return f"{query}\n\n[Timestamp: {datetime.now().isoformat()}]"
-
-        if isinstance(query, str):
-            query = [query]
-
-        if rerank_with_time:
-            docs = [
-                f"{item.get(key, '')}\n\n[Timestamp: {item.get('extractedTimestamp', 'N/A')}]"
-                for item in items
-            ]
-            query = [add_timestamp_to_query(q) for q in query]
-
-        else:
-            docs = [item.get(key, "") for item in items]
-
-        max_scores = {}
-
-        # Process each query and track maximum scores
-        for single_query in query:
-            results = await self._call_api(single_query, docs)
-            for r in results:
-                idx = r.get("index")
-                if idx is not None and 0 <= idx < len(items):
-                    score = r.get("relevance_score", 0.0)
-                    # Keep the maximum score for each document
-                    if idx not in max_scores or score > max_scores[idx]:
-                        max_scores[idx] = score
-
-        # Create final reranked list with max scores
-        reranked = []
-        for idx, score in max_scores.items():
-            item = items[idx].copy()
-            item["relevance_score"] = score
-            reranked.append(item)
-
-        # Sort by score descending and return
-        reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-        return reranked

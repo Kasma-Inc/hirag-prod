@@ -1,6 +1,24 @@
-from typing import Dict, List, Union
+import re
+from typing import Dict, List, Set, Union
 
 from hirag_prod.resources.functions import get_reranker
+
+
+def detect_language(text: str) -> Set[str]:
+    detected_languages = set()
+
+    simplified_chinese_pattern = r"[\u4e00-\u9fff]"
+    traditional_chinese_specific_pattern = r"[\u3400-\u4dbf\uf900-\ufaff]"
+    english_pattern = r"[a-zA-Z]"
+
+    if re.search(english_pattern, text):
+        detected_languages.add("ENGLISH")
+    if re.search(traditional_chinese_specific_pattern, text):
+        detected_languages.add("CHINESE")
+    if re.search(simplified_chinese_pattern, text):
+        detected_languages.add("CHINESE")
+
+    return detected_languages
 
 
 async def apply_reranking(
@@ -13,6 +31,7 @@ async def apply_reranking(
 ) -> List[Dict]:
     if not results:
         return results
+    query = query.copy() if isinstance(query, list) else query
     # Top k is the number of items to rerank, and top n is the final number of items to return
     topn = min(topn, len(results))
     topk = min(topk, len(results))

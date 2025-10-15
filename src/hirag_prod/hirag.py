@@ -43,6 +43,7 @@ from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
+    get_chinese_convertor,
     get_embedding_service,
     get_translator,
     initialize_resource_manager,
@@ -1066,6 +1067,79 @@ class HiRAG:
             filter_by_clustering=filter_by_clustering,
         )
 
+    async def _translate_query(
+        self, original_query: str, translation: List[str]
+    ) -> List[str]:
+        # Get translator from resource manager
+        translator = get_translator()
+        translation = (
+            translation.copy() if isinstance(translation, list) else translation
+        )
+
+        if not translator:
+            raise HiRAGException("Translator service not properly initialized")
+
+        translate_to_traditional = False
+        simplified_text = ""
+        translated_queries = []
+
+        # If both traditional and simplified Chinese are requested, only keep one based on current language setting
+        if "zh" in translation and "zh-t-hk" in translation:
+            translate_to_traditional = True
+            translation.remove("zh-t-hk")
+
+        # Translate to each specified language
+        for target_language in translation:
+            try:
+                # Following the same pattern as cross_language_search
+                translated_result = await translator.translate(
+                    original_query, dest=target_language
+                )
+                if target_language == "zh":
+                    simplified_text = translated_result.text
+                if translated_result.text and translated_result.text != original_query:
+                    translated_queries.append(translated_result.text)
+                    logger.info(
+                        f"🌐 Translated query to {target_language}: {translated_result.text}"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+
+        if translate_to_traditional and simplified_text:
+            query_t = get_chinese_convertor("s2hk").convert(simplified_text)
+            if query_t and query_t != original_query and query_t != simplified_text:
+                translated_queries.append(query_t)
+                logger.info(
+                    f"🌐 Converted Simplified Chinese to Traditional Chinese: {query_t}"
+                )
+
+        return translated_queries
+
+    async def _filter_by_score_threshold(
+        self, query_results: Dict[str, Any], threshold: float
+    ) -> Dict[str, Any]:
+        # If relevance_score missing for any chunk, show warning
+        if not query_results.get("chunks"):
+            return query_results
+
+        if not 0.0 <= threshold <= 1.0:
+            logger.warning(f"⚠️ Threshold {threshold} outside expected range [0.0, 1.0]")
+
+        filtered_chunks = []
+        warning_logged = False
+        for chunk in query_results["chunks"]:
+            if "relevance_score" not in chunk:
+                if not warning_logged:
+                    logger.warning(
+                        "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
+                    )
+                    warning_logged = True
+            if chunk.get("relevance_score", 1.0) >= threshold:
+                filtered_chunks.append(chunk)
+
+        query_results["chunks"] = filtered_chunks
+        return query_results
+
     async def query(
         self,
         query: str,
@@ -1089,29 +1163,10 @@ class HiRAG:
         query_list = [original_query]
 
         if translation:
-            # Get translator from resource manager
-            translator = get_translator()
-
-            if not translator:
-                raise HiRAGException("Translator service not properly initialized")
-
-            # Translate to each specified language
-            for target_language in translation:
-                try:
-                    # Following the same pattern as cross_language_search
-                    translated_result = await translator.translate(
-                        original_query, dest=target_language
-                    )
-                    if (
-                        translated_result.text
-                        and translated_result.text != original_query
-                    ):
-                        query_list.append(translated_result.text)
-                        logger.info(
-                            f"🌐 Translated query to {target_language}: {translated_result.text}"
-                        )
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+            translated_queries = await self._translate_query(
+                original_query, translation
+            )
+            query_list.extend(translated_queries)
 
         query_results = await self._query_service.query(
             query=query_list if len(query_list) > 1 else original_query,
@@ -1125,20 +1180,9 @@ class HiRAG:
 
         # Filter chunks by threshold on relevance score
         if threshold > 0.0 and query_results.get("chunks"):
-            # If relevance_score missing for any chunk, show warning
-            filtered_chunks = []
-            warning_logged = False
-            for chunk in query_results["chunks"]:
-                if "relevance_score" not in chunk:
-                    if not warning_logged:
-                        logger.warning(
-                            "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
-                        )
-                        warning_logged = True
-                if chunk.get("relevance_score", 1.0) >= threshold:
-                    filtered_chunks.append(chunk)
-
-            query_results["chunks"] = filtered_chunks
+            query_results = await self._filter_by_score_threshold(
+                query_results, threshold
+            )
 
         if summary:
             text_summary = await self.generate_summary(
