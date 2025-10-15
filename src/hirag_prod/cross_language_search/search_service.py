@@ -160,6 +160,7 @@ async def cross_language_search(
             workspace_id=workspace_id,
             columns_to_select=[
                 "documentKey",
+                "text",
                 "text_normalized",
                 "fileName",
                 "uri",
@@ -170,7 +171,6 @@ async def cross_language_search(
                 "pageWidth",
                 "pageHeight",
                 "bbox",
-                "translation_normalized",
             ],
             additional_columns_to_select_in_subquery=additional_columns_to_select_in_subquery,
             where_clause=where_clause,
@@ -205,7 +205,7 @@ async def cross_language_search(
                     )
                 if result is not None:
                     markdown: str = result if isinstance(result, str) else result[0]
-                    if has_traditional_chinese(chunk["text_normalized"]):
+                    if has_traditional_chinese(chunk["text"]):
                         markdown = get_chinese_convertor("hk2s").convert(markdown)
                     block = {
                         "markdown": markdown,
