@@ -26,8 +26,9 @@ class Reranker(ABC):
     async def _process_query(
         self, query: List[str], rerank_with_time: bool
     ) -> List[Tuple[str, Set[str]]]:
-        def add_timestamp_to_query(query: str) -> str:
-            return f"{query}\n\n[Timestamp: {datetime.now().isoformat()}]"
+
+        def add_timestamp_to_query(text: str) -> str:
+            return f"{text}\n\n[Timestamp: {datetime.now().isoformat()}]"
 
         unique_queries = set()
         return_queries = []
@@ -83,9 +84,6 @@ class Reranker(ABC):
 
         query = await self._process_query(query, rerank_with_time)
         docs = await self._prepare_documents(items, key, rerank_with_time)
-        # for debugging
-        print(f"Processed queries: {query}")
-        print(f"Prepared documents: {docs}")
 
         # Final reranked items with maximum scores
         max_scores = {}
@@ -135,12 +133,6 @@ class Reranker(ABC):
                     ):
                         max_scores[original_idx] = score
 
-            # for debugging
-            print(f"Filtered documents: {docs_to_rerank}")
-            print(f"Mapping filtered to original indices: {filtered_to_original_idx}")
-            print(f"API results: {results}")
-            print(f"After processing query '{sq}': max_scores = {max_scores}")
-
         reranked = []
         for idx, score in max_scores.items():
             item = items[idx].copy()
@@ -148,5 +140,4 @@ class Reranker(ABC):
             reranked.append(item)
 
         reranked.sort(key=lambda x: x["relevance_score"], reverse=True)
-        print(f"Final reranked list: {reranked}")
         return reranked
