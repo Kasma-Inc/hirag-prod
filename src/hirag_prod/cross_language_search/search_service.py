@@ -2,19 +2,13 @@ import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from sqlalchemy import ARRAY, Integer, and_, case, func, or_, text, tuple_
+from sqlalchemy import String, and_, case, func, or_, text, tuple_
 from sqlalchemy.sql.functions import coalesce
 
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.cross_language_search.functions import (
-    build_search_result,
-    classify_search,
-    create_embeddings_batch,
     get_synonyms_and_validate_and_translate,
     has_traditional_chinese,
-    normalize_text,
-    prepare_text_to_embed,
-    validate_similarity,
 )
 from hirag_prod.resources.functions import (
     get_chinese_convertor,
@@ -29,11 +23,7 @@ async def cross_language_search(
     search_content: str,
     ai_search: bool = True,
 ) -> AsyncGenerator[List[Dict[str, Any]], None]:
-    search_embedding_np_array_dict: Optional[Dict[str, np.ndarray]] = None
-    search_keyword_list_original: Optional[List[str]] = None
-    search_keyword_list: Optional[List[str]] = None
-    search_sentence_list_original: Optional[List[str]] = None
-    search_sentence_list: Optional[List[str]] = None
+    search_embedding_np_array: Optional[np.ndarray] = None
     if ai_search:
         (
             synonym_list,
@@ -43,45 +33,16 @@ async def cross_language_search(
             translation_embedding_np_array,
         ) = await get_synonyms_and_validate_and_translate(search_content)
         if is_english:
-            search_list_original_language: List[str] = []
+            search_list_original: List[str] = []
             search_list: List[str] = synonym_list
         else:
-            search_list_original_language: List[str] = synonym_list
+            search_list_original: List[str] = synonym_list
             search_list: List[str] = translation_list
 
-        (
-            search_keyword_list_original,
-            keyword_embedding_np_array_original,
-            search_sentence_list_original,
-            sentence_embedding_np_array_original,
-        ) = classify_search(search_list_original_language, synonym_embedding_np_array)
-        (
-            search_keyword_list,
-            keyword_embedding_np_array,
-            search_sentence_list,
-            sentence_embedding_np_array,
-        ) = classify_search(
-            search_list,
-            (
-                synonym_embedding_np_array
-                if is_english
-                else translation_embedding_np_array
-            ),
+        search_embedding_np_array = np.concatenate(
+            [synonym_embedding_np_array, translation_embedding_np_array],
+            axis=0,
         )
-
-        search_embedding_np_array_dict = {
-            "search_keyword": np.concatenate(
-                [keyword_embedding_np_array_original, keyword_embedding_np_array]
-            ),
-            "search_sentence": np.concatenate(
-                [sentence_embedding_np_array_original, sentence_embedding_np_array],
-                axis=0,
-            ),
-        }
-        del keyword_embedding_np_array_original
-        del sentence_embedding_np_array_original
-        del keyword_embedding_np_array
-        del sentence_embedding_np_array
 
     last_cursor: Optional[Any] = None
     batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
@@ -94,54 +55,42 @@ async def cross_language_search(
         elif subquery_column is None:
             return None, None
         search_by_search_list_postgres_function: Any = func.search_by_search_list(
-            subquery_column.token_list,
-            subquery_column.translation_token_list,
             subquery_column.text_normalized,
             subquery_column.translation_normalized,
-            search_keyword_list_original,
-            search_keyword_list,
-            search_sentence_list_original,
-            search_sentence_list,
+            subquery_column.token_list,
+            subquery_column.token_start_index_list,
+            subquery_column.token_end_index_list,
+            subquery_column.translation_token_list,
+            subquery_column.translation_token_start_index_list,
+            subquery_column.translation_token_end_index_list,
+            search_list_original,
+            search_list,
         ).table_valued(
-            "matched_index_list_original",
-            "matched_index_list_translation",
-            "fuzzy_match_start_index_list_original",
-            "fuzzy_match_end_index_list_original",
-            "fuzzy_match_start_index_list_translation",
-            "fuzzy_match_end_index_list_translation",
-            type_=ARRAY(Integer),
+            "original_text_search_result",
+            "translation_search_result",
+            type_=String,
         )
         additional_data_to_select: Dict[Union[str, Tuple[str, ...]], Any] = {
             (
-                "matched_index_list_original",
-                "matched_index_list_translation",
-                "fuzzy_match_start_index_list_original",
-                "fuzzy_match_end_index_list_original",
-                "fuzzy_match_start_index_list_translation",
-                "fuzzy_match_end_index_list_translation",
+                "original_text_search_result",
+                "translation_search_result",
             ): search_by_search_list_postgres_function,
         }
         additional_where_clause: Any = or_(
-            search_by_search_list_postgres_function.c.matched_index_list_original.is_not(
+            search_by_search_list_postgres_function.c.original_text_search_result.is_not(
                 None
             ),
-            search_by_search_list_postgres_function.c.matched_index_list_translation.is_not(
-                None
-            ),
-            search_by_search_list_postgres_function.c.fuzzy_match_start_index_list_original.is_not(
-                None
-            ),
-            search_by_search_list_postgres_function.c.fuzzy_match_start_index_list_translation.is_not(
+            search_by_search_list_postgres_function.c.translation_search_result.is_not(
                 None
             ),
         )
-        if len(search_embedding_np_array_dict["search_sentence"]) > 0:
+        if (search_embedding_np_array is not None) and (
+            len(search_embedding_np_array) > 0
+        ):
             get_search_sentence_cosine_distance_postgres_function: Any = func.least(
                 *[
                     subquery_column.vector.cosine_distance(sentence_embedding)
-                    for sentence_embedding in search_embedding_np_array_dict[
-                        "search_sentence"
-                    ]
+                    for sentence_embedding in search_embedding_np_array
                 ]
             )
             additional_data_to_select["search_sentence_cosine_distance"] = (
@@ -194,6 +143,18 @@ async def cross_language_search(
                 object_to_select.chunkIdx,
             ]
 
+        additional_columns_to_select_in_subquery: List[str] = [
+            "token_list",
+            "token_start_index_list",
+            "token_end_index_list",
+            "translation_token_list",
+            "translation_token_start_index_list",
+            "translation_token_end_index_list",
+        ]
+        if (search_embedding_np_array is not None) and (
+            len(search_embedding_np_array) > 0
+        ):
+            additional_columns_to_select_in_subquery.append("vector")
         chunk_list = await get_item_info_by_scope(
             knowledge_base_id=knowledge_base_id,
             workspace_id=workspace_id,
@@ -209,19 +170,9 @@ async def cross_language_search(
                 "pageWidth",
                 "pageHeight",
                 "bbox",
-                "token_list",
-                "token_start_index_list",
-                "token_end_index_list",
                 "translation_normalized",
-                "translation_token_list",
-                "translation_token_start_index_list",
-                "translation_token_end_index_list",
             ],
-            additional_columns_to_select_in_subquery=(
-                ["vector"]
-                if len(search_embedding_np_array_dict["search_sentence"]) > 0
-                else None
-            ),
+            additional_columns_to_select_in_subquery=additional_columns_to_select_in_subquery,
             where_clause=where_clause,
             additional_sql_generator=additional_sql_generator,
             order_by_generator=order_by_generator,
@@ -233,109 +184,37 @@ async def cross_language_search(
             break
 
         if ai_search:
-            processed_chunk_list: List[Dict[str, Any]] = [
-                {
-                    "original_normalized": normalize_text(chunk["text_normalized"]),
-                    "translation_normalized": normalize_text(
-                        chunk["translation_normalized"]
-                    ),
-                    "original_token_list": chunk["token_list"],
-                    "translation_token_list": chunk["translation_token_list"],
-                    "original_token_start_index_list": chunk["token_start_index_list"],
-                    "original_token_end_index_list": chunk["token_end_index_list"],
-                    "translation_token_start_index_list": chunk[
-                        "translation_token_start_index_list"
-                    ],
-                    "translation_token_end_index_list": chunk[
-                        "translation_token_end_index_list"
-                    ],
-                    "has_traditional_chinese": has_traditional_chinese(
-                        chunk["text_normalized"]
-                    ),
-                    "matched_index_list_original": chunk["matched_index_list_original"],
-                    "matched_index_list_translation": chunk[
-                        "matched_index_list_translation"
-                    ],
-                    "fuzzy_match_start_index_list_original": chunk[
-                        "fuzzy_match_start_index_list_original"
-                    ],
-                    "fuzzy_match_end_index_list_original": chunk[
-                        "fuzzy_match_end_index_list_original"
-                    ],
-                    "fuzzy_match_start_index_list_translation": chunk[
-                        "fuzzy_match_start_index_list_translation"
-                    ],
-                    "fuzzy_match_end_index_list_translation": chunk[
-                        "fuzzy_match_end_index_list_translation"
-                    ],
-                    "search_sentence_cosine_distance": chunk.get(
-                        "search_sentence_cosine_distance", None
-                    ),
-                }
-                for chunk in chunk_list
-            ]
-
-            str_list_dict_to_embed: Dict[str, List[str]] = await prepare_text_to_embed(
-                processed_chunk_list
-            )
-
-            str_embedding_np_array_dict: Dict[str, List[np.ndarray]] = (
-                await create_embeddings_batch(str_list_dict_to_embed)
-            )
-            await validate_similarity(
-                str_embedding_np_array_dict,
-                search_embedding_np_array_dict,
-                processed_chunk_list,
-                "keyword",
-            )
-            await validate_similarity(
-                str_embedding_np_array_dict,
-                search_embedding_np_array_dict,
-                processed_chunk_list,
-                "sentence",
-            )
-            del str_list_dict_to_embed
-
-            build_search_result(
-                processed_chunk_list,
-            )
-
             matched_blocks: List[Dict[str, Any]] = []
             similar_block_tuple_list: List[Tuple[Dict[str, Any], float]] = []
-            for chunk, processed_chunk in zip(chunk_list, processed_chunk_list):
-                result_tuple: Optional[Tuple[str, float]] = processed_chunk[
-                    "original_search_result"
+            for chunk in chunk_list:
+                result: Optional[Union[str, Tuple[str, float]]] = chunk[
+                    "original_text_search_result"
                 ]
-                is_embedding_result: bool = False
-                if result_tuple is None:
-                    result_tuple = processed_chunk["translation_search_result"]
+                if result is None:
+                    result = chunk["translation_search_result"]
                 if (
-                    (result_tuple is None)
-                    and ("embedding_search_result" in processed_chunk)
+                    (result is None)
+                    and ("search_sentence_cosine_distance" in chunk)
                     and (chunk["chunkType"] in ["text", "list", "table"])
-                    and (len(processed_chunk["original_token_list"]) > 1)
-                    and (len(processed_chunk["original_normalized"]) > 6)
-                    and (
-                        not re.sub(
-                            r"\s", "", processed_chunk["original_normalized"]
-                        ).isnumeric()
-                    )
+                    and (len(chunk["text_normalized"]) > 12)
+                    and (not re.sub(r"\s", "", chunk["text_normalized"]).isnumeric())
                 ):
-                    result_tuple = processed_chunk["embedding_search_result"]
-                    is_embedding_result = True
-                if result_tuple is not None:
+                    result = (
+                        chunk["text_normalized"],
+                        chunk["search_sentence_cosine_distance"],
+                    )
+                if result is not None:
+                    markdown: str = result if isinstance(result, str) else result[0]
+                    if has_traditional_chinese(chunk["text_normalized"]):
+                        markdown = get_chinese_convertor("hk2s").convert(markdown)
                     block = {
-                        "markdown": (
-                            result_tuple[0]
-                            if not processed_chunk["has_traditional_chinese"]
-                            else get_chinese_convertor("s2hk").convert(result_tuple[0])
-                        ),
+                        "markdown": markdown,
                         "chunk": chunk,
                     }
-                    if not is_embedding_result:
+                    if isinstance(result, str):
                         matched_blocks.append(block)
                     else:
-                        similar_block_tuple_list.append((block, result_tuple[1]))
+                        similar_block_tuple_list.append((block, result[1]))
             similar_block_tuple_list.sort(key=lambda x: x[1])
 
             if (len(matched_blocks) > 0) or (len(similar_block_tuple_list) > 0):
@@ -422,4 +301,4 @@ async def cross_language_search(
             ),
             chunk_list[-1]["chunkIdx"],
         )
-    del search_embedding_np_array_dict
+    del search_embedding_np_array
