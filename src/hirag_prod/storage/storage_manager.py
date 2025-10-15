@@ -166,6 +166,7 @@ class StorageManager:
         knowledge_base_id: str,
         topk: Optional[int] = None,
         topn: Optional[int] = None,
+        file_list: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         topk = topk if topk else get_hi_rag_config().default_query_top_k
         topn = topn if topn else get_hi_rag_config().default_query_top_n
@@ -176,6 +177,7 @@ class StorageManager:
             table_name="Chunks",
             topk=topk,
             topn=topn,
+            file_list=file_list,
         )
         return rows
 
@@ -186,6 +188,7 @@ class StorageManager:
         knowledge_base_id: str,
         topk: int = None,
         topn: int = None,
+        file_list: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         topk = topk if topk else get_hi_rag_config().default_query_top_k
         topn = topn if topn else get_hi_rag_config().default_query_top_n
@@ -198,6 +201,7 @@ class StorageManager:
             topk=topk,
             topn=topn,
             columns_to_select=["source", "target", "description", "fileName"],
+            file_list=file_list,
         )
         return rows
 

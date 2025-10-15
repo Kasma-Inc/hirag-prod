@@ -292,6 +292,8 @@ def print_chunks_user_friendly(chunks):
             print(f"   Relevance Score: {chunk['relevance_score']:.4f}")
         if "pagerank_score" in chunk:
             print(f"   PageRank Score: {chunk['pagerank_score']:.4f}")
+        if "documentId" in chunk:
+            print(f"   File ID: {chunk['documentId']}")
 
         # Clean up the text content
         text = chunk.get("text", "")
