@@ -43,6 +43,7 @@ from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
+    get_chinese_convertor,
     get_embedding_service,
     get_translator,
     initialize_resource_manager,
@@ -119,7 +120,7 @@ class DocumentProcessor:
         construct_graph: Optional[bool] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
-        job_id: Optional[str] = None,
+        file_id: Optional[str] = None,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
@@ -137,10 +138,10 @@ class DocumentProcessor:
 
             if not chunks:
                 logger.warning("⚠️ No chunks created from document")
-                if self.job_status_tracker and job_id:
+                if self.job_status_tracker and file_id:
                     try:
                         await self.job_status_tracker.set_job_status(
-                            job_id=job_id, status=JobStatus.FAILED
+                            file_id=file_id, status=JobStatus.FAILED
                         )
                         await self.clear_document(
                             document_id=document_meta["documentKey"],
@@ -157,13 +158,13 @@ class DocumentProcessor:
                 return self.metrics.metrics
 
             self.metrics.metrics.total_chunks = len(chunks)
-            self.metrics.metrics.job_id = job_id or ""
+            self.metrics.metrics.file_id = file_id or ""
 
             # Update job -> processing as soon as we know
-            if self.job_status_tracker and job_id:
+            if self.job_status_tracker and file_id:
                 try:
                     await self.job_status_tracker.set_job_status(
-                        job_id=job_id,
+                        file_id=file_id,
                         status=JobStatus.PROCESSING,
                     )
                 except Exception as e:
@@ -184,10 +185,10 @@ class DocumentProcessor:
                 await self._construct_kg(chunks)
 
             # Mark as complete
-            if self.job_status_tracker and job_id:
+            if self.job_status_tracker and file_id:
                 try:
                     await self.job_status_tracker.set_job_status(
-                        job_id=job_id, status=JobStatus.COMPLETED
+                        file_id=file_id, status=JobStatus.COMPLETED
                     )
                 except Exception as e:
                     log_error_info(
@@ -908,7 +909,6 @@ class HiRAG:
         file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
-        job_id: Optional[str] = None,
         loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
@@ -923,7 +923,6 @@ class HiRAG:
             file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
-            job_id: job id
             loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
@@ -955,18 +954,18 @@ class HiRAG:
         document_meta["updatedAt"] = datetime.now()
 
         if (
-            job_id
+            file_id
             and self._processor
             and self._processor.job_status_tracker is not None
         ):
             try:
                 await self._processor.job_status_tracker.set_job_status(
-                    job_id=job_id,
+                    file_id=file_id,
                     status=JobStatus.PROCESSING,
                 )
             except Exception as e:
                 log_error_info(
-                    logging.WARNING, f"Failed to initialize external job {job_id}", e
+                    logging.WARNING, f"Failed to initialize external job {file_id}", e
                 )
 
         try:
@@ -985,7 +984,7 @@ class HiRAG:
                 construct_graph=construct_graph,
                 document_meta=document_meta,
                 loader_configs=loader_configs,
-                job_id=job_id,
+                file_id=file_id,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
                 loader_type=loader_type,
@@ -995,8 +994,8 @@ class HiRAG:
             metrics.processing_time = total_time
             logger.info(f"🏁 Total pipeline time: {total_time:.3f}s")
 
-            if job_id and not metrics.job_id:
-                metrics.job_id = job_id
+            if file_id and not metrics.file_id:
+                metrics.file_id = file_id
             return metrics
 
         except Exception as e:
@@ -1009,11 +1008,11 @@ class HiRAG:
             if (
                 self._processor
                 and self._processor.job_status_tracker is not None
-                and job_id
+                and file_id
             ):
                 try:
                     await self._processor.job_status_tracker.set_job_status(
-                        job_id=job_id, status=JobStatus.FAILED
+                        file_id=file_id, status=JobStatus.FAILED
                     )
                     await self._processor.clear_document(
                         document_id=document_id,
@@ -1068,6 +1067,79 @@ class HiRAG:
             filter_by_clustering=filter_by_clustering,
         )
 
+    async def _translate_query(
+        self, original_query: str, translation: List[str]
+    ) -> List[str]:
+        # Get translator from resource manager
+        translator = get_translator()
+        translation = (
+            translation.copy() if isinstance(translation, list) else translation
+        )
+
+        if not translator:
+            raise HiRAGException("Translator service not properly initialized")
+
+        translate_to_traditional = False
+        simplified_text = ""
+        translated_queries = []
+
+        # If both traditional and simplified Chinese are requested, only keep one based on current language setting
+        if "zh" in translation and "zh-t-hk" in translation:
+            translate_to_traditional = True
+            translation.remove("zh-t-hk")
+
+        # Translate to each specified language
+        for target_language in translation:
+            try:
+                # Following the same pattern as cross_language_search
+                translated_result = await translator.translate(
+                    original_query, dest=target_language
+                )
+                if target_language == "zh":
+                    simplified_text = translated_result.text
+                if translated_result.text and translated_result.text != original_query:
+                    translated_queries.append(translated_result.text)
+                    logger.info(
+                        f"🌐 Translated query to {target_language}: {translated_result.text}"
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+
+        if translate_to_traditional and simplified_text:
+            query_t = get_chinese_convertor("s2hk").convert(simplified_text)
+            if query_t and query_t != original_query and query_t != simplified_text:
+                translated_queries.append(query_t)
+                logger.info(
+                    f"🌐 Converted Simplified Chinese to Traditional Chinese: {query_t}"
+                )
+
+        return translated_queries
+
+    async def _filter_by_score_threshold(
+        self, query_results: Dict[str, Any], threshold: float
+    ) -> Dict[str, Any]:
+        # If relevance_score missing for any chunk, show warning
+        if not query_results.get("chunks"):
+            return query_results
+
+        if not 0.0 <= threshold <= 1.0:
+            logger.warning(f"⚠️ Threshold {threshold} outside expected range [0.0, 1.0]")
+
+        filtered_chunks = []
+        warning_logged = False
+        for chunk in query_results["chunks"]:
+            if "relevance_score" not in chunk:
+                if not warning_logged:
+                    logger.warning(
+                        "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
+                    )
+                    warning_logged = True
+            if chunk.get("relevance_score", 1.0) >= threshold:
+                filtered_chunks.append(chunk)
+
+        query_results["chunks"] = filtered_chunks
+        return query_results
+
     async def query(
         self,
         query: str,
@@ -1091,29 +1163,10 @@ class HiRAG:
         query_list = [original_query]
 
         if translation:
-            # Get translator from resource manager
-            translator = get_translator()
-
-            if not translator:
-                raise HiRAGException("Translator service not properly initialized")
-
-            # Translate to each specified language
-            for target_language in translation:
-                try:
-                    # Following the same pattern as cross_language_search
-                    translated_result = await translator.translate(
-                        original_query, dest=target_language
-                    )
-                    if (
-                        translated_result.text
-                        and translated_result.text != original_query
-                    ):
-                        query_list.append(translated_result.text)
-                        logger.info(
-                            f"🌐 Translated query to {target_language}: {translated_result.text}"
-                        )
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to translate to {target_language}: {e}")
+            translated_queries = await self._translate_query(
+                original_query, translation
+            )
+            query_list.extend(translated_queries)
 
         query_results = await self._query_service.query(
             query=query_list if len(query_list) > 1 else original_query,
@@ -1127,20 +1180,9 @@ class HiRAG:
 
         # Filter chunks by threshold on relevance score
         if threshold > 0.0 and query_results.get("chunks"):
-            # If relevance_score missing for any chunk, show warning
-            filtered_chunks = []
-            warning_logged = False
-            for chunk in query_results["chunks"]:
-                if "relevance_score" not in chunk:
-                    if not warning_logged:
-                        logger.warning(
-                            "⚠️ Some chunks missing relevance_score, cannot apply threshold filtering accurately"
-                        )
-                        warning_logged = True
-                if chunk.get("relevance_score", 1.0) >= threshold:
-                    filtered_chunks.append(chunk)
-
-            query_results["chunks"] = filtered_chunks
+            query_results = await self._filter_by_score_threshold(
+                query_results, threshold
+            )
 
         if summary:
             text_summary = await self.generate_summary(

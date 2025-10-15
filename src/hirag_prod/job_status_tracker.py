@@ -34,7 +34,7 @@ class JobStatusTracker:
         self.auto_cleanup = auto_cleanup
 
     # ============================== Job tracking =============================
-    async def save_job_status_to_postgres(self, job_id: str, status: str) -> None:
+    async def save_job_status_to_postgres(self, file_id: str, status: str) -> None:
         """Persist job status to PostgreSQL."""
         try:
             normalized_status = status or ""
@@ -42,14 +42,14 @@ class JobStatusTracker:
                 normalized_status = JobStatus.PROCESSING.value
             async with get_db_session_maker()() as session:
                 await update_job_status(
-                    session, job_id, normalized_status, updated_at=datetime.now()
+                    session, file_id, normalized_status, updated_at=datetime.now()
                 )
         except Exception as e:
             log_error_info(logging.ERROR, f"Failed to save job status to Postgres", e)
 
     async def set_job_status(
         self,
-        job_id: str,
+        file_id: str,
         status: JobStatus,
     ) -> None:
-        await self.save_job_status_to_postgres(job_id, status.value)
+        await self.save_job_status_to_postgres(file_id, status.value)

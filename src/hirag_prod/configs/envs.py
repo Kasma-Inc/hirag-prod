@@ -21,7 +21,7 @@ class Envs(BaseSettings):
     HI_RAG_LANGUAGE: str = "en"
     POSTGRES_URL_NO_SSL: str
     POSTGRES_URL_NO_SSL_DEV: str
-    POSTGRES_TABLE_NAME: str = "KnowledgeBaseJobs"
+    POSTGRES_TABLE_NAME: str = "KnowledgeBaseCatalog"
     POSTGRES_SCHEMA: str = "public"
     REDIS_URL: str = "redis://redis:6379/2"
     REDIS_KEY_PREFIX: str = "hirag"

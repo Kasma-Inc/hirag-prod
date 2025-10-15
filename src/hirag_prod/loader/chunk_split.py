@@ -26,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1200
 CHUNK_OVERLAP = 200
-SEPARATORS = ["=+=+=+=+=+=+=+=+="]
 
 
 class ChunkType(Enum):
@@ -1042,7 +1041,7 @@ def chunk_langchain_document(
     langchain_doc: File,
     chunk_size: int = CHUNK_SIZE,
     chunk_overlap: int = CHUNK_OVERLAP,
-    separators: Optional[List[str]] = SEPARATORS,
+    separators: Optional[List[str]] = None,
     keep_separator: bool = True,
 ) -> List[Item]:
     """

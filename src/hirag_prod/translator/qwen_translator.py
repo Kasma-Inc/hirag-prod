@@ -15,7 +15,7 @@ rate_limiter = RateLimiter()
 LANGUAGE_MAPPING = {
     "en": "English",
     "zh": "Chinese",
-    "zh-TW": "Traditional Chinese",
+    "zh-t-hk": "Traditional Chinese",
     "zh-CN": "Simplified Chinese",
     "ja": "Japanese",
     "ko": "Korean",

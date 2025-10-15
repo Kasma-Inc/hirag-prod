@@ -19,7 +19,7 @@ class ProcessingMetrics:
     total_relations: int = 0
     processing_time: float = 0.0
     error_count: int = 0
-    job_id: str = ""
+    file_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -29,7 +29,7 @@ class ProcessingMetrics:
             "total_relations": self.total_relations,
             "processing_time": self.processing_time,
             "error_count": self.error_count,
-            "job_id": self.job_id,
+            "file_id": self.file_id,
         }
 
 
