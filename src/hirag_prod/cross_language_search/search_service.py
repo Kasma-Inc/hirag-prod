@@ -106,7 +106,7 @@ async def cross_language_search(
         if ai_search:
             where_clause: Optional[Any] = last_cursor
         else:
-            where_clause: Optional[Any] = func.lower(Item.text).like(
+            where_clause: Optional[Any] = Item.text_normalized.like(
                 f"%{search_content.lower()}%", escape="\\"
             )
             if last_cursor is not None:
@@ -227,7 +227,7 @@ async def cross_language_search(
                 markdown = re.sub(
                     re.escape(search_content),
                     r"<mark>\g<0></mark>",
-                    chunk["text"],
+                    chunk["text_normalized"],
                     flags=re.IGNORECASE,
                 )
                 block = {
