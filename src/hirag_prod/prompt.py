@@ -273,10 +273,12 @@ You are an AI assistant tasked with generating a comprehensive and accurate resp
 - Keep the response concise, factual, and directly answering the query.
 </output_format>
 
+<retrieved_chunks>
+{data}
+</retrieved_chunks>
+
 <input_text>
 **User Query:** {user_query}
-
-{data}
 </input_text>
 
 **Output:**
@@ -321,10 +323,12 @@ If the query is unclear, include a clarification request in the preparation plan
 preparation plan -> generate markdown document -> summary
 </workflow>
 
+<retrieved_chunks>
+{data}
+</retrieved_chunks>
+
 <input_text>
 **User Query:** {user_query}
-
-{data}
 </input_text>
 
 **Output:**
@@ -661,10 +665,12 @@ PROMPTS[
 - 保持响应简洁、事实性，并直接回答查询。
 </输出格式>
 
+<检索块>
+{data}
+</检索块>
+
 <输入文本>
 **用户查询:** {user_query}
-
-{data}
 </输入文本>
 
 **输出:**
@@ -709,10 +715,12 @@ document.md 的内容
 准备计划 -> 生成 Markdown 文本块 -> 摘要
 </workflow>
 
+<检索块>
+{data}
+</检索块>
+
 <输入文本>
 **用户查询:** {user_query}
-
-{data}
 </输入文本>
 
 **输出:**
@@ -1018,10 +1026,12 @@ PROMPTS[
 - 保持回覆簡潔、基於事實，並直接回答查詢。
 </輸出格式>
 
+<檢索塊>
+{data}
+</檢索塊>
+
 <輸入文本>
 **用戶查詢:** {user_query}
-
-{data}
 </輸入文本>
 
 **輸出:**
@@ -1066,10 +1076,12 @@ document.md 的內容
 準備計劃 -> 生成 Markdown 文字區塊 -> 摘要
 </workflow>
 
+<检索块>
+{data}
+</检索块>
+
 <輸入文本>
 **用戶查詢:** {user_query}
-
-{data}
 </輸入文本>
 
 **輸出:**
