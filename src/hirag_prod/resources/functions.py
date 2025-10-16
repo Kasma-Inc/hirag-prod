@@ -90,7 +90,7 @@ def tokenize_sentence(sentence: str) -> Tuple[List[str], List[int], List[int]]:
         current_text_index: int = 0
         current_result_list_index: int = 0
         finish: bool = False
-        while not finish:
+        while (not finish) and (current_text_index < len(sentence)):
             if current_text_index + 510 < len(sentence):
                 result_list.extend(
                     get_sentence_tokenizer()(

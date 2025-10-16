@@ -147,6 +147,7 @@ async def cross_language_search(
             "token_list",
             "token_start_index_list",
             "token_end_index_list",
+            "translation_normalized",
             "translation_token_list",
             "translation_token_start_index_list",
             "translation_token_end_index_list",
