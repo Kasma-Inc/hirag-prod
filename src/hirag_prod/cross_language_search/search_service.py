@@ -13,6 +13,7 @@ from sqlalchemy import CursorResult, Row, TextClause, text
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.cross_language_search.functions import (
     get_synonyms_and_validate_and_translate,
+    normalize_text,
 )
 from hirag_prod.resources.functions import (
     get_chinese_convertor,
@@ -28,6 +29,7 @@ async def cross_language_search(
     start_index: int = 0,
     batch_number: int = 1,
 ) -> AsyncGenerator[List[Dict[str, Any]], None]:
+    search_content = normalize_text(search_content)
     search_list_original: Optional[List[str]] = None
     search_list: Optional[List[str]] = None
     search_embedding_str_list: Optional[List[str]] = None
@@ -79,7 +81,7 @@ OFFSET :start_index
             for i, embedding in enumerate(search_embedding_str_list):
                 sql_parameter_dict[f"search_vector_{i}"] = embedding
     else:
-        sql_parameter_dict["search_content"] = search_content
+        sql_parameter_dict["search_content"] = f"%{search_content}%"
 
     current_start_index: int = start_index
     for _ in range(batch_number):

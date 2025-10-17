@@ -35,7 +35,6 @@ def normalize_tokenize_text(text: str) -> Tuple[str, List[str], List[int], List[
 async def get_synonyms_and_validate_and_translate(
     search: str,
 ) -> Tuple[List[str], np.ndarray, bool, List[str], np.ndarray]:
-    search = normalize_text(search)
     synonym_set: Set[str] = set()
 
     process_search_response: ProcessSearchResponse = await get_chat_service().complete(
