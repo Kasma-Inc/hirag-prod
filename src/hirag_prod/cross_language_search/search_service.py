@@ -132,7 +132,7 @@ OFFSET :start_index
                         width=row[8],
                         height=row[9],
                     ).to_dict()
-                elif row[5] in ["md", "text"]:
+                elif row[5] in ["md", "txt"]:
                     highlight = MarkdownHighlight(
                         from_idx=row[10][0],
                         to_idx=row[10][1],
