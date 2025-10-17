@@ -281,7 +281,8 @@ class DocumentProcessor:
                             )
                             items[idx].caption = caption
                         except Exception:
-                            raise HiRAGException(
+                            items[idx].caption = None
+                            logger.warning(
                                 f"Failed to summarize table {table_item.documentKey}"
                             )
 
