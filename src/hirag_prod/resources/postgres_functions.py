@@ -24,13 +24,13 @@ RETURNS TEXT AS $$
         while len(queue) > 0:
             text, start_index = queue.pop(0)
             for search in search_list:
-                if fuzz.ratio(text, search) > 95:
+                if fuzz.ratio(text, search) > 90:
                     fuzzy_match_index_start_list.append(start_index)
                     fuzzy_match_index_end_list.append(start_index + len(text))
                     break
                 elif len(text) >= len(search):
                     match_result: Optional[ScoreAlignment] = fuzz.partial_ratio_alignment(
-                        text, search, score_cutoff=95
+                        text, search, score_cutoff=90
                     )
                     if match_result is not None:
                         fuzzy_match_index_start_list.append(start_index + match_result.src_start)

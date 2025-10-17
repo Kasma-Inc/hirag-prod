@@ -106,7 +106,7 @@ OFFSET :start_index
                 else:
                     if (
                         (len(row) == 13)
-                        and (row[5] in ["text", "list", "table"])
+                        and (row[7] in ["text", "list", "table"])
                         and (len(row[1]) > 12)
                         and (not re.sub(r"\s", "", row[1]).isnumeric())
                     ):
@@ -121,76 +121,79 @@ OFFSET :start_index
                     row[1],
                     flags=re.IGNORECASE,
                 )
-            if row[5] == "pdf":
-                highlight = PDFHighlight(
-                    x1=row[10][0],
-                    y1=row[10][1],
-                    x2=row[10][2],
-                    y2=row[10][3],
-                    page_number=row[6],
-                    width=row[8],
-                    height=row[9],
-                ).to_dict()
-            elif row[5] in ["md", "text"]:
-                highlight = MarkdownHighlight(
-                    from_idx=row[10][0],
-                    to_idx=row[10][1],
-                ).to_dict()
-            elif row[5] == "xlsx":
-                if row[10]:
-                    highlight = ExcelHighlight(
-                        col=row[10][0],
-                        row=row[10][1],
+            if result is not None:
+                if row[5] == "pdf":
+                    highlight = PDFHighlight(
+                        x1=row[10][0],
+                        y1=row[10][1],
+                        x2=row[10][2],
+                        y2=row[10][3],
+                        page_number=row[6],
+                        width=row[8],
+                        height=row[9],
                     ).to_dict()
+                elif row[5] in ["md", "text"]:
+                    highlight = MarkdownHighlight(
+                        from_idx=row[10][0],
+                        to_idx=row[10][1],
+                    ).to_dict()
+                elif row[5] == "xlsx":
+                    if row[10]:
+                        highlight = ExcelHighlight(
+                            col=row[10][0],
+                            row=row[10][1],
+                        ).to_dict()
+                    else:
+                        highlight = ExcelHighlight(
+                            col=None,
+                            row=None,
+                        ).to_dict()
                 else:
-                    highlight = ExcelHighlight(
-                        col=None,
-                        row=None,
+                    highlight = ImageHighlight(
+                        x1=row[10][0],
+                        y1=row[10][1],
+                        x2=row[10][2],
+                        y2=row[10][3],
+                        width=row[8],
+                        height=row[9],
                     ).to_dict()
-            else:
-                highlight = ImageHighlight(
-                    x1=row[10][0],
-                    y1=row[10][1],
-                    x2=row[10][2],
-                    y2=row[10][3],
-                    width=row[8],
-                    height=row[9],
-                ).to_dict()
 
-            ext = row[4].split(".")[-1]
-            if isinstance(result, str):
-                search_result_list.append(
-                    {
-                        "markdown": (
-                            result
-                            if not row[2]
-                            else get_chinese_convertor("hk2s").convert(result)
-                        ),
-                        "id": row[0],
-                        "fileUrl": (row[4]),
-                        "type": ext,
-                        "highlight": highlight,
-                        "fileName": row[3],
-                    }
-                )
-            elif isinstance(result, Tuple):
-                embedding_search_result_list.append(
-                    (
+                ext = row[4].split(".")[-1]
+                if isinstance(result, str):
+                    search_result_list.append(
                         {
                             "markdown": (
-                                result[0]
+                                result
                                 if not row[2]
-                                else get_chinese_convertor("hk2s").convert(result[0])
+                                else get_chinese_convertor("hk2s").convert(result)
                             ),
                             "id": row[0],
                             "fileUrl": (row[4]),
                             "type": ext,
                             "highlight": highlight,
                             "fileName": row[3],
-                        },
-                        result[1],
+                        }
                     )
-                )
+                else:
+                    embedding_search_result_list.append(
+                        (
+                            {
+                                "markdown": (
+                                    result[0]
+                                    if not row[2]
+                                    else get_chinese_convertor("hk2s").convert(
+                                        result[0]
+                                    )
+                                ),
+                                "id": row[0],
+                                "fileUrl": (row[4]),
+                                "type": ext,
+                                "highlight": highlight,
+                                "fileName": row[3],
+                            },
+                            result[1],
+                        )
+                    )
         embedding_search_result_list.sort(key=lambda x: x[1])
         search_result_list.extend(
             [
