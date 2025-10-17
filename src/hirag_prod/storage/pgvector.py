@@ -11,7 +11,10 @@ from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
 from hirag_prod.configs.functions import get_envs, get_hi_rag_config
-from hirag_prod.cross_language_search.functions import normalize_tokenize_text
+from hirag_prod.cross_language_search.functions import (
+    has_traditional_chinese,
+    normalize_tokenize_text,
+)
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,
@@ -81,6 +84,7 @@ class PGVector(BaseVDB):
         texts_to_upsert: List[str],
         properties_list: List[dict],
         table_name: str,
+        with_chinese_type: bool = False,
         with_tokenization: bool = False,
         with_translation: bool = False,
         mode: Literal["append", "overwrite"] = "append",
@@ -114,6 +118,10 @@ class PGVector(BaseVDB):
             ) as progress_bar:
                 for i in range(len(properties_list)):
                     row = dict(properties_list[i] or {})
+                    if with_chinese_type:
+                        row["has_traditional_chinese"] = has_traditional_chinese(
+                            texts_to_upsert[i]
+                        )
                     if with_tokenization:
                         (
                             row["text_normalized"],

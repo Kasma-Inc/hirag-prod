@@ -100,6 +100,7 @@ class StorageManager:
             texts_to_upsert=texts_to_embed,
             properties_list=items,
             table_name="Items",
+            with_chinese_type=True,
             with_tokenization=True,
             with_translation=True,
             mode="append",

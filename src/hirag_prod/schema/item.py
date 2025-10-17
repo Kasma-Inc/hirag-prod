@@ -21,6 +21,7 @@ class Item(Base):
     workspaceId: Mapped[str] = mapped_column(String, primary_key=True, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     text_normalized: Mapped[str] = mapped_column(Text, nullable=False)
+    has_traditional_chinese: Mapped[bool] = mapped_column(Boolean, nullable=False)
     # From FileMetadata
     fileName: Mapped[str] = mapped_column(String, nullable=False)
     uri: Mapped[str] = mapped_column(String, nullable=False)

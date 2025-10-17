@@ -1,11 +1,8 @@
 from sqlalchemy import TextClause, text
 
 search_by_search_list: TextClause = text(
-    """CREATE OR REPLACE FUNCTION search_by_search_list (original_text_normalized TEXT, translation_normalized TEXT, original_token_list CHARACTER VARYING[], original_token_start_index_list INTEGER[], original_token_end_index_list INTEGER[], translation_token_list CHARACTER VARYING[], translation_token_start_index_list INTEGER[], translation_token_end_index_list INTEGER[], search_item_list_original CHARACTER VARYING[], search_item_list CHARACTER VARYING[])
-RETURNS TABLE(
-    original_text_search_result TEXT,
-    translation_search_result TEXT
-) AS $$
+    """CREATE OR REPLACE FUNCTION search_by_search_list (search_item_list_original CHARACTER VARYING[], original_text_normalized TEXT, original_token_list CHARACTER VARYING[], original_token_start_index_list INTEGER[], original_token_end_index_list INTEGER[], search_item_list CHARACTER VARYING[], translation_normalized TEXT, translation_token_list CHARACTER VARYING[], translation_token_start_index_list INTEGER[], translation_token_end_index_list INTEGER[])
+RETURNS TEXT AS $$
     from typing import List, Dict, Tuple, Optional, Literal
     from rapidfuzz import fuzz
     from rapidfuzz.distance import ScoreAlignment
@@ -188,16 +185,14 @@ RETURNS TABLE(
         bold_matched_text(
             "original",
         )
-        original_text_search_result = simplify_search_result("original")
-
-    if fuzzy_match_start_index_list_translation is not None:
+        return simplify_search_result("original")
+    elif fuzzy_match_start_index_list_translation is not None:
         bold_matched_text(
             "translation",
         )
-        translation_search_result = simplify_search_result("translation")
-
-
-    yield original_text_search_result, translation_search_result
+        return simplify_search_result("translation")
+    else:
+        return None
 $$ LANGUAGE plpython3u;
 """
 )

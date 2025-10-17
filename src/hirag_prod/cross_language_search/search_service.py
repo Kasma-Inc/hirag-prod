@@ -1,20 +1,23 @@
 import re
-from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
-import numpy as np
-from sqlalchemy import String, and_, case, func, or_, text, tuple_
-from sqlalchemy.sql.functions import coalesce
+from api.schema.chats.request import (
+    ExcelHighlight,
+    ImageHighlight,
+    MarkdownHighlight,
+    PDFHighlight,
+)
+from pgvector import HalfVector
+from sqlalchemy import CursorResult, Row, TextClause, text
 
 from hirag_prod.configs.functions import get_envs
 from hirag_prod.cross_language_search.functions import (
     get_synonyms_and_validate_and_translate,
-    has_traditional_chinese,
 )
 from hirag_prod.resources.functions import (
     get_chinese_convertor,
+    get_db_session_maker,
 )
-from hirag_prod.schema import Item
-from hirag_prod.storage.vdb_utils import get_item_info_by_scope
 
 
 async def cross_language_search(
@@ -22,8 +25,12 @@ async def cross_language_search(
     workspace_id: str,
     search_content: str,
     ai_search: bool = True,
+    start_index: int = 0,
+    batch_number: int = 1,
 ) -> AsyncGenerator[List[Dict[str, Any]], None]:
-    search_embedding_np_array: Optional[np.ndarray] = None
+    search_list_original: Optional[List[str]] = None
+    search_list: Optional[List[str]] = None
+    search_embedding_str_list: Optional[List[str]] = None
     if ai_search:
         (
             synonym_list,
@@ -33,273 +40,162 @@ async def cross_language_search(
             translation_embedding_np_array,
         ) = await get_synonyms_and_validate_and_translate(search_content)
         if is_english:
-            search_list_original: List[str] = []
-            search_list: List[str] = synonym_list
+            search_list_original = []
+            search_list = synonym_list
         else:
-            search_list_original: List[str] = synonym_list
-            search_list: List[str] = translation_list
+            search_list_original = synonym_list
+            search_list = translation_list
 
-        search_embedding_np_array = np.concatenate(
-            [synonym_embedding_np_array, translation_embedding_np_array],
-            axis=0,
-        )
+        search_embedding_str_list = []
+        for embedding in synonym_embedding_np_array:
+            search_embedding_str_list.append(HalfVector(embedding).to_text())
+        del synonym_embedding_np_array
+        del translation_embedding_np_array
 
-    last_cursor: Optional[Any] = None
+    sql: TextClause = text(
+        f"""SELECT *
+FROM (
+    SELECT "Items"."documentKey", "Items".text_normalized, "Items".has_traditional_chinese, "Items"."fileName", "Items".uri, "Items".type, "Items"."pageNumber", "Items"."chunkType", "Items"."pageWidth", "Items"."pageHeight", "Items".bbox{", search_by_search_list(:search_list_original, \"Items\".text_normalized, \"Items\".token_list, \"Items\".token_start_index_list, \"Items\".token_end_index_list, :search_list, \"Items\".translation_normalized, \"Items\".translation_token_list, \"Items\".translation_token_start_index_list, \"Items\".translation_token_end_index_list) AS search_result" if ai_search else ""}{f", least({', '.join([f'\"Items\".vector <=> :search_vector_{i}' for i in range(len(search_embedding_str_list))])}) AS cosine_distance" if ai_search and (search_embedding_str_list is not None) and (len(search_embedding_str_list) > 0) else ""}
+    FROM "Items" 
+    WHERE "Items"."workspaceId" = :workspace_id AND "Items"."knowledgeBaseId" = :knowledge_base_id{" AND text_normalized LIKE :search_content ESCAPE '\\'" if not ai_search else ""}
+    ORDER BY "Items".type, "Items"."fileName", coalesce("Items"."pageNumber", -1), CASE WHEN ("Items".type IN ('pdf', 'image')) THEN -"Items".bbox[2] ELSE coalesce("Items".bbox[1], -1.0) END, CASE WHEN ("Items".type IN ('pdf', 'image')) THEN "Items".bbox[1] ELSE coalesce("Items".bbox[2], -1.0) END, -coalesce("Items".bbox[4], -1.0), coalesce("Items".bbox[3], -1.0), "Items"."chunkIdx"
+) AS sub_query
+{"WHERE sub_query.search_result IS NOT NULL" if ai_search else ""}{" OR sub_query.cosine_distance < 0.4" if ai_search and (search_embedding_str_list is not None) and (len(search_embedding_str_list) > 0) else ""}
+LIMIT :batch_size
+OFFSET :start_index
+"""
+    )
+
     batch_size: int = get_envs().KNOWLEDGE_BASE_SEARCH_BATCH_SIZE
+    sql_parameter_dict: Dict[str, Any] = {
+        "workspace_id": workspace_id,
+        "knowledge_base_id": knowledge_base_id,
+        "batch_size": batch_size,
+    }
+    if ai_search:
+        sql_parameter_dict["search_list_original"] = search_list_original
+        sql_parameter_dict["search_list"] = search_list
+        if search_embedding_str_list is not None:
+            for i, embedding in enumerate(search_embedding_str_list):
+                sql_parameter_dict[f"search_vector_{i}"] = embedding
+    else:
+        sql_parameter_dict["search_content"] = search_content
 
-    def additional_sql_generator(
-        subquery_column: Optional[Any],
-    ) -> Tuple[Optional[Dict[Union[str, Tuple[str, ...]], Any]], Optional[Any]]:
-        if not ai_search:
-            return None, None
-        elif subquery_column is None:
-            return None, None
-        search_by_search_list_postgres_function: Any = func.search_by_search_list(
-            subquery_column.text_normalized,
-            subquery_column.translation_normalized,
-            subquery_column.token_list,
-            subquery_column.token_start_index_list,
-            subquery_column.token_end_index_list,
-            subquery_column.translation_token_list,
-            subquery_column.translation_token_start_index_list,
-            subquery_column.translation_token_end_index_list,
-            search_list_original,
-            search_list,
-        ).table_valued(
-            "original_text_search_result",
-            "translation_search_result",
-            type_=String,
-        )
-        additional_data_to_select: Dict[Union[str, Tuple[str, ...]], Any] = {
-            (
-                "original_text_search_result",
-                "translation_search_result",
-            ): search_by_search_list_postgres_function,
-        }
-        additional_where_clause: Any = or_(
-            search_by_search_list_postgres_function.c.original_text_search_result.is_not(
-                None
-            ),
-            search_by_search_list_postgres_function.c.translation_search_result.is_not(
-                None
-            ),
-        )
-        if (search_embedding_np_array is not None) and (
-            len(search_embedding_np_array) > 0
-        ):
-            get_search_sentence_cosine_distance_postgres_function: Any = func.least(
-                *[
-                    subquery_column.vector.cosine_distance(sentence_embedding)
-                    for sentence_embedding in search_embedding_np_array
-                ]
+    current_start_index: int = start_index
+    for _ in range(batch_number):
+        sql_parameter_dict["start_index"] = current_start_index
+        async with get_db_session_maker()() as session:
+            query_result: CursorResult = await session.execute(
+                sql,
+                sql_parameter_dict,
             )
-            additional_data_to_select["search_sentence_cosine_distance"] = (
-                get_search_sentence_cosine_distance_postgres_function
-            )
-            additional_where_clause = or_(
-                additional_where_clause,
-                text("search_sentence_cosine_distance < 0.4"),
-            )
-        return additional_data_to_select, additional_where_clause
+            row_list: Sequence[Row[Any]] = query_result.all()
 
-    while True:
-        if ai_search:
-            where_clause: Optional[Any] = last_cursor
-        else:
-            where_clause: Optional[Any] = Item.text_normalized.like(
-                f"%{search_content.lower()}%", escape="\\"
-            )
-            if last_cursor is not None:
-                where_clause = and_(
-                    where_clause,
-                    last_cursor,
-                )
-
-        def order_by_generator(object_to_select: Optional[Any]) -> Optional[List[Any]]:
-            if not ai_search:
-                object_to_select = Item
-            elif object_to_select is None:
-                return None
-            return [
-                object_to_select.type,
-                object_to_select.fileName,
-                coalesce(object_to_select.pageNumber, -1),
-                case(
-                    (
-                        object_to_select.type.in_(["pdf", "image"]),
-                        -object_to_select.bbox[2],
-                    ),
-                    else_=coalesce(object_to_select.bbox[1], -1.0),
-                ),
-                case(
-                    (
-                        object_to_select.type.in_(["pdf", "image"]),
-                        object_to_select.bbox[1],
-                    ),
-                    else_=coalesce(object_to_select.bbox[2], -1.0),
-                ),
-                -coalesce(object_to_select.bbox[4], -1.0),
-                coalesce(object_to_select.bbox[3], -1.0),
-                object_to_select.chunkIdx,
-            ]
-
-        additional_columns_to_select_in_subquery: List[str] = [
-            "token_list",
-            "token_start_index_list",
-            "token_end_index_list",
-            "translation_normalized",
-            "translation_token_list",
-            "translation_token_start_index_list",
-            "translation_token_end_index_list",
-        ]
-        if (search_embedding_np_array is not None) and (
-            len(search_embedding_np_array) > 0
-        ):
-            additional_columns_to_select_in_subquery.append("vector")
-        chunk_list = await get_item_info_by_scope(
-            knowledge_base_id=knowledge_base_id,
-            workspace_id=workspace_id,
-            columns_to_select=[
-                "documentKey",
-                "text",
-                "text_normalized",
-                "fileName",
-                "uri",
-                "type",
-                "pageNumber",
-                "chunkIdx",
-                "chunkType",
-                "pageWidth",
-                "pageHeight",
-                "bbox",
-            ],
-            additional_columns_to_select_in_subquery=additional_columns_to_select_in_subquery,
-            where_clause=where_clause,
-            additional_sql_generator=additional_sql_generator,
-            order_by_generator=order_by_generator,
-            limit=batch_size,
-            use_subquery=ai_search,
-        )
-
-        if len(chunk_list) == 0:
+        if len(row_list) == 0:
             break
 
-        if ai_search:
-            matched_blocks: List[Dict[str, Any]] = []
-            similar_block_tuple_list: List[Tuple[Dict[str, Any], float]] = []
-            for chunk in chunk_list:
-                result: Optional[Union[str, Tuple[str, float]]] = chunk[
-                    "original_text_search_result"
-                ]
-                if result is None:
-                    result = chunk["translation_search_result"]
-                if (
-                    (result is None)
-                    and ("search_sentence_cosine_distance" in chunk)
-                    and (chunk["chunkType"] in ["text", "list", "table"])
-                    and (len(chunk["text_normalized"]) > 12)
-                    and (not re.sub(r"\s", "", chunk["text_normalized"]).isnumeric())
-                ):
-                    result = (
-                        chunk["text_normalized"],
-                        chunk["search_sentence_cosine_distance"],
-                    )
-                if result is not None:
-                    markdown: str = result if isinstance(result, str) else result[0]
-                    if has_traditional_chinese(chunk["text"]):
-                        markdown = get_chinese_convertor("hk2s").convert(markdown)
-                    block = {
-                        "markdown": markdown,
-                        "chunk": chunk,
-                    }
-                    if isinstance(result, str):
-                        matched_blocks.append(block)
-                    else:
-                        similar_block_tuple_list.append((block, result[1]))
-            similar_block_tuple_list.sort(key=lambda x: x[1])
-
-            if (len(matched_blocks) > 0) or (len(similar_block_tuple_list) > 0):
-                yield matched_blocks + [
-                    block_tuple[0] for block_tuple in similar_block_tuple_list
-                ]
-        else:
-            matched_blocks: List[Dict[str, Any]] = []
-            for chunk in chunk_list:
-                markdown = re.sub(
+        search_result_list: List[Dict[str, Any]] = []
+        embedding_search_result_list: List[Tuple[Dict[str, Any], float]] = []
+        for row in row_list:
+            result: Optional[Union[str, Tuple[str, float]]] = None
+            if len(row) > 11:
+                if row[11] is not None:
+                    result = row[11]
+                else:
+                    if (
+                        (len(row) == 13)
+                        and (row[5] in ["text", "list", "table"])
+                        and (len(row[1]) > 12)
+                        and (not re.sub(r"\s", "", row[1]).isnumeric())
+                    ):
+                        result = (
+                            row[1],
+                            row[12],
+                        )
+            else:
+                result = re.sub(
                     re.escape(search_content),
                     r"<mark>\g<0></mark>",
-                    chunk["text_normalized"],
+                    row[1],
                     flags=re.IGNORECASE,
                 )
-                block = {
-                    "markdown": markdown,
-                    "chunk": chunk,
-                }
-                matched_blocks.append(block)
-            if len(matched_blocks) > 0:
-                yield matched_blocks
+            if row[5] == "pdf":
+                highlight = PDFHighlight(
+                    x1=row[10][0],
+                    y1=row[10][1],
+                    x2=row[10][2],
+                    y2=row[10][3],
+                    page_number=row[6],
+                    width=row[8],
+                    height=row[9],
+                ).to_dict()
+            elif row[5] in ["md", "text"]:
+                highlight = MarkdownHighlight(
+                    from_idx=row[10][0],
+                    to_idx=row[10][1],
+                ).to_dict()
+            elif row[5] == "xlsx":
+                if row[10]:
+                    highlight = ExcelHighlight(
+                        col=row[10][0],
+                        row=row[10][1],
+                    ).to_dict()
+                else:
+                    highlight = ExcelHighlight(
+                        col=None,
+                        row=None,
+                    ).to_dict()
+            else:
+                highlight = ImageHighlight(
+                    x1=row[10][0],
+                    y1=row[10][1],
+                    x2=row[10][2],
+                    y2=row[10][3],
+                    width=row[8],
+                    height=row[9],
+                ).to_dict()
 
-        last_cursor = tuple_(
-            Item.type,
-            Item.fileName,
-            coalesce(Item.pageNumber, -1),
-            (
-                -Item.bbox[2]
-                if chunk_list[-1]["type"] in ["pdf", "image"]
-                else coalesce(Item.bbox[1], -1.0)
-            ),
-            (
-                Item.bbox[1]
-                if chunk_list[-1]["type"] in ["pdf", "image"]
-                else coalesce(Item.bbox[2], -1.0)
-            ),
-            -coalesce(Item.bbox[4], -1.0),
-            coalesce(Item.bbox[3], -1.0),
-            Item.chunkIdx,
-        ) > (
-            chunk_list[-1]["type"],
-            chunk_list[-1]["fileName"],
-            (
-                chunk_list[-1]["pageNumber"]
-                if chunk_list[-1]["pageNumber"] is not None
-                else -1
-            ),
-            (
-                -chunk_list[-1]["bbox"][1]
-                if chunk_list[-1]["type"] in ["pdf", "image"]
-                else (
-                    chunk_list[-1]["bbox"][0]
-                    if (
-                        (chunk_list[-1]["bbox"] is not None)
-                        and (len(chunk_list[-1]["bbox"]) > 0)
-                    )
-                    else -1.0
+            ext = row[4].split(".")[-1]
+            if isinstance(result, str):
+                search_result_list.append(
+                    {
+                        "markdown": (
+                            result
+                            if not row[2]
+                            else get_chinese_convertor("hk2s").convert(result)
+                        ),
+                        "id": row[0],
+                        "fileUrl": (row[4]),
+                        "type": ext,
+                        "highlight": highlight,
+                        "fileName": row[3],
+                    }
                 )
-            ),
-            (
-                chunk_list[-1]["bbox"][0]
-                if chunk_list[-1]["type"] in ["pdf", "image"]
-                else (
-                    chunk_list[-1]["bbox"][1]
-                    if (
-                        (chunk_list[-1]["bbox"] is not None)
-                        and (len(chunk_list[-1]["bbox"]) > 1)
+            elif isinstance(result, Tuple):
+                embedding_search_result_list.append(
+                    (
+                        {
+                            "markdown": (
+                                result[0]
+                                if not row[2]
+                                else get_chinese_convertor("hk2s").convert(result[0])
+                            ),
+                            "id": row[0],
+                            "fileUrl": (row[4]),
+                            "type": ext,
+                            "highlight": highlight,
+                            "fileName": row[3],
+                        },
+                        result[1],
                     )
-                    else -1.0
                 )
-            ),
-            -(
-                chunk_list[-1]["bbox"][3]
-                if (chunk_list[-1]["bbox"] is not None)
-                and (len(chunk_list[-1]["bbox"]) > 3)
-                else -1.0
-            ),
-            (
-                chunk_list[-1]["bbox"][2]
-                if (chunk_list[-1]["bbox"] is not None)
-                and (len(chunk_list[-1]["bbox"]) > 2)
-                else -1.0
-            ),
-            chunk_list[-1]["chunkIdx"],
+        embedding_search_result_list.sort(key=lambda x: x[1])
+        search_result_list.extend(
+            [
+                embedding_search_result[0]
+                for embedding_search_result in embedding_search_result_list
+            ]
         )
-    del search_embedding_np_array
+        yield search_result_list
+        current_start_index += batch_size
+    del search_embedding_str_list
