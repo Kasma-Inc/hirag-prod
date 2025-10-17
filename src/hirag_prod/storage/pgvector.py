@@ -594,8 +594,8 @@ class PGVector(BaseVDB):
                 stmt = stmt.where(model.workspaceId == workspace_id)
             if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
                 stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
-            if file_list and hasattr(model, "documentId"):
-                stmt = stmt.where(model.documentId.in_(file_list))
+            if file_list and hasattr(model, "id"):
+                stmt = stmt.where(model.id.in_(file_list))
 
             if distance_threshold is not None:
                 stmt = stmt.where(distance_expr < float(distance_threshold))
