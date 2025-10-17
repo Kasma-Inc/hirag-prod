@@ -508,7 +508,7 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                             continue
 
     except Exception as e:
-        logger.error(f"Error extracting timestamp: {e}")
+        logger.error(f"Failed extracting timestamp: {e}")
 
     return None
 

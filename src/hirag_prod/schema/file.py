@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, get_args
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -12,6 +12,7 @@ file_types = Literal[
     "pptx",
     "xlsx",
     "jpg",
+    "jpeg",
     "png",
     "zip",
     "txt",
@@ -20,7 +21,10 @@ file_types = Literal[
     "tsv",
     "html",
     "md",
+    "markdown",
 ]
+
+valid_file_types = list(get_args(file_types))
 
 
 class File(Base):
@@ -100,24 +104,9 @@ def create_file(metadata: dict, **kwargs) -> File:
 
     # Validate file type if provided
     if "type" in file_data and file_data["type"] is not None:
-        valid_types = [
-            "pdf",
-            "docx",
-            "pptx",
-            "xlsx",
-            "jpg",
-            "png",
-            "zip",
-            "txt",
-            "csv",
-            "text",
-            "tsv",
-            "html",
-            "md",
-        ]
-        if file_data["type"] not in valid_types:
+        if file_data["type"] not in valid_file_types:
             raise ValueError(
-                f"Invalid file type '{file_data['type']}'. Must be one of: {valid_types}"
+                f"Invalid file type '{file_data['type']}'. Must be one of: {valid_file_types}"
             )
 
     # Create and return the File instance

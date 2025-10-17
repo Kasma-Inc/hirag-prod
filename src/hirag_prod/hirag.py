@@ -281,7 +281,8 @@ class DocumentProcessor:
                             )
                             items[idx].caption = caption
                         except Exception:
-                            raise HiRAGException(
+                            items[idx].caption = None
+                            logger.warning(
                                 f"Failed to summarize table {table_item.documentKey}"
                             )
 
@@ -1150,6 +1151,7 @@ class HiRAG:
         translation: Optional[List[str]] = None,
         strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         filter_by_clustering: bool = True,
+        file_list: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Query all types of data"""
         if not self._query_service:
@@ -1174,6 +1176,7 @@ class HiRAG:
             knowledge_base_id=knowledge_base_id,
             strategy=strategy,
             filter_by_clustering=filter_by_clustering,
+            file_list=file_list,
         )
 
         query_results["query"] = query_list

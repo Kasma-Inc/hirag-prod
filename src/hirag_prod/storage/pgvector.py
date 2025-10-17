@@ -549,6 +549,7 @@ class PGVector(BaseVDB):
         topk: Optional[int] = None,
         topn: Optional[int] = None,
         uri_list: Optional[List[str]] = None,
+        file_list: Optional[List[str]] = None,
         require_access: Optional[Literal["private", "public"]] = None,
         columns_to_select: Optional[List[str]] = None,
         distance_threshold: Optional[float] = None,
@@ -601,6 +602,8 @@ class PGVector(BaseVDB):
                 stmt = stmt.where(model.workspaceId == workspace_id)
             if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
                 stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
+            if file_list and hasattr(model, "id"):
+                stmt = stmt.where(model.id.in_(file_list))
 
             if distance_threshold is not None:
                 stmt = stmt.where(distance_expr < float(distance_threshold))

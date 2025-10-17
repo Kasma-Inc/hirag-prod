@@ -261,6 +261,7 @@ class QueryService:
         link_top_k: Optional[int] = None,
         passage_node_weight: Optional[float] = None,
         damping: Optional[float] = None,
+        file_list: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Two-path retrieval + PageRank fusion.
 
@@ -290,6 +291,7 @@ class QueryService:
             knowledge_base_id=knowledge_base_id,
             topk=topk,
             topn=topn,
+            file_list=file_list,
         )
         query_triplets = triplet_recall["relations"]
         query_entity_ids = triplet_recall["entity_ids"]
@@ -417,6 +419,7 @@ class QueryService:
         strategy: Literal["pagerank", "reranker", "hybrid", "raw"] = "hybrid",
         topk: Optional[int] = None,
         topn: Optional[int] = None,
+        file_list: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Query Strategy"""
         topk = topk or get_hi_rag_config().default_query_top_k
@@ -428,6 +431,7 @@ class QueryService:
             knowledge_base_id=knowledge_base_id,
             topk=topk,
             topn=topn,
+            file_list=file_list,
         )
 
         if strategy == "raw":
