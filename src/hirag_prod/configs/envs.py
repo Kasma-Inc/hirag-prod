@@ -88,8 +88,6 @@ class Envs(BaseSettings):
     LOCAL_RERANKER_MODEL_ENTRY_POINT: str = "/rerank"
     LOCAL_RERANKER_MODEL_AUTHORIZATION: Optional[str] = None
 
-    KNOWLEDGE_BASE_SEARCH_BATCH_SIZE: int = 10000
-
     LLM_RATE_LIMIT: int = 60
     LLM_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
     LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
