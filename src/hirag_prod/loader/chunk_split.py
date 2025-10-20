@@ -21,6 +21,7 @@ from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
+from hirag_prod.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -551,6 +552,7 @@ def determine_docling_chunk_type(chunk) -> ChunkType:
     return ChunkType.MIXED
 
 
+@traced()
 def chunk_docling_document(
     docling_doc: DoclingDocument, doc_md: File
 ) -> tuple[List[Item], set[str], List[int]]:
@@ -948,6 +950,7 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
     }
 
 
+@traced()
 def chunk_dots_document(
     json_doc: List[Dict[str, Any]],
     md_doc: File,
@@ -1037,6 +1040,7 @@ def chunk_dots_document(
 
 
 # ======================== langchain chunker ========================
+@traced()
 def chunk_langchain_document(
     langchain_doc: File,
     chunk_size: int = CHUNK_SIZE,

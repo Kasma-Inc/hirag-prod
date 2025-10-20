@@ -55,6 +55,7 @@ from hirag_prod.storage import (
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
+from hirag_prod.tracing import traced
 
 # Configure Logging
 logging.basicConfig(
@@ -87,6 +88,7 @@ class DocumentProcessor:
         self.job_status_tracker = job_status_tracker
         self.metrics = metrics or MetricsCollector()
 
+    @traced()
     async def clear_document(
         self,
         document_id: str,
@@ -111,6 +113,7 @@ class DocumentProcessor:
 
         return self.metrics.metrics
 
+    @traced()
     async def process_document(
         self,
         document_path: str,
@@ -199,6 +202,7 @@ class DocumentProcessor:
 
             return self.metrics.metrics
 
+    @traced()
     async def _load_and_chunk_document(
         self,
         document_path: str,
@@ -269,6 +273,7 @@ class DocumentProcessor:
                         )
 
                     # summarize each table into a concise caption using LLM
+                    @traced()
                     async def summarize_table(idx: int):
                         table_item = items[idx]
                         system_prompt = PROMPTS["summary_table_en"].format(
@@ -346,6 +351,7 @@ class DocumentProcessor:
                     new_error_class=DocumentProcessingError,
                 )
 
+    @traced(record_args=["workspace_id", "knowledge_base_id"])
     async def _process_chunks(
         self,
         chunks: List[Chunk],

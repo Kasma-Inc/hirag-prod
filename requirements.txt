@@ -768,3 +768,10 @@ yarl==1.20.1
     # via aiohttp
 zstandard==0.25.0
     # via langsmith
+opentelemetry-api==1.37.0
+opentelemetry-sdk==1.37.0
+opentelemetry-exporter-otlp==1.37.0
+opentelemetry-instrumentation-fastapi==0.58b0
+opentelemetry-instrumentation-sqlalchemy==0.58b0
+opentelemetry-instrumentation-openai-v2==2.1b0
+opentelemetry-instrumentation-requests==0.58b0

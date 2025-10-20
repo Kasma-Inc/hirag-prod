@@ -19,6 +19,7 @@ from hirag_prod.schema import (
     file_to_item,
     item_to_chunk,
 )
+from hirag_prod.tracing import traced
 
 
 def _keep_sheet(name: str) -> bool:
@@ -38,6 +39,7 @@ async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
         raise HiRAGException(f"Failed to summarize excel sheet {sheet_name}") from e
 
 
+@traced()
 async def load_and_chunk_excel(
     document_path: str,
     document_meta: Dict,

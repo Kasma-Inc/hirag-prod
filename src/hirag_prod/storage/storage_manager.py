@@ -7,16 +7,10 @@ from hirag_prod._utils import log_error_info, retry_async
 from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
-from hirag_prod.schema import (
-    Chunk,
-    File,
-    Item,
-    Relation,
-)
-from hirag_prod.storage import (
-    BaseVDB,
-)
+from hirag_prod.schema import Chunk, File, Item, Relation
+from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
+from hirag_prod.tracing import traced
 
 logger = logging.getLogger("HiRAG")
 
@@ -47,6 +41,7 @@ class StorageManager:
             )
 
     @retry_async()
+    @traced()
     async def clean_vdb_document(self, where: Dict[str, Any]) -> None:
         await self.vdb.clean_table(table_name="Chunks", where=where)
         await self.vdb.clean_table(table_name="Triplets", where=where)
@@ -55,15 +50,18 @@ class StorageManager:
         await self.vdb.clean_table(table_name="Nodes", where=where)
 
     @retry_async()
+    @traced()
     async def clean_vdb_file(self, where: Dict[str, Any]) -> bool:
         is_exist = await self.vdb.clean_table(table_name="Files", where=where)
         return is_exist
 
     @retry_async()
+    @traced()
     async def has_graph_edges(self, workspace_id: str, knowledge_base_id: str) -> bool:
         return await self.vdb.has_graph_edges(workspace_id, knowledge_base_id)
 
     @retry_async()
+    @traced(record_args=[])
     async def upsert_chunks_to_vdb(self, chunks: List[Chunk]) -> None:
         if not chunks:
             return
@@ -84,6 +82,7 @@ class StorageManager:
         )
 
     @retry_async()
+    @traced()
     async def upsert_items_to_vdb(self, items: List[Item]) -> None:
         if not items:
             return
@@ -107,6 +106,7 @@ class StorageManager:
         )
 
     @retry_async()
+    @traced()
     async def upsert_file_to_vdb(self, file: File) -> None:
         if not file:
             return
@@ -116,6 +116,7 @@ class StorageManager:
         )
 
     @retry_async()
+    @traced()
     async def upsert_relations_to_vdb(self, relations: List[Relation]) -> None:
         if not relations:
             return
@@ -146,6 +147,7 @@ class StorageManager:
             mode="append",
         )
 
+    @traced()
     async def get_existing_chunks(
         self, uri: str, workspace_id: str, knowledge_base_id: str
     ) -> List[str]:
@@ -160,6 +162,7 @@ class StorageManager:
             log_error_info(logging.WARNING, "Failed to get existing chunks", e)
             return []
 
+    @traced()
     async def query_chunks(
         self,
         query: Union[str, List[str]],
@@ -182,6 +185,7 @@ class StorageManager:
         )
         return rows
 
+    @traced()
     async def query_triplets(
         self,
         query: Union[str, List[str]],
@@ -206,6 +210,7 @@ class StorageManager:
         )
         return rows
 
+    @traced()
     async def query_by_keys(
         self,
         chunk_ids: List[str],

@@ -18,6 +18,7 @@ from hirag_prod.configs.functions import (
     initialize_config_manager,
 )
 from hirag_prod.schema import LoaderType
+from hirag_prod.tracing import traced
 
 S3_DOWNLOAD_DIR = "/chatbot/files/s3"
 OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
@@ -25,6 +26,7 @@ OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+@traced()
 def download_load_file(
     file_type: Literal["json", "md"],
     return_type: Literal["dict", "docling_document"],

@@ -25,6 +25,7 @@ from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, 
 from hirag_prod.schema.graph import create_graph
 from hirag_prod.schema.node import create_node
 from hirag_prod.storage.base_vdb import BaseVDB
+from hirag_prod.tracing import traced
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class PGVector(BaseVDB):
         return instance
 
     # batch upserts text embeddings into the specified table
+    @traced(record_args=["table_name", "texts_to_upsert"])
     async def upsert_texts(
         self,
         texts_to_upsert: List[str],
@@ -210,6 +212,7 @@ class PGVector(BaseVDB):
             return rows
 
     # use pg to mimic graphdb
+    @traced(record_args=["table_name", "mode"])
     async def upsert_graph(
         self,
         relations: List[Relation],
@@ -366,6 +369,7 @@ class PGVector(BaseVDB):
             )
             return {"edges": len(graph_objects), "nodes": len(node_objects)}
 
+    @traced()
     async def query_node(
         self,
         node_id: str,
@@ -401,6 +405,7 @@ class PGVector(BaseVDB):
         }
         return Entity(id=node_id, page_content=name, metadata=meta)
 
+    @traced()
     async def pagerank_top_chunks_with_reset(
         self,
         workspace_id: str,
@@ -472,6 +477,7 @@ class PGVector(BaseVDB):
         )
         return out
 
+    @traced()
     async def clean_table(
         self,
         table_name: str,
@@ -495,6 +501,7 @@ class PGVector(BaseVDB):
             )
             return rows_deleted != 0
 
+    @traced()
     async def upsert_file(
         self,
         file: File,
@@ -525,6 +532,7 @@ class PGVector(BaseVDB):
             )
             return row
 
+    @traced()
     async def upsert_file_from_metadata(
         self,
         metadata: dict,
@@ -540,6 +548,7 @@ class PGVector(BaseVDB):
             logger.error(f"Failed to create file from metadata: {e}")
             raise
 
+    @traced(record_args=["table_name", "query"])
     async def query(
         self,
         query: Union[str, List[str]],
@@ -629,6 +638,7 @@ class PGVector(BaseVDB):
             )
             return scored
 
+    @traced()
     async def query_by_keys(
         self,
         key_value: List[str],
@@ -754,6 +764,7 @@ class PGVector(BaseVDB):
                 out.append(rec)
             return out
 
+    @traced()
     async def get_existing_document_keys(
         self,
         uri: str,
@@ -777,6 +788,7 @@ class PGVector(BaseVDB):
                 if getattr(r, "documentKey", None)
             ]
 
+    @traced()
     async def get_table(self, table_name: str) -> List[dict]:
         model = self.get_model(table_name)
         async with get_db_session_maker()() as session:
@@ -820,6 +832,7 @@ class PGVector(BaseVDB):
 
             await conn.run_sync(_create)
 
+    @traced()
     async def has_graph_edges(self, workspace_id: str, knowledge_base_id: str) -> bool:
         GraphModel = self.get_model("Graph")
         async with get_db_session_maker()() as session:

@@ -9,6 +9,7 @@ from hirag_prod.configs.functions import (
     get_translator_config,
 )
 from hirag_prod.rate_limiter import RateLimiter
+from hirag_prod.tracing import traced
 
 rate_limiter = RateLimiter()
 
@@ -77,6 +78,7 @@ class QwenTranslator:
         else:
             raise ValueError(f"Unsupported language: {lang}")
 
+    @traced()
     async def translate(
         self, text, dest: str = "English", src: str = "Auto"
     ) -> Union[QwenTranslated, list[QwenTranslated]]:

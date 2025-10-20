@@ -9,6 +9,7 @@ from langchain_core.document_loaders import BaseLoader as LangchainBaseLoader
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.loader import document_converter
 from hirag_prod.schema import File, create_file
+from hirag_prod.tracing import traced
 
 
 class BaseLoader(ABC):
@@ -17,6 +18,7 @@ class BaseLoader(ABC):
     loader_docling: Type[DocumentConverter]
     loader_langchain: Type[LangchainBaseLoader]
 
+    @traced()
     def load_dots_ocr(
         self, document_path: str, document_meta: Optional[dict] = None
     ) -> Tuple[File, File]:
@@ -58,6 +60,7 @@ class BaseLoader(ABC):
         )
         return json_doc, md_doc
 
+    @traced()
     def load_docling(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
     ) -> Tuple[DoclingDocument, File]:
@@ -90,6 +93,7 @@ class BaseLoader(ABC):
         )
         return docling_doc, doc_md
 
+    @traced()
     def load_langchain(
         self, document_path: str, document_meta: Optional[dict] = None, **loader_args
     ) -> File:

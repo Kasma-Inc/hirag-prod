@@ -19,6 +19,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 from hirag_prod.rate_limiter import RateLimiter
+from hirag_prod.tracing import traced
 
 rate_limiter = RateLimiter()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ def _get_dots_token_usage(
     "DOTS_OCR_RATE_LIMIT",
     "DOTS_OCR_RATE_LIMIT_TIME_UNIT",
 )
+@traced()
 def convert(
     converter_type: Literal["dots_ocr"],
     input_file_path: str,
