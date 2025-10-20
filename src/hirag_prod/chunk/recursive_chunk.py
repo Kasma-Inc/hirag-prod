@@ -244,21 +244,17 @@ class UnifiedRecursiveChunker:
             header_texts = [h.text for h in header_items]
             merged_text = " ".join(header_texts + non_header_texts)
 
-            pages_span = [h.pageNumber for h in header_items]
             non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
-            pages_span.extend(p for p in non_header_pages)
 
-            bbox_list = [h.bbox for h in header_items]
             non_header_bbox_list = self._build_bbox_list_for_pages(
                 non_header_items, non_header_pages
             )
-            bbox_list.extend(non_header_bbox_list)
 
             merged_item = self._create_dense_chunk(
                 chunk_idx=chunk_idx,
                 text=merged_text,
-                bbox_list=bbox_list,
-                pages_span=pages_span,
+                bbox_list=non_header_bbox_list,
+                pages_span=non_header_pages,
                 reference_item=item,
             )
 
