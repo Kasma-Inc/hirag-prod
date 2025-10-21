@@ -295,7 +295,7 @@ LIMIT :batch_size
         )
         if has_more:
             search_result_list[-1]["hasMore"] = True
-            search_result_list[-1]["search_list_original"] = search_list_original
-            search_result_list[-1]["search_list"] = search_list
+            search_result_list[-1]["searchListOriginal"] = search_list_original
+            search_result_list[-1]["searchList"] = search_list
         yield search_result_list
     del search_embedding_str_list
