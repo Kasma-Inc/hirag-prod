@@ -187,6 +187,10 @@ class UnifiedRecursiveChunker:
                 i += 1
                 continue
 
+            if item_type in ["page_footer", "page_header", "footnote"]:
+                i += 1
+                continue
+
             if item.documentKey in header_set:
                 i += 1
                 continue
@@ -210,7 +214,12 @@ class UnifiedRecursiveChunker:
                     i += 1
                     continue
                 else:
-                    non_header_items.append(cur_item)
+                    if cur_item.chunkType not in [
+                        "page_footer",
+                        "page_header",
+                        "footnote",
+                    ]:
+                        non_header_items.append(cur_item)
                     i += 1
 
             if not non_header_items:

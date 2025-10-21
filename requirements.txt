@@ -5,7 +5,9 @@ accelerate==1.10.1
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
-    # via voyageai
+    # via
+    #   langchain-community
+    #   voyageai
 aiolimiter==1.2.1
     # via voyageai
 aiosignal==1.4.0
@@ -71,6 +73,8 @@ contourpy==1.3.3
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
+dataclasses-json==0.6.7
+    # via langchain-community
 dill==0.4.0
     # via multiprocess
 distro==1.9.0
@@ -147,12 +151,15 @@ httpcore==1.0.9
 httpx==0.28.1
     # via
     #   googletrans
+    #   langgraph-sdk
     #   langsmith
     #   mcp
     #   openai
     #   pdfdeal
 httpx-sse==0.4.1
-    # via mcp
+    # via
+    #   langchain-community
+    #   mcp
 huggingface-hub==0.35.1
     # via
     #   accelerate
@@ -210,12 +217,34 @@ jsonschema-specifications==2025.9.1
     # via jsonschema
 kiwisolver==1.4.9
     # via matplotlib
-langchain-core==0.3.76
-    # via langchain-text-splitters
+langchain==1.0.1
+    # via langchain-community
+langchain-community==0.3.31
+    # via hirag-prod (pyproject.toml)
+langchain-core==1.0.0
+    # via
+    #   langchain
+    #   langchain-community
+    #   langchain-text-splitters
+    #   langgraph
+    #   langgraph-checkpoint
+    #   langgraph-prebuilt
 langchain-text-splitters==0.3.11
     # via hirag-prod (pyproject.toml)
+langgraph==1.0.1
+    # via langchain
+langgraph-checkpoint==3.0.0
+    # via
+    #   langgraph
+    #   langgraph-prebuilt
+langgraph-prebuilt==1.0.1
+    # via langgraph
+langgraph-sdk==0.2.9
+    # via langgraph
 langsmith==0.4.31
-    # via langchain-core
+    # via
+    #   langchain-community
+    #   langchain-core
 latex2mathml==3.78.1
     # via docling-core
 lazy-loader==0.4
@@ -235,6 +264,8 @@ marko==2.2.0
     # via docling
 markupsafe==3.0.2
     # via jinja2
+marshmallow==3.26.1
+    # via dataclasses-json
 matplotlib==3.10.0
     # via
     #   hirag-prod (pyproject.toml)
@@ -260,6 +291,7 @@ mypy-extensions==1.1.0
     # via
     #   hirag-prod (pyproject.toml)
     #   black
+    #   typing-inspect
 nest-asyncio==1.6.0
     # via hirag-prod (pyproject.toml)
 networkx==3.3
@@ -290,6 +322,7 @@ numpy==1.26.4
     #   hnswlib
     #   hyppo
     #   imageio
+    #   langchain-community
     #   matplotlib
     #   numba
     #   opencv-python-headless
@@ -359,7 +392,11 @@ opencv-python-headless==4.11.0.86
 openpyxl==3.1.5
     # via docling
 orjson==3.11.3
-    # via langsmith
+    # via
+    #   langgraph-sdk
+    #   langsmith
+ormsgpack==1.11.0
+    # via langgraph-checkpoint
 packaging==25.0
     # via
     #   accelerate
@@ -368,6 +405,7 @@ packaging==25.0
     #   langchain-core
     #   langsmith
     #   lazy-loader
+    #   marshmallow
     #   matplotlib
     #   pytest
     #   scikit-image
@@ -428,7 +466,9 @@ pydantic==2.10.6
     #   docling-core
     #   docling-ibm-models
     #   docling-parse
+    #   langchain
     #   langchain-core
+    #   langgraph
     #   langsmith
     #   mcp
     #   openai
@@ -440,6 +480,7 @@ pydantic-core==2.27.2
 pydantic-settings==2.11.0
     # via
     #   docling
+    #   langchain-community
     #   mcp
 pyflakes==3.4.0
     # via autoflake
@@ -495,6 +536,7 @@ pyyaml==6.0.2
     #   docling-core
     #   easyocr
     #   huggingface-hub
+    #   langchain-community
     #   langchain-core
     #   transformers
 rapidfuzz==3.14.1
@@ -515,6 +557,7 @@ requests==2.32.5
     #   docling
     #   hanlp-downloader
     #   huggingface-hub
+    #   langchain-community
     #   langsmith
     #   requests-toolbelt
     #   tiktoken
@@ -591,7 +634,9 @@ sniffio==1.3.1
 soupsieve==2.8
     # via beautifulsoup4
 sqlalchemy==2.0.43
-    # via sqlmodel
+    # via
+    #   langchain-community
+    #   sqlmodel
 sqlmodel==0.0.24
     # via hirag-prod (pyproject.toml)
 sse-starlette==3.0.2
@@ -609,6 +654,7 @@ tabulate==0.9.0
 tenacity==9.0.0
     # via
     #   hirag-prod (pyproject.toml)
+    #   langchain-community
     #   langchain-core
     #   voyageai
 termcolor==3.1.0
@@ -688,7 +734,10 @@ typing-extensions==4.15.0
     #   starlette
     #   torch
     #   typer
+    #   typing-inspect
     #   typing-inspection
+typing-inspect==0.9.0
+    # via dataclasses-json
 typing-inspection==0.4.1
     # via pydantic-settings
 tzdata==2025.2
@@ -707,10 +756,14 @@ voyageai==0.3.2
     # via hirag-prod (pyproject.toml)
 wrapt==1.17.3
     # via smart-open
+xlrd==2.0.2
+    # via hirag-prod (pyproject.toml)
 xlsxwriter==3.2.9
     # via python-pptx
 xxhash==3.5.0
-    # via hirag-prod (pyproject.toml)
+    # via
+    #   hirag-prod (pyproject.toml)
+    #   langgraph
 yarl==1.20.1
     # via aiohttp
 zstandard==0.25.0

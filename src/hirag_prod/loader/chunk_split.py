@@ -192,7 +192,7 @@ def _create_item_base(
     file_metadata = _inherit_file_metadata(source_file)
 
     return Item(
-        documentKey=compute_mdhash_id(text, prefix="item-"),
+        documentKey=compute_mdhash_id(f"{document_id}_{chunk_idx}", prefix="item-"),
         text=text,
         chunkIdx=chunk_idx,
         documentId=document_id,
