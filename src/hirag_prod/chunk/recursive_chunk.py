@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from hirag_prod._utils import encode_string_by_tiktoken
 from hirag_prod.schema.item import Item
@@ -80,13 +80,43 @@ class UnifiedRecursiveChunker:
 
     def _build_bbox_list_for_pages(
         self, items: List[Item], pages: List[int]
-    ) -> List[List[float]]:
-        """Build bbox list for given pages from items."""
-        bbox_list = []
+    ) -> Tuple[List[List[float]], List[int]]:
+        """Build bbox list for given pages from items.
+        Returns (bbox_list, expanded_pages) where expanded_pages duplicates pages for multi-column.
+        """
+        bbox_list: List[List[float]] = []
+        expanded_pages: List[int] = []
         for page in pages:
-            page_bboxes = [item.bbox for item in items if item.pageNumber == page]
-            bbox_list.append(self._process_page_bboxes(page_bboxes, page))
-        return bbox_list
+            page_bboxes = [it.bbox for it in items if it.pageNumber == page]
+            lengths = {len(b) for b in page_bboxes if b}
+
+            # Split columns only when all bboxes are 4-length (x0,y0,x1,y1)
+            if lengths == {4} and len(page_bboxes) > 1:
+                groups: List[List[List[float]]] = []
+                current: List[List[float]] = []
+                prev_y1: Optional[float] = None
+
+                for b in page_bboxes:
+                    y1 = b[3]
+                    if prev_y1 is not None and y1 > prev_y1:
+                        # next bbox is in the next column; start a new group
+                        if current:
+                            groups.append(current)
+                            current = []
+                    current.append(b)
+                    prev_y1 = y1
+
+                if current:
+                    groups.append(current)
+            else:
+                groups = [page_bboxes]
+
+            for g in groups:
+                agg = self._process_page_bboxes(g, page)
+                bbox_list.append(agg)
+                expanded_pages.append(page)
+
+        return bbox_list, expanded_pages
 
     def _create_dense_chunk(
         self,
@@ -250,7 +280,7 @@ class UnifiedRecursiveChunker:
                 merged_text = "\n".join(n.text for n in non_header_items)
                 non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
                 pages_span = [p for p in non_header_pages]
-                bbox_list = self._build_bbox_list_for_pages(
+                bbox_list, pages_span = self._build_bbox_list_for_pages(
                     non_header_items, non_header_pages
                 )
 
@@ -273,7 +303,7 @@ class UnifiedRecursiveChunker:
 
             non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
 
-            non_header_bbox_list = self._build_bbox_list_for_pages(
+            non_header_bbox_list, pages_span = self._build_bbox_list_for_pages(
                 non_header_items, non_header_pages
             )
 
@@ -281,7 +311,7 @@ class UnifiedRecursiveChunker:
                 chunk_idx=chunk_idx,
                 text=merged_text,
                 bbox_list=non_header_bbox_list,
-                pages_span=non_header_pages,
+                pages_span=pages_span,
                 reference_item=item,
             )
 
