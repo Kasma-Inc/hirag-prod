@@ -11,6 +11,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.resources.functions import get_chinese_convertor
+from hirag_prod.tracing import traced
 
 rate_limiter = RateLimiter()
 
@@ -108,6 +109,7 @@ class LocalTranslator:
         else:
             raise ValueError(f"Unsupported language: {lang}")
 
+    @traced()
     async def translate(
         self, text: Union[str, list[str]], dest: str = "English", src: str = "Auto"
     ) -> Union[LocalTranslated, list[LocalTranslated]]:
