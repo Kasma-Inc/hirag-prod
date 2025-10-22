@@ -2,7 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from hirag_prod._utils import encode_string_by_tiktoken
 from hirag_prod.schema.item import Item
+
+ITEM_MERGE_TOKEN_THRESHOLD = 100
 
 
 @dataclass
@@ -174,9 +177,12 @@ class UnifiedRecursiveChunker:
         chunk_idx = 1
         i = 0
         while i < len(items):
+            # First Loop: Handle three special cases:
+            # 1. table or picture
+            # 2. page_footer, page_header, footnote
+            # 3. header items
             item = items[i]
             item_type = item.chunkType
-
             if self._is_table(item_type) or self._is_picture(item_type):
                 merged_item = self._build_separate_chunk(
                     id2item=id2item, item=item, chunk_idx=chunk_idx, category=item_type
@@ -195,11 +201,15 @@ class UnifiedRecursiveChunker:
                 i += 1
                 continue
 
+            # Second Loop: Handle abundant text items until hitting a header item
             non_header_items = []
+            accumulated_text_tokens = 0
             while i < len(items):
                 cur_item = items[i]
+                # Break if hitting a header item
                 if cur_item.documentKey in header_set:
                     break
+                # Handle table or picture items (add to chunks directly)
                 elif self._is_table(cur_item.chunkType) or self._is_picture(
                     cur_item.chunkType
                 ):
@@ -219,7 +229,15 @@ class UnifiedRecursiveChunker:
                         "page_header",
                         "footnote",
                     ]:
+                        item_text = cur_item.text or ""
                         non_header_items.append(cur_item)
+                        # set a threshold to merge items into a single chunk
+                        accumulated_text_tokens += len(
+                            encode_string_by_tiktoken(item_text)
+                        )
+                        if accumulated_text_tokens >= ITEM_MERGE_TOKEN_THRESHOLD:
+                            i += 1
+                            break
                     i += 1
 
             if not non_header_items:
@@ -229,7 +247,7 @@ class UnifiedRecursiveChunker:
             header_ids = first_non.headers
 
             if not header_ids:  # the first non-header items block
-                merged_text = " ".join(n.text for n in non_header_items)
+                merged_text = "\n".join(n.text for n in non_header_items)
                 non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
                 pages_span = [p for p in non_header_pages]
                 bbox_list = self._build_bbox_list_for_pages(
@@ -249,9 +267,9 @@ class UnifiedRecursiveChunker:
                 continue
 
             header_items = [id2item[hid] for hid in header_ids if hid in id2item]
-            non_header_texts = [h.text for h in non_header_items]
+            non_header_texts = [no_h.text for no_h in non_header_items]
             header_texts = [h.text for h in header_items]
-            merged_text = " ".join(header_texts + non_header_texts)
+            merged_text = "\n".join(header_texts + non_header_texts)
 
             non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
 
