@@ -177,6 +177,7 @@ class LocalEmbeddingClient:
             max_retries=0,
         )
 
+    @traced()
     async def create_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Create embeddings using OpenAI SDK against local service"""
         batch_texts_to_embed = [text for text in texts]
