@@ -369,8 +369,9 @@ opentelemetry-api==1.37.0
     #   opentelemetry-exporter-otlp-proto-http
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-openai-v2
+    #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
     #   opentelemetry-sdk
@@ -388,15 +389,18 @@ opentelemetry-exporter-otlp-proto-http==1.37.0
 opentelemetry-instrumentation==0.58b0
     # via
     #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-openai-v2
+    #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
 opentelemetry-instrumentation-asgi==0.58b0
     # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-asyncpg==0.58b0
+    # via hirag-prod (pyproject.toml)
 opentelemetry-instrumentation-fastapi==0.58b0
     # via hirag-prod (pyproject.toml)
-opentelemetry-instrumentation-openai-v2==2.1b0
+opentelemetry-instrumentation-openai==0.47.3
     # via hirag-prod (pyproject.toml)
 opentelemetry-instrumentation-requests==0.58b0
     # via hirag-prod (pyproject.toml)
@@ -416,11 +420,14 @@ opentelemetry-semantic-conventions==0.58b0
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
-    #   opentelemetry-instrumentation-openai-v2
+    #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
     #   opentelemetry-sdk
+opentelemetry-semantic-conventions-ai==0.4.13
+    # via opentelemetry-instrumentation-openai
 opentelemetry-util-http==0.58b0
     # via
     #   opentelemetry-instrumentation-asgi

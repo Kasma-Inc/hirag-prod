@@ -58,8 +58,11 @@ dependencies = [
     "opentelemetry-exporter-otlp==1.37.0",
     "opentelemetry-instrumentation-fastapi==0.58b0",
     "opentelemetry-instrumentation-sqlalchemy==0.58b0",
-    "opentelemetry-instrumentation-openai-v2==2.1b0",
     "opentelemetry-instrumentation-requests==0.58b0",
+    "opentelemetry-instrumentation-asyncpg==0.58b0",
+    "opentelemetry-instrumentation-openai==0.47.3",
+    # "opentelemetry-instrumentation-aio-pika==0.58b0",
+    # "opentelemetry-instrumentation-redis==0.58b0",
 ]
 
 [tool.uv.sources]

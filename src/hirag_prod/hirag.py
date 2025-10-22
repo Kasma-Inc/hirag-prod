@@ -8,10 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 
-from hirag_prod._utils import (
-    compute_mdhash_id,
-    log_error_info,
-)
+from hirag_prod._utils import compute_mdhash_id, log_error_info
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.configs.cli_options import CliOptions
 from hirag_prod.configs.functions import (
@@ -49,9 +46,7 @@ from hirag_prod.resources.functions import (
     initialize_resource_manager,
 )
 from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
-from hirag_prod.storage import (
-    BaseVDB,
-)
+from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
@@ -550,6 +545,7 @@ class HiRAG:
     # ========================================================================
 
     # Helper function for similarity calcuation
+    @traced(record_args=[])
     async def calculate_similarity(
         self, sentence_embedding: List[float], references: Dict[str, List[float]]
     ) -> List[Dict[str, float]]:
@@ -569,6 +565,7 @@ class HiRAG:
                 )
         return similar_refs
 
+    @traced(record_return=True)
     async def chat_complete(self, prompt: str, **kwargs: Any) -> str:
         """Chat with the user"""
         try:
@@ -586,6 +583,7 @@ class HiRAG:
                 new_error_class=HiRAGException,
             )
 
+    @traced()
     async def extract_references(
         self,
         summary: str,
@@ -659,6 +657,7 @@ class HiRAG:
 
         return reference_chunk_list
 
+    @traced()
     async def generate_summary(
         self,
         workspace_id: str,
@@ -834,6 +833,7 @@ class HiRAG:
                 raise_error=True,
             )
 
+    @traced()
     async def generate_summary_plus(
         self,
         workspace_id: str,
@@ -905,7 +905,7 @@ class HiRAG:
     # ========================================================================
     # Public interface methods
     # ========================================================================
-
+    @traced()
     async def insert_to_kb(
         self,
         document_path: str,
@@ -1034,6 +1034,7 @@ class HiRAG:
                     )
             raise
 
+    @traced()
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query document chunks"""
         if not self._query_service:
@@ -1041,6 +1042,7 @@ class HiRAG:
 
         return await self._query_service.query_chunks(*args, **kwargs)
 
+    @traced()
     async def apply_strategy_to_chunks(
         self,
         chunks_dict: Dict[str, Any],
@@ -1147,6 +1149,7 @@ class HiRAG:
         query_results["chunks"] = filtered_chunks
         return query_results
 
+    @traced()
     async def query(
         self,
         query: str,
