@@ -2,11 +2,50 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
+
+# from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.metrics import (  # Observation,
+    Meter,
+    get_meter_provider,
+    set_meter_provider,
+)
+from opentelemetry.metrics._internal import NoOpMeterProvider
 
 from hirag_prod._utils import log_error_info
 
+# from opentelemetry.sdk.metrics import MeterProvider
+# from opentelemetry.sdk.metrics._internal.export import ConsoleMetricExporter
+# from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+
 logger = logging.getLogger("HiRAG")
+
+_meter: Optional[Meter] = None
+
+
+def setup_metrics():
+    """Setup OpenTelemetry metrics with OTLP exporter."""
+
+    global _meter
+    if _meter is not None:
+        return  # Already initialized
+    # TODO(yukkit): Enable OTLP exporter
+    # exporter = OTLPMetricExporter(insecure=True)
+    # exporter = ConsoleMetricExporter()
+    # reader = PeriodicExportingMetricReader(exporter)
+    # provider = MeterProvider(metric_readers=[reader])
+    provider = NoOpMeterProvider()
+    set_meter_provider(provider)
+    _meter = get_meter_provider().get_meter(__name__)
+
+
+def get_meter() -> Meter:
+    """Get the global meter instance."""
+    global _meter
+    if _meter is None:
+        raise RuntimeError("Meter is not initialized. Call setup_metrics first.")
+    return _meter
 
 
 @dataclass

@@ -26,6 +26,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.configs.llm_config import LLMConfig
 from hirag_prod.rate_limiter import RateLimiter
+from hirag_prod.tracing import traced
 
 # ============================================================================
 # Constants
@@ -172,6 +173,7 @@ class LocalEmbeddingClient:
         self._logger = logging.getLogger(LoggerNames.EMBEDDING)
         self._http_client = httpx.AsyncClient(timeout=3600.0)
 
+    @traced()
     async def create_embeddings(self, texts: List[str]) -> List[List[float]]:
         """Create embeddings using local service API"""
         # Convert texts to messages format expected by local service
@@ -227,6 +229,7 @@ class LocalLLMClient:
     def __init__(self):
         self._http_client = httpx.AsyncClient(timeout=3600.0)
 
+    @traced()
     async def create_chat_completion(
         self, messages: List[Dict[str, str]], **kwargs: Any
     ) -> Dict[str, Any]:
@@ -363,6 +366,7 @@ class ChatCompletion(metaclass=SingletonMeta):
         "LLM_RATE_LIMIT",
         "LLM_RATE_LIMIT_TIME_UNIT",
     )
+    @traced()
     async def complete(
         self,
         model: str,
@@ -473,6 +477,7 @@ class LocalChatService:
         "LLM_RATE_LIMIT",
         "LLM_RATE_LIMIT_TIME_UNIT",
     )
+    @traced()
     async def complete(
         self,
         prompt: str,
