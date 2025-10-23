@@ -19,8 +19,7 @@ class Envs(BaseSettings):
 
     ENV: Literal["dev", "prod"] = "dev"
     HI_RAG_LANGUAGE: str = "en"
-    POSTGRES_URL_NO_SSL: str
-    POSTGRES_URL_NO_SSL_DEV: str
+    POSTGRES_URL: str
     POSTGRES_TABLE_NAME: str = "KnowledgeBaseCatalog"
     POSTGRES_SCHEMA: str = "public"
     REDIS_URL: str = "redis://redis:6379/2"
