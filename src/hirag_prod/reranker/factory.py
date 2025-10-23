@@ -2,7 +2,6 @@ from typing import Optional
 
 from hirag_prod.configs.functions import get_reranker_config
 from hirag_prod.configs.reranker_config import RerankConfig
-from hirag_prod.reranker.api_reranker import ApiReranker
 from hirag_prod.reranker.base import Reranker
 from hirag_prod.reranker.local_reranker import LocalReranker
 
@@ -19,11 +18,7 @@ def create_reranker(
         reranker_config.reranker_type = reranker_type.lower()
 
     if reranker_config.reranker_type == "api":
-        return ApiReranker(
-            reranker_config.voyage_api_key,
-            reranker_config.voyage_reranker_model_base_url,
-            reranker_config.voyage_reranker_model_name,
-        )
+        raise ValueError("API reranker is not supported temporarily")
     elif reranker_config.reranker_type == "local":
         return LocalReranker(
             reranker_config.local_reranker_model_base_url,

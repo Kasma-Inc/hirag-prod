@@ -59,11 +59,7 @@ class ConfigManager:
                 f"Unsupported language {self.language}. Supported languages are {self.supported_languages}"
             )
 
-        self.postgres_url_env: Optional[str] = (
-            self.envs.POSTGRES_URL_NO_SSL_DEV
-            if self.envs.ENV == "dev"
-            else self.envs.POSTGRES_URL_NO_SSL
-        )
+        self.postgres_url_env: Optional[str] = self.envs.POSTGRES_URL
         self.postgres_url_async: Optional[str] = self.postgres_url_env
         self.postgres_url_sync: Optional[str] = self.postgres_url_env
         # Replace postgres:// with postgresql+asyncpg:// for async connections

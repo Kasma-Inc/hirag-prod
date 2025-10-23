@@ -19,8 +19,7 @@ class Envs(BaseSettings):
 
     ENV: Literal["dev", "prod"] = "dev"
     HI_RAG_LANGUAGE: str = "en"
-    POSTGRES_URL_NO_SSL: str
-    POSTGRES_URL_NO_SSL_DEV: str
+    POSTGRES_URL: str
     POSTGRES_TABLE_NAME: str = "KnowledgeBaseCatalog"
     POSTGRES_SCHEMA: str = "public"
     REDIS_URL: str = "redis://redis:6379/2"
@@ -70,17 +69,7 @@ class Envs(BaseSettings):
     LOCAL_TRANSLATOR_MAX_TOKENS: Optional[str] = None
     LOCAL_TRANSLATOR_TEMPERATURE: Optional[str] = None
 
-    # Qwen Translator Configuration
-    DASHSCOPE_TRANSLATOR_API_KEY: Optional[str] = None
-    DASHSCOPE_TRANSLATOR_BASE_URL: Optional[str] = None
-    DASHSCOPE_TRANSLATOR_MODEL_NAME: str = "qwen-mt-plus"
-
-    RERANKER_TYPE: Literal["api", "local"] = "api"
-
-    # API reranker (Voyage AI) settings
-    VOYAGE_API_KEY: Optional[str] = None
-    VOYAGE_RERANKER_MODEL_NAME: str = "rerank-2"
-    VOYAGE_RERANKER_MODEL_BASE_URL: str = "https://api.voyageai.com/v1/rerank"
+    RERANKER_TYPE: Literal["api", "local"] = "local"
 
     # Local reranker settings
     LOCAL_RERANKER_MODEL_BASE_URL: Optional[str] = None
