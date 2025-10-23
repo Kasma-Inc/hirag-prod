@@ -14,12 +14,10 @@ class RerankConfig(BaseSettings):
     )
 
     # Reranker type selection
-    reranker_type: Literal["api", "local"] = "api"
+    reranker_type: Literal["api", "local"] = "local"
 
-    # API reranker (Voyage AI) settings
-    voyage_api_key: Optional[str] = None
-    voyage_reranker_model_name: str = "rerank-2"
-    voyage_reranker_model_base_url: str = "https://api.voyageai.com/v1/rerank"
+    # API reranker settings
+    # TODO: Add API reranker settings
 
     # Local reranker settings
     local_reranker_model_base_url: Optional[str] = None
@@ -30,8 +28,7 @@ class RerankConfig(BaseSettings):
     @model_validator(mode="after")
     def validate_config_based_on_type(self) -> "RerankConfig":
         if self.reranker_type == "api":
-            if not self.voyage_api_key:
-                raise ValueError("VOYAGE_API_KEY is required when RERANKER_TYPE is api")
+            raise ValueError("API reranker is not supported temporarily")
         elif self.reranker_type == "local":
             if not self.local_reranker_model_base_url:
                 raise ValueError(
