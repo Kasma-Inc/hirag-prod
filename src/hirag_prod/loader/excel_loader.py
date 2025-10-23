@@ -72,6 +72,7 @@ async def load_and_chunk_excel(
                     for i in range(workbook.nsheets)
                     if workbook.sheet_by_index(i).visibility == 0
                 ]
+                workbook.close()
         except Exception as e:
             logger.warning(f"Failed to get visible sheets, will read all: {e}")
         all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(
