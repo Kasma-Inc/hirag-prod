@@ -726,6 +726,7 @@ class EmbeddingService(metaclass=SingletonMeta):
 
         return np.array([dp.embedding for dp in response.data])
 
+    @traced()
     async def create_embeddings(
         self,
         texts: List[str],
@@ -829,6 +830,7 @@ class LocalEmbeddingService:
         # token counter moves to LocalEmbeddingClient.create_embeddings()
         return np.array(embeddings_list)
 
+    @traced()
     async def create_embeddings(
         self, texts: List[str], batch_size: Optional[int] = None
     ) -> np.ndarray:

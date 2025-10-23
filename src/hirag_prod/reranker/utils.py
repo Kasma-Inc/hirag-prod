@@ -2,6 +2,7 @@ import re
 from typing import Dict, List, Set, Union
 
 from hirag_prod.resources.functions import get_reranker
+from hirag_prod.tracing import traced
 
 
 def detect_language(text: str) -> Set[str]:
@@ -21,6 +22,7 @@ def detect_language(text: str) -> Set[str]:
     return detected_languages
 
 
+@traced(record_args=[])
 async def apply_reranking(
     query: Union[str, List[str]],
     results: List[Dict],

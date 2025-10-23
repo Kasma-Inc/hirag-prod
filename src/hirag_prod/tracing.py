@@ -76,6 +76,10 @@ def setup_tracing(
     # You can optionally pass a custom TracerProvider to instrument().
     RequestsInstrumentor().instrument(excluded_urls="/health,/status")
 
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
+    HTTPXClientInstrumentor().instrument()
+
     try:
         from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
 
@@ -205,7 +209,7 @@ def traced(
     """
 
     def decorator(func):
-        span_name = name or func.__name__
+        span_name = name or func.__qualname__
         sig = signature(func)
 
         def _build_attributes(args, kwargs):
@@ -307,7 +311,7 @@ def traced_async_gen(
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs) -> AsyncGenerator:
-            span_name = name or func.__name__
+            span_name = name or func.__qualname__
 
             # Build attributes from args
             attributes = dict(span_attrs)

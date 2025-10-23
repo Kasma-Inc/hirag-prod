@@ -8,6 +8,7 @@ import httpx
 from hirag_prod.configs.functions import get_envs, get_shared_variables
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.reranker.base import Reranker
+from hirag_prod.tracing import traced
 
 rate_limiter = RateLimiter()
 
@@ -34,6 +35,7 @@ class LocalReranker(Reranker):
         "RERANKER_RATE_LIMIT",
         "RERANKER_RATE_LIMIT_TIME_UNIT",
     )
+    @traced(record_args=[])
     async def _call_api(self, query: str, documents: List[str]) -> List[dict]:
         """Async API call to avoid blocking the event loop"""
         headers = {
