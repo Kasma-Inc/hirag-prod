@@ -11,6 +11,7 @@ from hirag_prod.configs.functions import get_hi_rag_config
 from hirag_prod.reranker.utils import apply_reranking
 from hirag_prod.schema.vector_config import use_halfvec
 from hirag_prod.storage.storage_manager import StorageManager
+from hirag_prod.tracing import traced
 
 logger = logging.getLogger("HiRAG")
 
@@ -21,10 +22,12 @@ class QueryService:
     def __init__(self, storage: StorageManager):
         self.storage = storage
 
+    @traced()
     async def query_chunks(self, *args, **kwargs) -> List[Dict[str, Any]]:
         """Query chunks via unified storage"""
         return await self.storage.query_chunks(*args, **kwargs)
 
+    @traced()
     async def apply_clustering(
         self, workspace_id: str, knowledge_base_id: str, chunk_ids: List[str]
     ) -> Dict[str, Any]:
@@ -101,6 +104,7 @@ class QueryService:
             log_error_info(logging.ERROR, "Failed to apply clustering to chunks", e)
             return {"clusters": {}, "chunk_ids": [], "cluster_info": {}}
 
+    @traced()
     async def filter_chunks_by_cluster(
         self, workspace_id: str, knowledge_base_id: str, chunks: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
@@ -159,6 +163,7 @@ class QueryService:
 
         return filtered_chunks
 
+    @traced()
     async def recall_chunks(self, *args, **kwargs) -> Dict[str, Any]:
         """Recall chunks and return both raw results and extracted chunk_ids.
 
@@ -198,6 +203,7 @@ class QueryService:
                 entity_id_set.add(tgt)
         return {"relations": relations, "entity_ids": list(entity_id_set)}
 
+    @traced()
     async def query_chunk_embeddings(
         self, workspace_id: str, knowledge_base_id: str, chunk_ids: List[str]
     ) -> Dict[str, Any]:
@@ -250,6 +256,7 @@ class QueryService:
         by_id = {row.get("documentKey"): row for row in rows}
         return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
+    @traced()
     async def pagerank_chunks(
         self,
         query: Union[str, List[str]],
@@ -410,6 +417,7 @@ class QueryService:
             "query_top": query_chunks,
         }
 
+    @traced()
     async def query(
         self,
         workspace_id: str,
@@ -449,6 +457,7 @@ class QueryService:
             topn=topn,
         )
 
+    @traced()
     async def apply_strategy_to_chunks(
         self,
         chunks: List[Dict[str, Any]],

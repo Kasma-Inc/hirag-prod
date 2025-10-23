@@ -6,6 +6,8 @@ from scipy.cluster.hierarchy import dendrogram, linkage
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 
+from hirag_prod.tracing import traced
+
 
 class HierarchicalClustering:
     def __init__(
@@ -48,6 +50,7 @@ class HierarchicalClustering:
         self.silhouette_score = None
         self.linkage_matrix = None
 
+    @traced(record_args=[])
     def fit(self, feature_matrix):
         """
         Fit the hierarchical clustering model to the feature matrix.

@@ -371,6 +371,7 @@ opentelemetry-api==1.37.0
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
@@ -391,6 +392,7 @@ opentelemetry-instrumentation==0.58b0
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
@@ -399,6 +401,8 @@ opentelemetry-instrumentation-asgi==0.58b0
 opentelemetry-instrumentation-asyncpg==0.58b0
     # via hirag-prod (pyproject.toml)
 opentelemetry-instrumentation-fastapi==0.58b0
+    # via hirag-prod (pyproject.toml)
+opentelemetry-instrumentation-httpx==0.58b0
     # via hirag-prod (pyproject.toml)
 opentelemetry-instrumentation-openai==0.47.3
     # via hirag-prod (pyproject.toml)
@@ -422,6 +426,7 @@ opentelemetry-semantic-conventions==0.58b0
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-asyncpg
     #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-openai
     #   opentelemetry-instrumentation-requests
     #   opentelemetry-instrumentation-sqlalchemy
@@ -432,6 +437,7 @@ opentelemetry-util-http==0.58b0
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-requests
 orjson==3.11.3
     # via
@@ -809,6 +815,7 @@ voyageai==0.3.2
 wrapt==1.17.3
     # via
     #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-httpx
     #   opentelemetry-instrumentation-sqlalchemy
     #   smart-open
 xlrd==2.0.2

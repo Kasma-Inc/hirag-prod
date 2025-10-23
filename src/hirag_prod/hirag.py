@@ -1076,6 +1076,7 @@ class HiRAG:
             filter_by_clustering=filter_by_clustering,
         )
 
+    @traced(record_return=True)
     async def _translate_query(
         self, original_query: str, translation: List[str]
     ) -> List[str]:
@@ -1149,7 +1150,7 @@ class HiRAG:
         query_results["chunks"] = filtered_chunks
         return query_results
 
-    @traced()
+    @traced(record_return=True)
     async def query(
         self,
         query: str,
