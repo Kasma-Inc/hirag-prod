@@ -132,6 +132,15 @@ def start_child_span(name: str, parent_span: Optional[trace.Span] = None) -> tra
         return tracer.start_span(name)
 
 
+def serialize_current_span_context() -> dict:
+    """
+    Serialize the current span context to a dictionary.
+    """
+    parent_span_context = {}
+    get_global_textmap().inject(parent_span_context)
+    return parent_span_context
+
+
 @contextmanager
 def trace_span(name: str, **attributes):
     """
