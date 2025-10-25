@@ -12,12 +12,14 @@ from hirag_prod.resources.functions import (
     get_embedding_service,
     tokenize_sentence,
 )
+from hirag_prod.tracing import traced
 
 
 def has_traditional_chinese(text: str) -> bool:
     return get_chinese_convertor("hk2s").convert(text) != text
 
 
+@traced(record_args=[])
 def normalize_text(text: str) -> str:
     return get_chinese_convertor("hk2s").convert(
         re.sub(f"[{re.escape(string.punctuation)}]", "", text).strip().lower()
@@ -32,6 +34,7 @@ def normalize_tokenize_text(text: str) -> Tuple[str, List[str], List[int], List[
     return normalized_text, token_list, token_start_index_list, token_end_index_list
 
 
+@traced(record_args=[])
 async def get_synonyms_and_validate_and_translate(
     search: str,
 ) -> Tuple[List[str], np.ndarray, bool, List[str], np.ndarray]:

@@ -19,8 +19,10 @@ from hirag_prod.resources.functions import (
     get_db_session_maker,
     get_embedding_service,
 )
+from hirag_prod.tracing import traced_async_gen
 
 
+@traced_async_gen()
 async def cross_language_search(
     knowledge_base_id: str,
     workspace_id: str,
