@@ -167,60 +167,45 @@ class EmbeddingClient(BaseAPIClient):
 
 
 class LocalEmbeddingClient:
-    """Client for local embedding service"""
+    """Client for local embedding service (OpenAI SDK based)"""
 
     def __init__(self):
         self._logger = logging.getLogger(LoggerNames.EMBEDDING)
-        self._http_client = httpx.AsyncClient(timeout=3600.0)
+        self._client = AsyncOpenAI(
+            base_url=get_embedding_config().base_url,
+            api_key=get_embedding_config().api_key,
+            max_retries=0,
+        )
 
     @traced()
     async def create_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Create embeddings using local service API"""
-        # Convert texts to messages format expected by local service
+        """Create embeddings using OpenAI SDK against local service"""
         batch_texts_to_embed = [text for text in texts]
 
         headers = {
-            "Content-Type": "application/json",
             "Model-Name": get_embedding_config().model_name,
             "Entry-Point": get_embedding_config().entry_point,
             "Authorization": f"Bearer {get_embedding_config().api_key}",
         }
 
-        payload = {
-            "model": get_embedding_config().model_path,
-            "input": batch_texts_to_embed,
-        }
-
-        response = await self._http_client.post(
-            get_embedding_config().base_url, headers=headers, json=payload
+        resp = await self._client.embeddings.create(
+            model=get_embedding_config().model_path,
+            input=batch_texts_to_embed,
+            extra_headers=headers,
         )
 
-        response.raise_for_status()
-        result = response.json()
-
         if get_envs().ENABLE_TOKEN_COUNT:
-            # embedding model only needs to count the prompt tokens
             get_shared_variables().input_token_count_dict["embedding"].value += (
-                result["usage"]["prompt_tokens"]
-                if result["usage"]["prompt_tokens"] is not None
-                else 0
+                resp.usage.prompt_tokens if resp.usage.prompt_tokens is not None else 0
             )
 
-        # Extract embeddings from response
-        if "data" in result:
-            self._logger.info(f"✅ Completed processing {len(result['data'])} texts")
-            return [item["embedding"] for item in result["data"]]
-        else:
-            if isinstance(result, list):
-                return result
-            else:
-                raise ValueError(
-                    f"Unexpected response format from local embedding service: {result}"
-                )
+        embeddings = [item.embedding for item in resp.data]
+        self._logger.info(f"✅ Completed processing {len(embeddings)} texts")
+        return embeddings
 
     async def close(self):
-        """Close the HTTP client"""
-        await self._http_client.aclose()
+        """Close the OpenAI client"""
+        await self._client.close()
 
 
 class LocalLLMClient:
