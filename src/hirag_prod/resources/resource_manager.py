@@ -144,8 +144,9 @@ class ResourceManager:
                     await self._initialize_database()
 
                 # Initialize Redis connection pool
-                if not self._redis_pool:
-                    await self._initialize_redis()
+                # TODO(tatiana): deprecated now, remove later
+                # if not self._redis_pool:
+                #     await self._initialize_redis()
 
                 # Initialize services
                 if not self._chat_service:
@@ -317,6 +318,7 @@ class ResourceManager:
             raise RuntimeError("Database not initialized. Call initialize() first.")
         return self._db_engine
 
+    # TODO(tatiana): deprecated now, remove later
     def get_redis_client(self, **kwargs: Any) -> Redis:
         """Get a Redis client from the connection pool."""
         if self._redis_pool is None:
