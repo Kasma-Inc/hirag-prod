@@ -15,6 +15,7 @@ from pgvector import HalfVector
 from sqlalchemy import CursorResult, Row, text
 
 from hirag_prod.cross_language_search.functions import (
+    change_str_to_index,
     get_synonyms_and_validate_and_translate,
     normalize_text,
 )
@@ -248,12 +249,12 @@ LIMIT :batch_size
                                 ExcelBbox(
                                     sheet_name=None,
                                     col=(
-                                        str(row[11][0])
+                                        change_str_to_index(row[11][0])
                                         if row[11][0] is not None
                                         else None
                                     ),
                                     row=(
-                                        str(row[11][1])
+                                        change_str_to_index(row[11][1])
                                         if row[11][1] is not None
                                         else None
                                     ),
