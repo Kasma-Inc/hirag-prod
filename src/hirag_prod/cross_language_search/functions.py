@@ -1,6 +1,6 @@
 import re
 import string
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Union
 
 import numpy as np
 
@@ -95,3 +95,23 @@ The final result need to be **a JSON object with the following structure**:
         process_search_response.translation_list,
         embedding_np_array[len(synonym_list) - 1 : -1],
     )
+
+
+def change_str_to_index(col: Union[str, int]) -> int:
+    if isinstance(col, int):
+        return col
+
+    if not isinstance(col, str):
+        raise ValueError(f"Column must be string or int, got {type(col)}")
+
+    col = col.upper().strip()
+    if not col:
+        raise ValueError("Column string cannot be empty")
+
+    if not all(c.isalpha() for c in col):
+        raise ValueError(f"Column must contain only letters, got {col}")
+
+    result = 0
+    for char in col:
+        result = result * 26 + (ord(char) - ord("A") + 1)
+    return result - 1
