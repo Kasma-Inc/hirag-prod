@@ -183,6 +183,7 @@ def route_file_path(loader_type: LoaderType, url_path: str) -> str:
     """
     Parse a url path to a located file path
     """
+    # For dots_ocr, return path as-is since it handles cloud URLs directly
     if loader_type == "dots_ocr":
         return url_path
 
