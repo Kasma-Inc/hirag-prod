@@ -45,7 +45,7 @@ from hirag_prod.resources.functions import (
     get_translator,
     initialize_resource_manager,
 )
-from hirag_prod.schema import Chunk, File, Item, LoaderType, item_to_chunk
+from hirag_prod.schema import Chunk, File, Item, item_to_chunk
 from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
@@ -119,7 +119,6 @@ class DocumentProcessor:
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
         file_id: Optional[str] = None,
-        loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """Process a single document"""
         if construct_graph is None:
@@ -131,7 +130,6 @@ class DocumentProcessor:
                 content_type,
                 document_meta,
                 loader_configs,
-                loader_type,
             )
 
             if not chunks:
@@ -204,7 +202,6 @@ class DocumentProcessor:
         content_type: str,
         document_meta: Optional[Dict],
         loader_configs: Optional[Dict],
-        loader_type: Optional[LoaderType],
     ) -> Tuple[List[Chunk], File, List[Item]]:
         """Load and chunk document"""
         async with self.metrics.track_operation("load_and_chunk"):
@@ -244,10 +241,7 @@ class DocumentProcessor:
                         generated_md.extractedTimestamp = extracted_timestamp
 
                 else:
-                    if (
-                        content_type in ["application/pdf", "multimodal/image"]
-                        or loader_type == "dots_ocr"
-                    ):
+                    if content_type in ["application/pdf", "multimodal/image"]:
                         json_doc, generated_md = await asyncio.to_thread(
                             load_document,
                             document_path=document_path,
@@ -916,7 +910,6 @@ class HiRAG:
         file_id: Optional[str] = None,
         document_meta: Optional[Dict] = None,
         loader_configs: Optional[Dict] = None,
-        loader_type: Optional[LoaderType] = None,
     ) -> ProcessingMetrics:
         """
         Insert document into knowledge base
@@ -930,7 +923,6 @@ class HiRAG:
             file_id: file id
             document_meta: document metadata
             loader_configs: loader configurations
-            loader_type: loader type (optional, will route to appropriate loader based on content type)
         Returns:
             ProcessingMetrics: processing metrics
         """
@@ -994,7 +986,6 @@ class HiRAG:
                 file_id=file_id,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
-                loader_type=loader_type,
             )
 
             total_time = time.perf_counter() - start_time
