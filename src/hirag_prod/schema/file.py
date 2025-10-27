@@ -8,8 +8,10 @@ from hirag_prod.schema.base import Base
 
 file_types = Literal[
     "pdf",
+    "doc",
     "docx",
     "pptx",
+    "xls",
     "xlsx",
     "jpg",
     "jpeg",
