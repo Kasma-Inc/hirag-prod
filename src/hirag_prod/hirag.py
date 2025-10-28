@@ -1038,6 +1038,7 @@ class HiRAG:
     async def apply_strategy_to_chunks(
         self,
         chunks_dict: Dict[str, Any],
+        language: Optional[str] = None,
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
         workspace_id: Optional[str] = None,
         knowledge_base_id: Optional[str] = None,
@@ -1046,6 +1047,9 @@ class HiRAG:
         """Apply retrieval strategy to a given set of chunks"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
+
+        if language is not None:
+            await self.set_language(language)
 
         query = chunks_dict.get("query", "")
         chunks = chunks_dict.get("chunks", [])
@@ -1146,6 +1150,7 @@ class HiRAG:
         query: str,
         workspace_id: str,
         knowledge_base_id: str,
+        language: Optional[str] = None,
         summary: bool = False,
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
@@ -1160,6 +1165,9 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        if language is not None:
+            await self.set_language(language)
 
         original_query = query
         query_list = [original_query]
