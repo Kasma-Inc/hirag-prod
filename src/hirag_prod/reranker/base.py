@@ -5,6 +5,7 @@ from typing import Dict, List, Set, Tuple, Union
 
 from hirag_prod.reranker.utils import detect_language
 from hirag_prod.resources.functions import get_chinese_convertor
+from hirag_prod.tracing import traced
 
 logger = getLogger(__name__)
 
@@ -23,6 +24,7 @@ class Reranker(ABC):
             return not target.isdisjoint(languages)
         return target in languages
 
+    @traced()
     async def _process_query(
         self, query: List[str], rerank_with_time: bool
     ) -> List[Tuple[str, Set[str]]]:
@@ -48,6 +50,7 @@ class Reranker(ABC):
 
         return return_queries
 
+    @traced()
     async def _prepare_documents(
         self, items: List[Dict], key: str, rerank_with_time: bool
     ) -> List[Tuple[str, Set[str]]]:
@@ -69,6 +72,7 @@ class Reranker(ABC):
 
         return docs
 
+    @traced()
     async def rerank(
         self,
         query: Union[str, List[str]],

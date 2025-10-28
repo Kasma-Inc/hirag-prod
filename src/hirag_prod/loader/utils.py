@@ -18,6 +18,7 @@ from hirag_prod.configs.functions import (
     initialize_config_manager,
 )
 from hirag_prod.schema import LoaderType
+from hirag_prod.tracing import traced
 
 S3_DOWNLOAD_DIR = "/chatbot/files/s3"
 OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
@@ -25,6 +26,7 @@ OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
 logger: logging.Logger = logging.getLogger(__name__)
 
 
+@traced()
 def download_load_file(
     file_type: Literal["json", "md"],
     return_type: Literal["dict", "docling_document"],
@@ -181,6 +183,7 @@ def route_file_path(loader_type: LoaderType, url_path: str) -> str:
     """
     Parse a url path to a located file path
     """
+    # For dots_ocr, return path as-is since it handles cloud URLs directly
     if loader_type == "dots_ocr":
         return url_path
 

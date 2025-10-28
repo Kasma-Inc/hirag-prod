@@ -15,6 +15,7 @@ from hirag_prod.loader.txt_loader import TxtLoader
 from hirag_prod.loader.utils import route_file_path, validate_document_path
 from hirag_prod.loader.word_loader import WordLoader
 from hirag_prod.schema import File, LoaderType
+from hirag_prod.tracing import traced
 
 # Configure Logging
 logging.basicConfig(
@@ -99,6 +100,7 @@ def check_cloud_health(
         return False
 
 
+@traced()
 def load_document(
     document_path: str,
     content_type: str,

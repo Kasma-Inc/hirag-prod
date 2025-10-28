@@ -1,6 +1,6 @@
 import re
 import string
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Union
 
 import numpy as np
 
@@ -12,12 +12,14 @@ from hirag_prod.resources.functions import (
     get_embedding_service,
     tokenize_sentence,
 )
+from hirag_prod.tracing import traced
 
 
 def has_traditional_chinese(text: str) -> bool:
     return get_chinese_convertor("hk2s").convert(text) != text
 
 
+@traced(record_args=[])
 def normalize_text(text: str) -> str:
     return get_chinese_convertor("hk2s").convert(
         re.sub(f"[{re.escape(string.punctuation)}]", "", text).strip().lower()
@@ -32,6 +34,7 @@ def normalize_tokenize_text(text: str) -> Tuple[str, List[str], List[int], List[
     return normalized_text, token_list, token_start_index_list, token_end_index_list
 
 
+@traced(record_args=[])
 async def get_synonyms_and_validate_and_translate(
     search: str,
 ) -> Tuple[List[str], np.ndarray, bool, List[str], np.ndarray]:
@@ -92,3 +95,23 @@ The final result need to be **a JSON object with the following structure**:
         process_search_response.translation_list,
         embedding_np_array[len(synonym_list) - 1 : -1],
     )
+
+
+def change_str_to_index(col: Union[str, int]) -> int:
+    if isinstance(col, int):
+        return col
+
+    if not isinstance(col, str):
+        raise ValueError(f"Column must be string or int, got {type(col)}")
+
+    col = col.upper().strip()
+    if not col:
+        raise ValueError("Column string cannot be empty")
+
+    if not all(c.isalpha() for c in col):
+        raise ValueError(f"Column must contain only letters, got {col}")
+
+    result = 0
+    for char in col:
+        result = result * 26 + (ord(char) - ord("A") + 1)
+    return result - 1

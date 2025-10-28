@@ -1,7 +1,7 @@
 import asyncio
 from typing import Any, Dict, List, Optional, Union
 
-import httpx
+from openai import AsyncOpenAI
 
 from hirag_prod._utils import logger
 from hirag_prod.configs.functions import (
@@ -11,6 +11,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.resources.functions import get_chinese_convertor
+from hirag_prod.tracing import traced
 
 rate_limiter = RateLimiter()
 
@@ -29,7 +30,7 @@ LANGUAGE_MAPPING = {
 
 
 class LocalTranslatorClient:
-    """Client for local translator service"""
+    """Client for local translator service (OpenAI SDK based)"""
 
     def __init__(self):
         config = get_translator_config()
@@ -38,33 +39,37 @@ class LocalTranslatorClient:
         self.model_name: str = config.model_name
         self.entry_point: str = config.entry_point
         self.timeout: float = config.timeout
-        self._http_client = httpx.AsyncClient(timeout=self.timeout)
+        self.model_path: str = getattr(config, "model_path", self.model_name)
+
+        self._client = AsyncOpenAI(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            timeout=self.timeout,
+            max_retries=0,
+        )
 
     async def create_translation(
         self, messages: List[Dict[str, str]], **kwargs: Any
     ) -> Dict[str, Any]:
-        """Create translation using local service API"""
+        """Create translation using OpenAI SDK against local service"""
         headers = {
-            "Content-Type": "application/json",
             "Model-Name": self.model_name,
             "Entry-Point": self.entry_point,
             "Authorization": f"Bearer {self.api_key}",
         }
 
-        payload = {"messages": messages, **kwargs}
-
-        response = await self._http_client.post(
-            self.base_url, headers=headers, json=payload
+        resp = await self._client.chat.completions.create(
+            model=self.model_path,
+            messages=messages,
+            extra_headers=headers,
+            **kwargs,
         )
 
-        response.raise_for_status()
-        result = response.json()
-
-        return result
+        return resp.model_dump()
 
     async def close(self):
-        """Close the HTTP client"""
-        await self._http_client.aclose()
+        """Close the OpenAI client"""
+        await self._client.close()
 
 
 class LocalTranslator:
@@ -104,6 +109,7 @@ class LocalTranslator:
         else:
             raise ValueError(f"Unsupported language: {lang}")
 
+    @traced()
     async def translate(
         self, text: Union[str, list[str]], dest: str = "English", src: str = "Auto"
     ) -> Union[LocalTranslated, list[LocalTranslated]]:

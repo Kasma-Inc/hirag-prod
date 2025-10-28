@@ -2,15 +2,20 @@ import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from api.schema.chats.request import (
+    ExcelBbox,
     ExcelHighlight,
+    ImageBbox,
     ImageHighlight,
+    MarkdownBbox,
     MarkdownHighlight,
+    PDFBbox,
     PDFHighlight,
 )
 from pgvector import HalfVector
 from sqlalchemy import CursorResult, Row, text
 
 from hirag_prod.cross_language_search.functions import (
+    change_str_to_index,
     get_synonyms_and_validate_and_translate,
     normalize_text,
 )
@@ -19,8 +24,10 @@ from hirag_prod.resources.functions import (
     get_db_session_maker,
     get_embedding_service,
 )
+from hirag_prod.tracing import traced_async_gen
 
 
+@traced_async_gen()
 async def cross_language_search(
     knowledge_base_id: str,
     workspace_id: str,
@@ -214,38 +221,68 @@ LIMIT :batch_size
             if result is not None:
                 if row[6] == "pdf":
                     highlight = PDFHighlight(
-                        x1=row[11][0],
-                        y1=row[11][1],
-                        x2=row[11][2],
-                        y2=row[11][3],
                         page_number=row[7],
                         width=row[9],
                         height=row[10],
+                        bboxes=[
+                            PDFBbox(
+                                x1=row[11][0],
+                                y1=row[11][1],
+                                x2=row[11][2],
+                                y2=row[11][3],
+                            )
+                        ],
                     ).to_dict()
                 elif row[6] in ["md", "txt"]:
                     highlight = MarkdownHighlight(
-                        from_idx=row[11][0],
-                        to_idx=row[11][1],
+                        bboxes=[
+                            MarkdownBbox(
+                                from_idx=int(row[11][0]),
+                                to_idx=int(row[11][1]),
+                            )
+                        ],
                     ).to_dict()
                 elif row[6] == "xlsx":
                     if row[11]:
                         highlight = ExcelHighlight(
-                            col=row[11][0],
-                            row=row[11][1],
+                            bboxes=[
+                                ExcelBbox(
+                                    sheet_name=None,
+                                    col=(
+                                        change_str_to_index(row[11][0])
+                                        if row[11][0] is not None
+                                        else None
+                                    ),
+                                    row=(
+                                        change_str_to_index(row[11][1])
+                                        if row[11][1] is not None
+                                        else None
+                                    ),
+                                )
+                            ],
                         ).to_dict()
                     else:
                         highlight = ExcelHighlight(
-                            col=None,
-                            row=None,
+                            bboxes=[
+                                ExcelBbox(
+                                    sheet_name=None,
+                                    col=None,
+                                    row=None,
+                                )
+                            ],
                         ).to_dict()
                 else:
                     highlight = ImageHighlight(
-                        x1=row[11][0],
-                        y1=row[11][1],
-                        x2=row[11][2],
-                        y2=row[11][3],
                         width=row[9],
                         height=row[10],
+                        bboxes=[
+                            ImageBbox(
+                                x1=row[11][0],
+                                y1=row[11][1],
+                                x2=row[11][2],
+                                y2=row[11][3],
+                            )
+                        ],
                     ).to_dict()
 
                 ext = row[5].split(".")[-1]

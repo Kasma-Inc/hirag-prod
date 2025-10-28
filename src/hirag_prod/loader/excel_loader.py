@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import os
 from typing import Dict, List, Tuple
 from urllib.parse import unquote, urlparse
 
+import openpyxl
 import pandas as pd
+import xlrd
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.configs.functions import get_llm_config
@@ -19,11 +22,9 @@ from hirag_prod.schema import (
     file_to_item,
     item_to_chunk,
 )
+from hirag_prod.tracing import traced
 
-
-def _keep_sheet(name: str) -> bool:
-    s = (name or "").lower()
-    return ("cache" not in s) and ("detail" not in s)
+logger = logging.getLogger(__name__)
 
 
 async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
@@ -38,6 +39,7 @@ async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
         raise HiRAGException(f"Failed to summarize excel sheet {sheet_name}") from e
 
 
+@traced()
 async def load_and_chunk_excel(
     document_path: str,
     document_meta: Dict,
@@ -53,11 +55,33 @@ async def load_and_chunk_excel(
             except Exception:
                 local_path = document_path
 
-        all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(local_path, None)
+        visible_sheet_names = None
+        file_ext = os.path.splitext(local_path)[1].lower()
 
-        filtered_sheets = [
-            (name, df) for name, df in all_sheets.items() if _keep_sheet(name)
-        ]
+        try:
+            if file_ext == ".xlsx":
+                workbook = openpyxl.load_workbook(local_path, read_only=True)
+                visible_sheet_names = [
+                    sheet.title
+                    for sheet in workbook.worksheets
+                    if sheet.sheet_state == "visible"
+                ]
+                workbook.close()
+            elif file_ext == ".xls":
+                workbook = xlrd.open_workbook(local_path, formatting_info=False)
+                visible_sheet_names = [
+                    workbook.sheet_by_index(i).name
+                    for i in range(workbook.nsheets)
+                    if workbook.sheet_by_index(i).visibility == 0
+                ]
+                workbook.close()
+        except Exception as e:
+            logger.warning(f"Failed to get visible sheets, will read all: {e}")
+        all_sheets: Dict[str, pd.DataFrame] = pd.read_excel(
+            local_path, sheet_name=visible_sheet_names
+        )
+
+        filtered_sheets = list(all_sheets.items())
 
         document_id = document_meta.get("documentKey", "")
         file_name = document_meta.get("fileName", os.path.basename(local_path))
