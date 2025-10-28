@@ -585,6 +585,8 @@ pytokens==0.1.10
 pytz==2025.2
     # via pandas
 pyyaml==6.0.2
+pyhumps==3.8.0
+
     # via
     #   accelerate
     #   docling-core
