@@ -1,7 +1,15 @@
 import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
-from api.schema.chats.request import (
+from pgvector import HalfVector
+from sqlalchemy import CursorResult, Row, text
+
+from hirag_prod.cross_language_search.functions import (
+    change_str_to_index,
+    get_synonyms_and_validate_and_translate,
+    normalize_text,
+)
+from hirag_prod.cross_language_search.types import (
     ExcelBbox,
     ExcelHighlight,
     ImageBbox,
@@ -10,14 +18,6 @@ from api.schema.chats.request import (
     MarkdownHighlight,
     PDFBbox,
     PDFHighlight,
-)
-from pgvector import HalfVector
-from sqlalchemy import CursorResult, Row, text
-
-from hirag_prod.cross_language_search.functions import (
-    change_str_to_index,
-    get_synonyms_and_validate_and_translate,
-    normalize_text,
 )
 from hirag_prod.resources.functions import (
     get_chinese_convertor,
@@ -247,7 +247,6 @@ LIMIT :batch_size
                         highlight = ExcelHighlight(
                             bboxes=[
                                 ExcelBbox(
-                                    sheet_name=None,
                                     col=(
                                         change_str_to_index(row[11][0])
                                         if row[11][0] is not None
@@ -265,7 +264,6 @@ LIMIT :batch_size
                         highlight = ExcelHighlight(
                             bboxes=[
                                 ExcelBbox(
-                                    sheet_name=None,
                                     col=None,
                                     row=None,
                                 )
