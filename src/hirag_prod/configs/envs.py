@@ -1,6 +1,6 @@
 from typing import Literal, Optional, Union, get_args, get_origin
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, PostgresDsn, model_validator
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 from pydantic_settings import BaseSettings
@@ -38,7 +38,7 @@ class Envs(BaseSettings):
     HI_RAG_LANGUAGE: str = "en"
     ENABLE_TOKEN_COUNT: bool = False
 
-    POSTGRES_URL: str = Field(
+    POSTGRES_URL: PostgresDsn = Field(
         group="PostgresDB",
         description="Postgres URL",
         examples=["postgres://user:password@postgresdb:5432/database"],
@@ -239,6 +239,8 @@ class Envs(BaseSettings):
                     "LOCAL_TRANSLATOR_ENTRY_POINT is required when TRANSLATOR_SERVICE_TYPE is local"
                 )
             self.TRANSLATOR_TIME_OUT = self.LOCAL_TRANSLATOR_TIME_OUT
+            self.TRANSLATOR_MAX_TOKENS = self.LOCAL_TRANSLATOR_MAX_TOKENS
+            self.TRANSLATOR_TEMPERATURE = self.LOCAL_TRANSLATOR_TEMPERATURE
         return self
 
     def __init__(self, **kwargs):

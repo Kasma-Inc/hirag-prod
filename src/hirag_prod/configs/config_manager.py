@@ -1,7 +1,7 @@
 import threading
 from typing import Dict, List, Optional
 
-from hirag_prod.configs.cloud_storage_config import AWSConfig, OSSConfig
+from hirag_prod.configs.cloud_storage_config import S3Config
 from hirag_prod.configs.document_loader_config import DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
@@ -45,8 +45,7 @@ class ConfigManager:
         self._reranker_config: Optional[RerankConfig] = None
         self._translator_config: Optional[TranslatorConfig] = None
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
-        self._aws_config: Optional[AWSConfig] = None
-        self._oss_config: Optional[OSSConfig] = None
+        self._s3_config: Optional[S3Config] = None
 
         self.supported_languages: List[str] = ["en", "cn-s", "cn-t"]
         self.language: str = (
@@ -113,18 +112,11 @@ class ConfigManager:
         return self._dots_ocr_config
 
     @property
-    def aws_config(self) -> AWSConfig:
-        """Getter for aws_config"""
-        if not self._aws_config:
-            self._aws_config = AWSConfig(**self.envs.model_dump())
-        return self._aws_config
-
-    @property
-    def oss_config(self) -> OSSConfig:
-        """Getter for oss_config"""
-        if not self._oss_config:
-            self._oss_config = OSSConfig(**self.envs.model_dump())
-        return self._oss_config
+    def s3_config(self) -> S3Config:
+        """Getter for s3_config"""
+        if not self._s3_config:
+            self._s3_config = S3Config(**self.envs.model_dump())
+        return self._s3_config
 
     @property
     def reranker_config(self) -> RerankConfig:
