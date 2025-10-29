@@ -60,27 +60,6 @@ class Envs(BaseSettings):
         default="redis://redis:6379/2",
     )
 
-    EMBEDDING_SERVICE_TYPE: Literal["openai", "local"] = Field(
-        description="The type of the embedding service.",
-        default="local",
-    )
-    EMBEDDING_MODEL_NAME: Optional[str] = Field(
-        default="Qwen3-Embedding-8B",
-        description="The name of the local embedding model. "
-        "Required when EMBEDDING_SERVICE_TYPE is local.",
-    )
-    EMBEDDING_MODEL_PATH: Optional[str] = Field(
-        default="Qwen3-Embedding-8B",
-        description="The path of the local embedding model. "
-        "Required when EMBEDDING_SERVICE_TYPE is local.",
-    )
-    EMBEDDING_BASE_URL: Optional[str] = None
-    EMBEDDING_API_KEY: Optional[str] = None
-    OPENAI_EMBEDDING_BASE_URL: Optional[str] = None
-    OPENAI_EMBEDDING_API_KEY: Optional[str] = None
-    LOCAL_EMBEDDING_BASE_URL: Optional[str] = None
-    LOCAL_EMBEDDING_API_KEY: Optional[str] = None
-
     LLM_SERVICE_TYPE: Literal["openai", "local"] = "openai"
     LLM_BASE_URL: Optional[str] = None
     LLM_API_KEY: Optional[str] = None
@@ -124,9 +103,6 @@ class Envs(BaseSettings):
     LLM_RATE_LIMIT: int = 60
     LLM_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
     LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
-    EMBEDDING_RATE_LIMIT: int = 6000
-    EMBEDDING_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
-    EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
     RERANKER_RATE_LIMIT: int = 6000
     RERANKER_RATE_LIMIT_TIME_UNIT: Literal["second", "minute", "hour"] = "minute"
     RERANKER_RATE_LIMIT_MIN_INTERVAL_SECONDS: float = 0.1
@@ -136,32 +112,6 @@ class Envs(BaseSettings):
 
     @model_validator(mode="after")
     def validate_config_based_on_service_type(self) -> "Envs":
-        if self.EMBEDDING_SERVICE_TYPE == "openai":
-            if self.OPENAI_EMBEDDING_BASE_URL:
-                self.EMBEDDING_BASE_URL = self.OPENAI_EMBEDDING_BASE_URL
-            else:
-                raise ValueError(
-                    "OPENAI_EMBEDDING_BASE_URL is required when EMBEDDING_SERVICE_TYPE is openai"
-                )
-            if self.OPENAI_EMBEDDING_API_KEY:
-                self.EMBEDDING_API_KEY = self.OPENAI_EMBEDDING_API_KEY
-            else:
-                raise ValueError(
-                    "OPENAI_EMBEDDING_API_KEY is required when EMBEDDING_SERVICE_TYPE is openai"
-                )
-        elif self.EMBEDDING_SERVICE_TYPE == "local":
-            if self.LOCAL_EMBEDDING_BASE_URL:
-                self.EMBEDDING_BASE_URL = self.LOCAL_EMBEDDING_BASE_URL
-            else:
-                raise ValueError(
-                    "LOCAL_EMBEDDING_BASE_URL is required when EMBEDDING_SERVICE_TYPE is local"
-                )
-            if self.LOCAL_EMBEDDING_API_KEY:
-                self.EMBEDDING_API_KEY = self.LOCAL_EMBEDDING_API_KEY
-            else:
-                raise ValueError(
-                    "LOCAL_EMBEDDING_API_KEY is required when EMBEDDING_SERVICE_TYPE is local"
-                )
         if self.LLM_SERVICE_TYPE == "openai":
             if self.OPENAI_LLM_BASE_URL:
                 self.LLM_BASE_URL = self.OPENAI_LLM_BASE_URL
