@@ -12,6 +12,13 @@ from hirag_prod.configs.functions import (
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.resources.functions import get_chinese_convertor
 from hirag_prod.tracing import traced
+from hirag_prod.usage import (
+    ModelIdentifier,
+    ModelProvider,
+    ModelUsage,
+    UnknownModelName,
+    UsageRecorder,
+)
 
 rate_limiter = RateLimiter()
 
@@ -179,6 +186,18 @@ class LocalTranslator:
                     and ("completion_tokens" in response["usage"])
                     else 0
                 )
+            UsageRecorder.add_usage(
+                ModelIdentifier(
+                    id=response.get("model", UnknownModelName),
+                    provider=response.get("provider", ModelProvider.UNKNOWN.value),
+                ),
+                ModelUsage(
+                    prompt_tokens=response.get("usage", {}).get("prompt_tokens", 0),
+                    completion_tokens=response.get("usage", {}).get(
+                        "completion_tokens", 0
+                    ),
+                ),
+            )
 
             translated_text: str = response["choices"][0]["message"]["content"]
             if original_dest_lang in [
