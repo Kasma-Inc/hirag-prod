@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 
-from hirag_prod._utils import compute_mdhash_id, log_error_info
+from hirag_prod._utils import (
+    compute_mdhash_id,
+    log_error_info,
+    run_sync_function_using_thread,
+)
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.configs.cli_options import CliOptions
 from hirag_prod.configs.functions import (
@@ -209,7 +213,7 @@ class DocumentProcessor:
             items = None
             try:
                 if content_type == "text/plain":
-                    _, generated_md = await asyncio.to_thread(
+                    _, generated_md = await run_sync_function_using_thread(
                         load_document,
                         document_path=document_path,
                         content_type=content_type,
@@ -242,7 +246,7 @@ class DocumentProcessor:
 
                 else:
                     if content_type in ["application/pdf", "multimodal/image"]:
-                        json_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await run_sync_function_using_thread(
                             load_document,
                             document_path=document_path,
                             content_type=content_type,
@@ -252,7 +256,7 @@ class DocumentProcessor:
                         )
 
                     else:
-                        json_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await run_sync_function_using_thread(
                             load_document,
                             document_path=document_path,
                             content_type=content_type,
