@@ -55,6 +55,7 @@ dependencies = [
     "xlrd==2.0.2",
     "opentelemetry-api==1.37.0",
     "opentelemetry-sdk==1.37.0",
+    "pyhumps==3.8.0",
     "opentelemetry-exporter-otlp==1.37.0",
     "opentelemetry-instrumentation-fastapi==0.58b0",
     "opentelemetry-instrumentation-sqlalchemy==0.58b0",

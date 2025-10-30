@@ -525,4 +525,18 @@ class QueryService:
                 outlier_chunks.append(c)
         result["outliers"] = outlier_chunks
 
+        def _sort_by_file_and_idx(chunk_list):
+            return sorted(
+                chunk_list,
+                key=lambda c: (
+                    c.get("fileName") or "",
+                    (
+                        c.get("chunkIdx")
+                        if c.get("chunkIdx") is not None
+                        else float("inf")
+                    ),
+                ),
+            )
+
+        result["chunks"] = _sort_by_file_and_idx(result["chunks"])
         return result
