@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import re
+import threading
+from asyncio import AbstractEventLoop, Future
 from chunk import Chunk
 from functools import wraps
 from hashlib import md5
@@ -47,6 +49,24 @@ def log_error_info(
         )
     if raise_error:
         raise new_error_class(message) if new_error_class is not None else error
+
+
+async def run_sync_function_using_thread(function: Callable, *args, **kwargs) -> Any:
+    loop: AbstractEventLoop = asyncio.get_event_loop()
+    future: Future[Any] = loop.create_future()
+
+    def run_async_function():
+        try:
+            loop.call_soon_threadsafe(future.set_result, function(*args, **kwargs))
+        except Exception as e:
+            loop.call_soon_threadsafe(future.set_exception, e)
+
+    thread: threading.Thread = threading.Thread(target=run_async_function)
+    thread.start()
+    try:
+        return await future
+    finally:
+        del thread
 
 
 def retry_async(

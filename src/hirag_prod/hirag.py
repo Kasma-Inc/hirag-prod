@@ -8,7 +8,11 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 
-from hirag_prod._utils import compute_mdhash_id, log_error_info
+from hirag_prod._utils import (
+    compute_mdhash_id,
+    log_error_info,
+    run_sync_function_using_thread,
+)
 from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.configs.cli_options import CliOptions
 from hirag_prod.configs.functions import (
@@ -209,7 +213,7 @@ class DocumentProcessor:
             items = None
             try:
                 if content_type == "text/plain":
-                    _, generated_md = await asyncio.to_thread(
+                    _, generated_md = await run_sync_function_using_thread(
                         load_document,
                         document_path=document_path,
                         content_type=content_type,
@@ -242,7 +246,7 @@ class DocumentProcessor:
 
                 else:
                     if content_type in ["application/pdf", "multimodal/image"]:
-                        json_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await run_sync_function_using_thread(
                             load_document,
                             document_path=document_path,
                             content_type=content_type,
@@ -252,7 +256,7 @@ class DocumentProcessor:
                         )
 
                     else:
-                        json_doc, generated_md = await asyncio.to_thread(
+                        json_doc, generated_md = await run_sync_function_using_thread(
                             load_document,
                             document_path=document_path,
                             content_type=content_type,
@@ -1037,6 +1041,7 @@ class HiRAG:
     async def apply_strategy_to_chunks(
         self,
         chunks_dict: Dict[str, Any],
+        language: Optional[str] = None,
         strategy: Literal["pagerank", "reranker", "hybrid"] = "hybrid",
         workspace_id: Optional[str] = None,
         knowledge_base_id: Optional[str] = None,
@@ -1045,6 +1050,9 @@ class HiRAG:
         """Apply retrieval strategy to a given set of chunks"""
         if not self._query_service:
             raise HiRAGException("HiRAG instance not properly initialized")
+
+        if language is not None:
+            await self.set_language(language)
 
         query = chunks_dict.get("query", "")
         chunks = chunks_dict.get("chunks", [])
@@ -1147,6 +1155,7 @@ class HiRAG:
         query: str,
         workspace_id: str,
         knowledge_base_id: str,
+        language: Optional[str] = None,
         summary: bool = False,
         threshold: float = 0.0,
         translation: Optional[List[str]] = None,
@@ -1161,6 +1170,9 @@ class HiRAG:
             raise HiRAGException("Workspace ID (workspace_id) is required")
         if not knowledge_base_id:
             raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        if language is not None:
+            await self.set_language(language)
 
         original_query = query
         query_list = [original_query]
