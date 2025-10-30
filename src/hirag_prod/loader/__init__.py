@@ -85,14 +85,14 @@ def check_cloud_health(
         # Try to parse JSON response
         try:
             data = resp.json()
-            # Return True if the JSON response indicates success (which is not possible now)
+            # Return True if the JSON response indicates success
             if data.get("success") == "true":
                 return True
             # Otherwise False
             return False
         except Exception as e:
             # If we can't parse JSON but got a response, treat as failure
-            log_error_info(logging.ERROR, "Failed to parsing JSON response", e)
+            log_error_info(logging.ERROR, "Failed to parse JSON response", e)
             return False
 
     except Exception as e:
@@ -123,17 +123,6 @@ def load_document(
     Returns:
         Tuple[Any, File]: The loaded document.
     """
-    if loader_type in ["dots_ocr"]:
-        cloud_check = False
-        if loader_type == "dots_ocr":
-            cloud_check = check_cloud_health("dots_ocr")
-
-        if not cloud_check:
-            # Show warning in log
-            logger.warning(
-                f"Cloud health check failed for {loader_type}, falling back to docling."
-            )
-            loader_type = "docling"
 
     if loader_configs is None:
         loader_configs = DEFAULT_LOADER_CONFIGS
@@ -143,25 +132,43 @@ def load_document(
     loader_conf = loader_configs[content_type]
     loader = loader_conf["loader"]()
 
+    # Dots OCR doesn't require routing, so handle it separately
+    if loader_type == "dots_ocr":
+        try:
+            cloud_check = check_cloud_health("dots_ocr")
+            if not cloud_check:
+                raise RuntimeError(f"Cloud health check failed for dots_ocr.")
+            json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
+            return json_doc, doc_md
+        except Exception as e:
+            log_error_info(
+                logging.ERROR,
+                f"Error loading document with Dots OCR, falling back to docling",
+                e,
+            )
+            loader_type = "docling"
+
+    # Route for local loaders
     try:
-        document_path = route_file_path(loader_type, document_path)
+        document_path = route_file_path(document_path)
     except Exception as e:
         log_error_info(
             logging.WARNING,
             f"Unexpected error in route_file_path, using original path",
             e,
         )
-    if loader_type == "dots_ocr":
-        json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
-        return json_doc, doc_md
-    elif loader_type == "docling":
-        validate_document_path(document_path)
+
+    validate_document_path(document_path)
+
+    if loader_type == "docling":
         docling_doc, doc_md = loader.load_docling(document_path, document_meta)
         return docling_doc, doc_md
-    elif loader_type == "langchain":
-        validate_document_path(document_path)
+
+    if loader_type == "langchain":
         langchain_doc = loader.load_langchain(document_path, document_meta)
         return None, langchain_doc
+
+    raise ValueError(f"Unsupported loader type: {loader_type}")
 
 
 __all__ = [

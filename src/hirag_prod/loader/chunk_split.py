@@ -15,6 +15,7 @@ from hirag_prod._utils import (
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
+    log_error_info,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.configs.functions import get_config_manager
@@ -509,7 +510,11 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                             continue
 
     except Exception as e:
-        logger.error(f"Failed extracting timestamp: {e}")
+        log_error_info(
+            logging.ERROR,
+            "Failed to extract timestamp using LLM",
+            e,
+        )
 
     return None
 
