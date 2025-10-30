@@ -17,7 +17,6 @@ from hirag_prod.configs.functions import (
     get_cloud_storage_config,
     initialize_config_manager,
 )
-from hirag_prod.schema import LoaderType
 from hirag_prod.tracing import traced
 
 S3_DOWNLOAD_DIR = "/chatbot/files/s3"
@@ -179,14 +178,10 @@ def download_cloud_file(
 # ========================================================================
 
 
-def route_file_path(loader_type: LoaderType, url_path: str) -> str:
+def route_file_path(url_path: str) -> str:
     """
     Parse a url path to a located file path
     """
-    # For dots_ocr, return path as-is since it handles cloud URLs directly
-    if loader_type == "dots_ocr":
-        return url_path
-
     parsed_url = urlparse(url_path)
     if parsed_url.scheme == "file":
         local_file_path = parsed_url.path

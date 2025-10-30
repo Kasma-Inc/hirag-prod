@@ -150,7 +150,7 @@ def load_document(
 
     # Route for local loaders
     try:
-        document_path = route_file_path(loader_type, document_path)
+        document_path = route_file_path(document_path)
     except Exception as e:
         log_error_info(
             logging.WARNING,

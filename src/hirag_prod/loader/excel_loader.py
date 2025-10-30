@@ -51,7 +51,7 @@ async def load_and_chunk_excel(
             local_path = os.path.abspath(unquote(raw_path))
         else:
             try:
-                local_path = route_file_path("excel_loader", document_path)
+                local_path = route_file_path(document_path)
             except Exception:
                 local_path = document_path
 
