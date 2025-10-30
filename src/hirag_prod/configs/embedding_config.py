@@ -1,21 +1,21 @@
 from typing import Literal, Optional
 
-from pydantic import ConfigDict, Field, SecretStr, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, SecretStr, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EmbeddingConfig(BaseSettings):
     """Embedding configuration"""
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         alias_generator=lambda x: f"embedding_{x}".upper(),
         populate_by_name=True,
         extra="ignore",
     )
 
     service_type: Literal["openai", "local"] = Field(
+        "local",
         description="The type of the embedding service.",
-        default="local",
     )
 
     base_url: str = Field(
@@ -31,11 +31,11 @@ class EmbeddingConfig(BaseSettings):
         "/v1/embeddings", description="The entry point of the embedding service."
     )
     model_name: Optional[str] = Field(
-        default="Qwen3-Embedding-8B",
+        "Qwen3-Embedding-8B",
         description="The name of the local embedding model. Required when service type is local.",
     )
     model_path: Optional[str] = Field(
-        default="Qwen3-Embedding-8B",
+        "Qwen3-Embedding-8B",
         description="The path of the local embedding model. Required when service type is local.",
     )
     default_batch_size: int = Field(
@@ -43,6 +43,8 @@ class EmbeddingConfig(BaseSettings):
         description="The default batch size for local embedding service. "
         "Useful only when service type is local.",
     )
+
+    # Rate limits
     rate_limit: int = Field(
         6000, description="The max number of requests per unit time."
     )
@@ -83,8 +85,6 @@ class EmbeddingConfig(BaseSettings):
             if not self.openai_api_key:
                 env_name = self.model_fields["openai_api_key"].alias
                 raise ValueError(f"{env_name} is required when service_type is openai")
-            self.base_url = self.openai_base_url
-            self.api_key = self.openai_api_key
 
         return self
 

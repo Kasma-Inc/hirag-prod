@@ -48,15 +48,14 @@ def _poll_dots_job_status(
         bool: True if job completed successfully, False otherwise
     """
     config = get_document_converter_config("dots_ocr")
-    base_url = config.base_url
-    api_key = config.api_key
+    base_url = str(config.base_url)
 
     if polling_interval is None:
         polling_interval = config.polling_interval
 
     status_url = f"{base_url.rstrip('/')}"
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {config.api_key.get_secret_value()}",
         "Model-Name": config.model_name,
         "Entry-Point": "/status",
     }
@@ -139,12 +138,11 @@ def _get_dots_token_usage(
     retries: int = 3,
 ) -> Optional[Dict[str, Any]]:
     config = get_document_converter_config("dots_ocr")
-    base_url = config.base_url
-    api_key = config.api_key
+    base_url = str(config.base_url)
 
     status_url = f"{base_url.rstrip('/')}"
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {config.api_key.get_secret_value()}",
         "Model-Name": config.model_name,
         "Entry-Point": f"/token_usage/{job_id}",
     }
@@ -226,7 +224,7 @@ def convert(
     headers = {
         "Model-Name": get_document_converter_config(converter_type).model_name,
         "Entry-Point": entry_point,
-        "Authorization": f"Bearer {get_document_converter_config(converter_type).api_key}",
+        "Authorization": f"Bearer {get_document_converter_config(converter_type).api_key.get_secret_value()}",
     }
 
     if entry_point == "/parse/file" or entry_point == "parse/file":

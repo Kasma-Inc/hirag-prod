@@ -80,7 +80,7 @@ def create_s3_client(storage_type: Literal["s3", "oss"]) -> BaseClient:
     return boto3.client(
         "s3",
         aws_access_key_id=cloud_storage_config.access_key_id,
-        aws_secret_access_key=cloud_storage_config.secret_access_key,
+        aws_secret_access_key=cloud_storage_config.secret_access_key.get_secret_value(),
         region_name=cloud_storage_config.region,
         endpoint_url=cloud_storage_config.endpoint,
         config=Config(

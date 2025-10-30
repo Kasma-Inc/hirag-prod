@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -13,15 +13,84 @@ class TranslatorConfig(BaseSettings):
         extra="ignore",
     )
 
-    service_type: Literal["openai", "local"]
+    service_type: Literal["openai", "local"] = Field(
+        "local",
+        description="The type of the translator service.",
+    )
 
     # Translator settings
-    api_key: Optional[str] = None
-    base_url: Optional[str] = None
-    model_name: Optional[str] = None
+    base_url: str = Field(
+        description="The base URL of the translator service."
+        " If service type is openai, it will be overwritten by openai_base_url."
+    )
+    api_key: SecretStr = Field(
+        description="The API key of the translator service."
+        " If service type is openai, it will be overwritten by openai_api_key."
+    )
+    entry_point: str = Field(
+        "/v1/chat/completions", description="The entry point of the translator service."
+    )
+    model_name: Optional[str] = Field(
+        "Hunyuan-MT-7B",
+        description="The model name of the translator service."
+        " Required when service type is local.",
+    )
 
     # Additional translator settings
-    entry_point: Optional[str] = None
-    timeout: Optional[float] = 3600.0
-    max_tokens: Optional[int] = None
+    timeout: Optional[float] = Field(
+        3600.0, description="The timeout in seconds for the translator requests."
+    )
+    max_tokens: Optional[int] = Field(
+        None,
+        description="The maximum number of tokens that can be generated in the chat completion.",
+    )
     temperature: Optional[float] = None
+
+    # Rate limits
+    rate_limit: int = Field(60, description="The max number of requests per unit time.")
+    rate_limit_time_unit: Literal["second", "minute", "hour"] = Field(
+        "minute", description="The time unit for the rate limit."
+    )
+    rate_limit_min_interval_seconds: float = Field(
+        0.1,
+        description="The min interval in seconds between requests to the embedding service.",
+    )
+
+    # TODO(tatiana): remove after Models table is refactored
+    openai_base_url: Optional[str] = Field(
+        None,
+        description="The base URL of the OpenAI embedding service."
+        " Useful only when service type is openai.",
+    )
+    openai_api_key: Optional[SecretStr] = Field(
+        None,
+        description="The API key of the OpenAI embedding service."
+        " Useful only when service type is openai.",
+    )
+
+    @model_validator(mode="after")
+    def validate_config_based_on_service_type(self) -> "TranslatorConfig":
+        if self.service_type == "local":
+            if not self.model_name:
+                env_name = self.model_fields["model_name"].alias
+                raise ValueError(f"{env_name} is required when service_type is local")
+
+        if self.service_type == "openai":
+            if not self.openai_base_url:
+                env_name = self.model_fields["openai_base_url"].alias
+                raise ValueError(f"{env_name} is required when service_type is openai")
+            if not self.openai_api_key:
+                env_name = self.model_fields["openai_api_key"].alias
+                raise ValueError(f"{env_name} is required when service_type is openai")
+
+        return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_service_type_config(cls, data):
+        if isinstance(data, dict):
+            if "service_type" in data:
+                if data["service_type"] == "openai":
+                    data["base_url"] = data.get("openai_base_url")
+                    data["api_key"] = data.get("openai_api_key")
+        return data

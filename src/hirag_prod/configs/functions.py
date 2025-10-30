@@ -6,6 +6,7 @@ from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs, InitEnvs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.postgres_db_config import PostgresDBConfig
 from hirag_prod.configs.reranker_config import RerankConfig
 from hirag_prod.configs.translator_config import TranslatorConfig
 
@@ -73,6 +74,10 @@ def get_cloud_storage_config(
     _: Literal["s3", "oss"],
 ) -> S3Config:
     return get_config_manager().s3_config
+
+
+def get_postgres_config() -> "PostgresDBConfig":
+    return get_config_manager().postgres_config
 
 
 def get_envs() -> Envs:

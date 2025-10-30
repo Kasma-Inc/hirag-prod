@@ -1,6 +1,8 @@
 import logging
 from typing import Any, Dict, List, Optional, Union
 
+from sqlalchemy import select
+
 from hirag_prod._utils import log_error_info, retry_async
 from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
 from hirag_prod.exceptions import StorageError
@@ -9,7 +11,6 @@ from hirag_prod.schema import Chunk, File, Item, Relation
 from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.tracing import traced
-from sqlalchemy import select
 
 logger = logging.getLogger("HiRAG")
 

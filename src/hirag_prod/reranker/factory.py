@@ -17,14 +17,11 @@ def create_reranker(
     if reranker_type is not None:
         reranker_config.reranker_type = reranker_type.lower()
 
-    if reranker_config.reranker_type == "api":
-        raise ValueError("API reranker is not supported temporarily")
-    elif reranker_config.reranker_type == "local":
+    if reranker_config.reranker_type == "local":
         return LocalReranker(
-            reranker_config.local_reranker_model_base_url,
-            reranker_config.local_reranker_model_name,
-            reranker_config.local_reranker_model_entry_point,
-            reranker_config.local_reranker_model_authorization,
+            reranker_config.base_url,
+            reranker_config.model_name,
+            reranker_config.entry_point,
+            reranker_config.api_key.get_secret_value(),
         )
-    else:
-        raise ValueError(f"Unsupported reranker type: {reranker_config.reranker_type}")
+    raise ValueError(f"Unsupported reranker type: {reranker_config.reranker_type}")

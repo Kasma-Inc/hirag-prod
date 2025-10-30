@@ -8,7 +8,6 @@ import hanlp
 from hanlp.components.tokenizers.transformer import TransformerTaggingTokenizer
 from opencc import OpenCC
 from redis.asyncio import ConnectionPool, Redis
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -23,13 +22,11 @@ from hirag_prod._llm import (
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
     get_config_manager,
-    get_envs,
     get_hi_rag_config,
+    get_translator_config,
 )
 from hirag_prod.reranker import Reranker, create_reranker
 from hirag_prod.resources.functions import timing_logger
-from hirag_prod.resources.postgres_functions import search_by_search_list
-from hirag_prod.schema import Base
 from hirag_prod.translator.local_translator import LocalTranslator
 from hirag_prod.translator.qwen_translator import QwenTranslator
 
@@ -143,11 +140,6 @@ class ResourceManager:
                 if (not self._db_engine) or (not self._session_maker):
                     await self._initialize_database()
 
-                # Initialize Redis connection pool
-                # TODO(tatiana): deprecated now, remove later
-                # if not self._redis_pool:
-                #     await self._initialize_redis()
-
                 # Initialize services
                 if not self._chat_service:
                     self._chat_service = create_chat_service()
@@ -176,7 +168,7 @@ class ResourceManager:
                 if not self._translator:
                     self._translator = (
                         LocalTranslator()
-                        if get_envs().TRANSLATOR_SERVICE_TYPE == "local"
+                        if get_translator_config().service_type == "local"
                         else QwenTranslator()
                     )
 
@@ -254,16 +246,16 @@ class ResourceManager:
             expire_on_commit=False,
         )
 
-        async with self._db_engine.begin() as conn:
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS plpython3u;"))
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-            await conn.run_sync(Base.metadata.create_all)
-            await conn.execute(search_by_search_list)
+        # async with self._db_engine.begin() as conn:
+        #     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS plpython3u;"))
+        #     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
+        #     await conn.run_sync(Base.metadata.create_all)
+        #     await conn.execute(search_by_search_list)
 
         logging.info(f"✅ Database engine initialized successfully")
 
     @timing_logger("Redis connection pool initialization")
-    async def _initialize_redis(self) -> None:
+    async def _initialize_redis(self, redis_url: str) -> None:
         """Initialize Redis connection pool."""
 
         async def _cleanup():
@@ -272,8 +264,6 @@ class ResourceManager:
         self._cleanup_operation_list.append(("redis", _cleanup))
 
         logging.info(f"🔗 Initializing Redis connection pool...")
-
-        redis_url: str = get_envs().REDIS_URL
 
         logging.info(
             f"Using Redis URL: {redis_url.split('@')[0] if '@' in redis_url else redis_url.split('://')[0] + '://***'}"

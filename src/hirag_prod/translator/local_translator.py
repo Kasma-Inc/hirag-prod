@@ -42,7 +42,7 @@ class LocalTranslatorClient:
     def __init__(self):
         config = get_translator_config()
         self.base_url: str = config.base_url
-        self.api_key: str = config.api_key
+        self.api_key: str = config.api_key.get_secret_value()
         self.model_name: str = config.model_name
         self.entry_point: str = config.entry_point
         self.timeout: float = config.timeout

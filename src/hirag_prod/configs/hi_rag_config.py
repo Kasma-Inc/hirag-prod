@@ -1,4 +1,5 @@
-from typing import Literal
+from functools import cached_property
+from typing import Literal, get_args
 
 from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
@@ -8,7 +9,9 @@ class HiRAGConfig(BaseSettings):
     """HiRAG system configuration"""
 
     model_config = ConfigDict(
-        alias_generator=lambda x: x.upper(), populate_by_name=True, extra="ignore"
+        alias_generator=lambda x: f"hi_rag_{x}".upper(),
+        populate_by_name=True,
+        extra="ignore",
     )
 
     language: Literal["en", "cn-s", "cn-t"] = Field(
@@ -18,6 +21,7 @@ class HiRAGConfig(BaseSettings):
     # Database configuration
     vdb_type: Literal["pgvector"] = "pgvector"
 
+    # TODO(tatiana): check whether the default values are updated to best experience values
     # Chunking configuration
     chunk_size: int = 1200
     chunk_overlap: int = 200
@@ -57,3 +61,7 @@ class HiRAGConfig(BaseSettings):
     clustering_n_type: Literal["fixed", "distance"] = "fixed"  # 'fixed' or 'distance'
     # Similarity search Configuration
     default_distance_threshold: float = 0.8
+
+    @cached_property
+    def supported_languages(self) -> list[str]:
+        return list(get_args(self.model_fields.get("language").annotation))

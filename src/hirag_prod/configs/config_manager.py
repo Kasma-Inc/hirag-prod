@@ -1,5 +1,9 @@
 import threading
-from typing import Dict, Optional
+from typing import Dict, List, Literal, Optional, Union, get_args, get_origin
+
+from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
+from pydantic_settings import BaseSettings
 
 from hirag_prod.configs.cloud_storage_config import S3Config
 from hirag_prod.configs.document_loader_config import DotsOCRConfig
@@ -7,6 +11,7 @@ from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.configs.postgres_db_config import PostgresDBConfig
 from hirag_prod.configs.reranker_config import RerankConfig
 from hirag_prod.configs.shared_variables import SharedVariables
 from hirag_prod.configs.translator_config import TranslatorConfig
@@ -35,10 +40,15 @@ class ConfigManager:
         self.is_main_process: bool = (
             config_dict["is_main_process"] if config_dict is not None else True
         )
-        self.debug: bool = cli_options_dict["debug"]
+        self.debug: bool = (
+            cli_options_dict["debug"] if cli_options_dict is not None else False
+        )
         self.envs: Envs = Envs(**config_dict if config_dict is not None else {})
         self.hi_rag_config = HiRAGConfig(**self.envs.model_dump())
         self.embedding_config: EmbeddingConfig = EmbeddingConfig(
+            **self.envs.model_dump()
+        )
+        self.postgres_config: PostgresDBConfig = PostgresDBConfig(
             **self.envs.model_dump()
         )
         self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
@@ -47,32 +57,22 @@ class ConfigManager:
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._s3_config: Optional[S3Config] = None
 
-        self.postgres_url_env: Optional[str] = str(self.envs.POSTGRES_URL)
-        self.postgres_url_async: Optional[str] = self.postgres_url_env
-        self.postgres_url_sync: Optional[str] = self.postgres_url_env
-        # Replace postgres:// with postgresql+asyncpg:// for async connections
-        if self.postgres_url_env.startswith("postgres://"):
-            self.postgres_url_async = self.postgres_url_env.replace(
-                "postgres://", "postgresql+asyncpg://", 1
-            )
-            self.postgres_url_sync = self.postgres_url_env.replace(
-                "postgres://", "postgresql://", 1
-            )
-        elif self.postgres_url_env.startswith("postgresql://"):
-            self.postgres_url_async = self.postgres_url_env.replace(
-                "postgresql://", "postgresql+asyncpg://", 1
-            )
-        elif self.postgres_url_env.startswith("postgres+asyncpg://"):
-            self.postgres_url_async = self.postgres_url_env.replace(
-                "postgres+asyncpg://", "postgresql+asyncpg://", 1
-            )
-            self.postgres_url_sync = self.postgres_url_env.replace(
-                "postgres+asyncpg://", "postgresql://", 1
-            )
-        elif self.postgres_url_env.startswith("postgresql+asyncpg://"):
-            self.postgres_url_sync = self.postgres_url_env.replace(
-                "postgresql+asyncpg://", "postgresql://", 1
-            )
+        # add rate limit configs to self.envs to be compatible with the rate limiter impl
+        for model in [
+            self.llm_config,
+            self.reranker_config,
+            self.translator_config,
+            self.embedding_config,
+            self.dots_ocr_config,
+        ]:
+            for option in [
+                "rate_limit",
+                "rate_limit_time_unit",
+                "rate_limit_min_interval_seconds",
+            ]:
+                key = model.model_fields[option].alias
+                value = getattr(model, option)
+                setattr(self.envs, key, value)
 
         self.shared_variables: SharedVariables = SharedVariables(
             self.is_main_process,
@@ -89,6 +89,23 @@ class ConfigManager:
     @property
     def language(self) -> str:
         return self.hi_rag_config.language
+
+    @language.setter
+    def language(self, value: str):
+        if value not in self.hi_rag_config.supported_languages:
+            raise ValueError(
+                f"Unsupported language: {value}. "
+                f"Supported languages: {self.hi_rag_config.supported_languages}"
+            )
+        self.hi_rag_config.language = value
+
+    @property
+    def postgres_url_async(self) -> str:
+        return self.postgres_config.postgres_url_async
+
+    @property
+    def postgres_url_sync(self) -> str:
+        return self.postgres_config.postgres_url_sync
 
     @property
     def translator_config(self) -> TranslatorConfig:
@@ -117,3 +134,70 @@ class ConfigManager:
         if not self._reranker_config:
             self._reranker_config = RerankConfig(**self.envs.model_dump())
         return self._reranker_config
+
+    @classmethod
+    def to_dotenv_example(
+        cls, file_path: str = ".env.example", only_no_default: bool = False
+    ) -> None:
+        """Generate a template .env file that can be used to configure this.
+
+        Args:
+            file_path (str, optional): The output file path. Defaults to ".env.example".
+            only_no_default (bool, optional): If True, only fields with no default value will be
+                included. Defaults to False.
+        """
+        config_groups: List[BaseSettings] = [
+            Envs,
+            S3Config,
+            DotsOCRConfig,
+            EmbeddingConfig,
+            HiRAGConfig,
+            LLMConfig,
+            PostgresDBConfig,
+            RerankConfig,
+            TranslatorConfig,
+        ]
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(
+                "# Generated by hirag_prod.configs.ConfigManager."
+                f"to_dotenv_example(file_path={file_path}, only_no_default={only_no_default}).\n"
+            )
+            for config_group in config_groups:
+                fields = [
+                    (env_name, field)
+                    for env_name, field in config_group.model_fields.items()
+                    if not only_no_default or field.default is PydanticUndefined
+                ]
+                if len(fields) == 0:
+                    continue
+                f.write(
+                    f"\n##### {config_group.model_config.get('title', config_group.__name__)}\n"
+                )
+                for env_name, field in fields:
+                    f.write(cls._to_dotenv_doc(field))
+                    default = (
+                        field.default
+                        if field.default is not None
+                        and field.default is not PydanticUndefined
+                        else ""
+                    )
+                    if field.alias:
+                        env_name = field.alias
+                    f.write(f"{env_name}={default}\n")
+
+    @staticmethod
+    def _to_dotenv_doc(field: FieldInfo):
+        args_str = f"Required {field.annotation.__name__}"
+        origin = get_origin(field.annotation)
+        if origin is Literal:
+            args = [str(arg) for arg in get_args(field.annotation)]
+            args_str = f"Choices: [{', '.join(args)}]"
+        elif origin is Union:
+            args = get_args(field.annotation)
+            if args[-1] is type(None) and len(args) == 2:
+                args_str = f"Optional {args[0].__name__}"
+        examples_str = ""
+        if field.examples:
+            examples_str = f"# Examples: {', '.join(field.examples)}\n"
+        description_str = field.description if field.description else ""
+        return f"# {args_str}. {description_str}\n{examples_str}"

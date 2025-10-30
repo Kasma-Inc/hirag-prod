@@ -55,7 +55,7 @@ class QwenTranslator:
         if self._client is None:
             config = get_translator_config()
             self._client = AsyncOpenAI(
-                api_key=config.api_key,
+                api_key=config.api_key.get_secret_value(),
                 base_url=config.base_url,
                 timeout=config.timeout,
                 max_retries=0,
