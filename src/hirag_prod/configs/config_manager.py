@@ -1,5 +1,5 @@
 import threading
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 from hirag_prod.configs.cloud_storage_config import S3Config
 from hirag_prod.configs.document_loader_config import DotsOCRConfig
@@ -47,18 +47,7 @@ class ConfigManager:
         self._dots_ocr_config: Optional[DotsOCRConfig] = None
         self._s3_config: Optional[S3Config] = None
 
-        self.supported_languages: List[str] = ["en", "cn-s", "cn-t"]
-        self.language: str = (
-            config_dict["language"]
-            if (config_dict and "language" in config_dict)
-            else self.envs.HI_RAG_LANGUAGE
-        )
-        if self.language not in self.supported_languages:
-            raise ValueError(
-                f"Unsupported language {self.language}. Supported languages are {self.supported_languages}"
-            )
-
-        self.postgres_url_env: Optional[str] = self.envs.POSTGRES_URL
+        self.postgres_url_env: Optional[str] = str(self.envs.POSTGRES_URL)
         self.postgres_url_async: Optional[str] = self.postgres_url_env
         self.postgres_url_sync: Optional[str] = self.postgres_url_env
         # Replace postgres:// with postgresql+asyncpg:// for async connections
@@ -96,6 +85,10 @@ class ConfigManager:
     def reset(cls):
         del cls._instance
         cls._instance = None
+
+    @property
+    def language(self) -> str:
+        return self.hi_rag_config.language
 
     @property
     def translator_config(self) -> TranslatorConfig:

@@ -29,13 +29,6 @@ class Envs(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="allow", env_ignore_empty=True
     )
 
-    CONSTRUCT_GRAPH: bool = Field(
-        group="Index configuration",
-        description="Whether to construct graph for indexing.",
-        default=False,
-    )
-
-    HI_RAG_LANGUAGE: str = "en"
     ENABLE_TOKEN_COUNT: bool = False
 
     POSTGRES_URL: PostgresDsn = Field(

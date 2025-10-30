@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 
@@ -11,6 +11,10 @@ class HiRAGConfig(BaseSettings):
         alias_generator=lambda x: x.upper(), populate_by_name=True, extra="ignore"
     )
 
+    language: Literal["en", "cn-s", "cn-t"] = Field(
+        "en", alias="HI_RAG_LANGUAGE", description="The language used for prompts."
+    )
+
     # Database configuration
     vdb_type: Literal["pgvector"] = "pgvector"
 
@@ -19,7 +23,11 @@ class HiRAGConfig(BaseSettings):
     chunk_overlap: int = 200
 
     # whether to construct graph
-    construct_graph: bool = False
+    construct_graph: bool = Field(
+        False,
+        description="Whether to construct graph for indexing."
+        " Constructing graph improves the retrieval quality at the cost of token usage.",
+    )
 
     # Batch processing configuration
     embedding_batch_size: int = 1000
@@ -29,9 +37,6 @@ class HiRAGConfig(BaseSettings):
     # Retry configuration
     max_retries: int = 3
     retry_delay: float = 1.0
-
-    # Vector and Schema Configuration
-    embedding_dimension: int
 
     similarity_threshold: float = 0.5
     similarity_max_difference: float = 0.15
@@ -48,9 +53,7 @@ class HiRAGConfig(BaseSettings):
     # Clustering Configuration
     clustering_n_clusters: int = 3
     clustering_distance_threshold: float = 0.5
-    clustering_linkage_method: str = (
-        "ward"  # Options: 'ward', 'complete', 'average', 'single'
-    )
+    clustering_linkage_method: Literal["ward", "complete", "average", "single"] = "ward"
     clustering_n_type: Literal["fixed", "distance"] = "fixed"  # 'fixed' or 'distance'
     # Similarity search Configuration
     default_distance_threshold: float = 0.8
