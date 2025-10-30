@@ -6,6 +6,13 @@ from hirag_prod.configs.functions import get_envs, get_shared_variables
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.reranker.base import Reranker
 from hirag_prod.tracing import traced
+from hirag_prod.usage import (
+    ModelIdentifier,
+    ModelProvider,
+    ModelUsage,
+    UnknownModelName,
+    UsageRecorder,
+)
 
 rate_limiter = RateLimiter()
 
@@ -50,4 +57,16 @@ class ApiReranker(Reranker):
                 get_shared_variables().input_token_count_dict[
                     "reranker"
                 ].value += result.get("usage", {}).get("total_tokens", 0)
+            UsageRecorder.add_usage(
+                ModelIdentifier(
+                    id=result.get("model", UnknownModelName),
+                    provider=result.get("provider", ModelProvider.UNKNOWN.value),
+                ),
+                ModelUsage(
+                    prompt_tokens=result.get("usage", {}).get("total_tokens", 0),
+                    completion_tokens=result.get("usage", {}).get(
+                        "completion_tokens", 0
+                    ),
+                ),
+            )
             return result.get("data", [])

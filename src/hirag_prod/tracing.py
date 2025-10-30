@@ -18,7 +18,7 @@ from opentelemetry.sdk import trace as trace_sdk
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-_tracer: trace.Tracer = trace.NoOpTracer
+_tracer: trace.Tracer = trace.NoOpTracer()
 
 
 def _build_tracer_provider(
@@ -221,7 +221,7 @@ def traced(
         span_name = name or func.__qualname__
         sig = signature(func)
 
-        def _build_attributes(args, kwargs):
+        def _build_attributes(args, kwargs, exclude: list[str] = ["self", "cls"]):
             """
             Build individual attributes for each selected function argument.
             """
@@ -229,8 +229,10 @@ def traced(
             bound.apply_defaults()
             attributes = {}
             for arg_name, value in bound.arguments.items():
+                if arg_name in exclude:
+                    continue
                 if record_args is None or arg_name in record_args:
-                    attributes[f"param.{arg_name}"] = str(value)
+                    attributes[f"param.{arg_name}"] = json.dumps(value, default=str)
             return attributes
 
         def _build_json_attributes(args, kwargs, exclude: list[str] = ["self", "cls"]):
@@ -254,7 +256,7 @@ def traced(
 
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
-                attrs = _build_json_attributes(args, kwargs)
+                attrs = _build_attributes(args, kwargs)
                 async with trace_span_async(span_name, **attrs) as span:
                     result = await func(*args, **kwargs)
                     if record_return:
@@ -271,7 +273,7 @@ def traced(
 
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                attrs = _build_json_attributes(args, kwargs)
+                attrs = _build_attributes(args, kwargs)
                 with trace_span(span_name, **attrs) as span:
                     result = func(*args, **kwargs)
                     if record_return:

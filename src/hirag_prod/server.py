@@ -7,6 +7,7 @@ from typing import AsyncIterator, Union
 
 from mcp.server.fastmcp import Context, FastMCP
 
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_init_config
 from hirag_prod.hirag import HiRAG
 
@@ -56,10 +57,10 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
         if not hirag_instance:
             raise ValueError("HiRAG instance not initialized")
     except (KeyError, AttributeError) as e:
-        logger.error(f"Context access error: {e}")
+        log_error_info(logging.ERROR, "Context access error", e)
         return "Service temporarily unavailable"
     except Exception as e:
-        logger.error(f"Unexpected error accessing HiRAG instance: {e}")
+        log_error_info(logging.ERROR, "Unexpected error accessing HiRAG instance", e)
         return "Internal server error"
 
     try:
@@ -68,11 +69,13 @@ async def hi_search(query: str, ctx: Context = None) -> Union[str, dict]:
         )
         return result
     except asyncio.TimeoutError:
-        logger.error(f"Query timed out after {DEFAULT_TIMEOUT} seconds")
+        log_error_info(
+            logging.ERROR, f"Query timed out after {DEFAULT_TIMEOUT} seconds", None
+        )
         return f"Query timed out after {DEFAULT_TIMEOUT} seconds. Please try a simpler query or increase the timeout."
 
     except Exception as e:
-        logger.error(f"Error in kb_search: {e}")
+        log_error_info(logging.ERROR, "Error in kb_search", e)
         return f"Search error: {str(e)}"
 
 
@@ -95,10 +98,10 @@ async def hi_set_language(language: str, ctx: Context = None) -> str:
         if not hirag_instance:
             raise ValueError("HiRAG instance not initialized")
     except (KeyError, AttributeError) as e:
-        logger.error(f"Context access error: {e}")
+        log_error_info(logging.ERROR, "Context access error", e)
         return "Service temporarily unavailable"
     except Exception as e:
-        logger.error(f"Unexpected error accessing HiRAG instance: {e}")
+        log_error_info(logging.ERROR, "Unexpected error accessing HiRAG instance", e)
         return "Internal server error"
 
     try:
@@ -106,10 +109,10 @@ async def hi_set_language(language: str, ctx: Context = None) -> str:
         logger.info(f"Language successfully set to: {language}")
         return f"Language successfully set to: {language}"
     except ValueError as e:
-        logger.error(f"Invalid language: {e}")
+        log_error_info(logging.ERROR, "Invalid language", e)
         return f"Error: {str(e)}"
     except Exception as e:
-        logger.error(f"Error setting language: {e}")
+        log_error_info(logging.ERROR, "Error setting language", e)
         return f"Error setting language: {str(e)}"
 
 

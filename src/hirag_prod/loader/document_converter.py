@@ -20,6 +20,7 @@ from hirag_prod.configs.functions import (
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
+from hirag_prod.usage import ModelIdentifier, ModelProvider, ModelUsage, UsageRecorder
 
 rate_limiter = RateLimiter()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -84,7 +85,9 @@ def _poll_dots_job_status(
             if status == "completed":
                 return True
             elif status in ["failed", "error", "cancelled"]:
-                logger.error(f"Job {job_id} failed with status: {status}")
+                log_error_info(
+                    logging.ERROR, f"Job {job_id} failed with status: {status}", None
+                )
                 return False
 
             # Job still running, wait before next poll
@@ -124,7 +127,9 @@ def _poll_dots_job_status(
 
             time.sleep(polling_interval)
 
-    logger.error(f"Job {job_id} polling timed out after {timeout} seconds")
+    log_error_info(
+        logging.ERROR, f"Job {job_id} polling timed out after {timeout} seconds", None
+    )
     return False
 
 
@@ -249,8 +254,10 @@ def convert(
         # verify that input s3 path exists
         if parsed_url.scheme in ["s3", "oss"]:
             if not exists_cloud_file(parsed_url.scheme, bucket_name, file_path):
-                logger.error(
-                    f"Input {parsed_url.scheme.upper()} path does not exist: {input_file_path}"
+                log_error_info(
+                    logging.ERROR,
+                    f"Input {parsed_url.scheme.upper()} path does not exist: {input_file_path}",
+                    None,
                 )
                 return None
         else:
@@ -281,7 +288,11 @@ def convert(
                         converter_type
                     ).polling_retries,
                 ):
-                    logger.error(f"Job {job_id} did not complete successfully")
+                    log_error_info(
+                        logging.ERROR,
+                        f"Job {job_id} did not complete successfully",
+                        None,
+                    )
                     return None
 
                 logger.info(f"Job {job_id} completed successfully")
@@ -296,9 +307,9 @@ def convert(
                 if not token_usage_dict:
                     logger.warning(f"Failed to retrieve token usage for job {job_id}")
                 else:
+                    dots_tokens = token_usage_dict.get("dotsocr", {})
+                    internal_tokens = token_usage_dict.get("InternVL3_5-2B", {})
                     if get_envs().ENABLE_TOKEN_COUNT:
-                        dots_tokens = token_usage_dict.get("dotsocr", {})
-                        internal_tokens = token_usage_dict.get("InternVL3_5-2B", {})
                         get_shared_variables().input_token_count_dict[
                             "dotsocr"
                         ].value += dots_tokens.get("prompt_tokens", 0)
@@ -311,6 +322,28 @@ def convert(
                         get_shared_variables().output_token_count_dict[
                             "internvl"
                         ].value += internal_tokens.get("completion_tokens", 0)
+                    UsageRecorder.add_usage(
+                        ModelIdentifier(
+                            id="dotsocr",
+                            provider=ModelProvider.INTERNAL.value,
+                        ),
+                        ModelUsage(
+                            prompt_tokens=dots_tokens.get("prompt_tokens", 0),
+                            completion_tokens=dots_tokens.get("completion_tokens", 0),
+                        ),
+                    )
+                    UsageRecorder.add_usage(
+                        ModelIdentifier(
+                            id="InternVL3_5-2B",
+                            provider=ModelProvider.INTERNAL.value,
+                        ),
+                        ModelUsage(
+                            prompt_tokens=internal_tokens.get("prompt_tokens", 0),
+                            completion_tokens=internal_tokens.get(
+                                "completion_tokens", 0
+                            ),
+                        ),
+                    )
 
             else:
                 raise ValueError("No job ID found in the response for async processing")

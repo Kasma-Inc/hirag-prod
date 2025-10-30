@@ -27,6 +27,13 @@ from hirag_prod.configs.functions import (
 from hirag_prod.configs.llm_config import LLMConfig
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
+from hirag_prod.usage import (
+    ModelIdentifier,
+    ModelProvider,
+    ModelUsage,
+    UnknownModelName,
+    UsageRecorder,
+)
 
 # ============================================================================
 # Constants
@@ -198,6 +205,15 @@ class LocalEmbeddingClient:
             get_shared_variables().input_token_count_dict["embedding"].value += (
                 resp.usage.prompt_tokens if resp.usage.prompt_tokens is not None else 0
             )
+        UsageRecorder.add_usage(
+            ModelIdentifier(
+                id=resp.model,
+                provider=getattr(resp, "provider", ModelProvider.UNKNOWN.value),
+            ),
+            ModelUsage(
+                prompt_tokens=resp.usage.prompt_tokens,
+            ),
+        )
 
         embeddings = [item.embedding for item in resp.data]
         self._logger.info(f"✅ Completed processing {len(embeddings)} texts")
@@ -402,6 +418,16 @@ class ChatCompletion(metaclass=SingletonMeta):
                 if token_usage.completion_tokens is not None
                 else 0
             )
+        UsageRecorder.add_usage(
+            ModelIdentifier(
+                id=response.model,
+                provider=getattr(response, "provider", ModelProvider.UNKNOWN.value),
+            ),
+            ModelUsage(
+                prompt_tokens=token_usage.prompt_tokens,
+                completion_tokens=token_usage.completion_tokens,
+            ),
+        )
 
         if response_format is None:
             return response.choices[0].message.content
@@ -510,6 +536,16 @@ class LocalChatService:
                 if token_usage.completion_tokens is not None
                 else 0
             )
+        UsageRecorder.add_usage(
+            ModelIdentifier(
+                id=response.get("model", UnknownModelName),
+                provider=response.get("provider", ModelProvider.UNKNOWN.value),
+            ),
+            ModelUsage(
+                prompt_tokens=token_usage.prompt_tokens,
+                completion_tokens=token_usage.completion_tokens,
+            ),
+        )
 
         return response["choices"][0]["message"]["content"]
 
@@ -708,6 +744,13 @@ class EmbeddingService(metaclass=SingletonMeta):
             get_shared_variables().input_token_count_dict[
                 "embedding"
             ].value += token_usage.prompt_tokens
+        UsageRecorder.add_usage(
+            ModelIdentifier(
+                id=response.model,
+                provider=getattr(response, "provider", ModelProvider.UNKNOWN.value),
+            ),
+            ModelUsage(prompt_tokens=token_usage.prompt_tokens),
+        )
 
         return np.array([dp.embedding for dp in response.data])
 

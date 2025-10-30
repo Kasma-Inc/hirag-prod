@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any, Dict, List
 
 from hirag_prod import HiRAG
+from hirag_prod._utils import log_error_info
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -114,7 +115,7 @@ async def evaluate_single_question(
         }
 
     except Exception as e:
-        logger.error(f"Error processing question: {question}. Error: {str(e)}")
+        log_error_info(logging.ERROR, f"Error processing question: {question}", e)
         return {
             "question": question,
             "retrieval_time": time.time() - start_time,
@@ -185,7 +186,7 @@ async def evaluate(
     failed_count = len(results) - len(successful_results)
 
     if not successful_results:
-        logger.error("No successful retrievals to analyze")
+        log_error_info(logging.ERROR, "No successful retrievals to analyze", None)
         return
 
     # Calculate aggregate metrics

@@ -26,7 +26,7 @@ def _resolve_local_path(excel_uri: str) -> Optional[str]:
             raw_path = f"/{p.netloc}{p.path}" if p.netloc else p.path
             return unquote(raw_path)
         try:
-            return route_file_path("excel_loader", excel_uri)
+            return route_file_path(excel_uri)
         except Exception:
             return excel_uri
     except Exception as e:
