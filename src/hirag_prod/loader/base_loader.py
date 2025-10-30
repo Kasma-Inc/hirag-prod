@@ -32,6 +32,7 @@ class BaseLoader(ABC):
         Returns:
             Tuple[File, File]: the loaded document
         """
+        raise NotImplementedError("load_dots_ocr not implemented")
         assert document_meta.get("private") is not None, "private is required"
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
         workspace_id = document_meta.get("workspaceId", None)

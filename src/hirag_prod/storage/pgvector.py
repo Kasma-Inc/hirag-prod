@@ -545,7 +545,7 @@ class PGVector(BaseVDB):
             file_obj = self.create_object("Files", metadata, **kwargs)
             return await self.upsert_file(file_obj, table_name, mode)
         except Exception as e:
-            logger.error(f"Failed to create file from metadata: {e}")
+            log_error_info(logging.ERROR, "Failed to create file from metadata", e)
             raise
 
     @traced(record_args=["table_name", "query"])

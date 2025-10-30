@@ -84,7 +84,9 @@ def _poll_dots_job_status(
             if status == "completed":
                 return True
             elif status in ["failed", "error", "cancelled"]:
-                logger.error(f"Job {job_id} failed with status: {status}")
+                log_error_info(
+                    logging.ERROR, f"Job {job_id} failed with status: {status}", None
+                )
                 return False
 
             # Job still running, wait before next poll
@@ -124,7 +126,9 @@ def _poll_dots_job_status(
 
             time.sleep(polling_interval)
 
-    logger.error(f"Job {job_id} polling timed out after {timeout} seconds")
+    log_error_info(
+        logging.ERROR, f"Job {job_id} polling timed out after {timeout} seconds", None
+    )
     return False
 
 
@@ -249,8 +253,10 @@ def convert(
         # verify that input s3 path exists
         if parsed_url.scheme in ["s3", "oss"]:
             if not exists_cloud_file(parsed_url.scheme, bucket_name, file_path):
-                logger.error(
-                    f"Input {parsed_url.scheme.upper()} path does not exist: {input_file_path}"
+                log_error_info(
+                    logging.ERROR,
+                    f"Input {parsed_url.scheme.upper()} path does not exist: {input_file_path}",
+                    None,
                 )
                 return None
         else:
@@ -281,7 +287,11 @@ def convert(
                         converter_type
                     ).polling_retries,
                 ):
-                    logger.error(f"Job {job_id} did not complete successfully")
+                    log_error_info(
+                        logging.ERROR,
+                        f"Job {job_id} did not complete successfully",
+                        None,
+                    )
                     return None
 
                 logger.info(f"Job {job_id} completed successfully")

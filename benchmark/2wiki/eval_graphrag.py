@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from hirag_prod import HiRAG
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
 
 # Configure logging with more detailed format
@@ -138,7 +139,9 @@ async def extract_chunk_ids_from_graph_retrieval(
         return list(all_chunk_ids)
 
     except Exception as e:
-        logger.error(f"Error extracting chunk IDs from graph retrieval: {e}")
+        log_error_info(
+            logging.ERROR, "Error extracting chunk IDs from graph retrieval", e
+        )
         return []
 
 
@@ -343,7 +346,9 @@ async def evaluate_single_question_graphrag(
 
     except Exception as e:
         retrieval_time = time.time() - start_time
-        logger.error(f"[{question_idx + 1}] Error processing question: {e}")
+        log_error_info(
+            logging.ERROR, f"[{question_idx + 1}] Error processing question", e
+        )
         return {
             "question": question,
             "retrieval_time": retrieval_time,
@@ -459,7 +464,7 @@ async def evaluate_graphrag(
     failed_count = len(results) - len(successful_results)
 
     if not successful_results:
-        logger.error("No successful retrievals to analyze!")
+        log_error_info(logging.ERROR, "No successful retrievals to analyze!", None)
         return
 
     logger.info(f"Successful evaluations: {len(successful_results)}/{len(results)}")
@@ -591,5 +596,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Evaluation interrupted by user")
     except Exception as e:
-        logger.error(f"Evaluation failed with error: {e}")
+        log_error_info(logging.ERROR, "Evaluation failed with error", e)
         raise
