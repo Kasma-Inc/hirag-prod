@@ -106,7 +106,8 @@ class UsageRecorder:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         try:
-            self.has_error = exc_type is not None
+            if exc_type is not None:
+                self.has_error = True
             await self._finalize()
         finally:
             if self._token is not None:
@@ -131,6 +132,10 @@ class UsageRecorder:
     # -------------------------
     # Instance method
     # -------------------------
+    def mark_error(self) -> None:
+        """Mark that an error has occurred during usage recording."""
+        self.has_error = True
+
     def add(self, model_ident: ModelIdentifier, usage: ModelUsage) -> None:
         """Add usage for a specific model instance."""
         self._usage.add_usage(model_ident, usage)
