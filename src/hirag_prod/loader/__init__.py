@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Any, Literal, Optional, Tuple
 
 import requests
@@ -100,6 +101,9 @@ def check_cloud_health(
         return False
 
 
+docling_lock: threading.Lock = threading.Lock()
+
+
 @traced()
 def load_document(
     document_path: str,
@@ -161,7 +165,8 @@ def load_document(
     validate_document_path(document_path)
 
     if loader_type == "docling":
-        docling_doc, doc_md = loader.load_docling(document_path, document_meta)
+        with docling_lock:
+            docling_doc, doc_md = loader.load_docling(document_path, document_meta)
         return docling_doc, doc_md
 
     if loader_type == "langchain":
