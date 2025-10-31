@@ -226,40 +226,6 @@ class LocalEmbeddingClient:
         await self._client.close()
 
 
-class LocalLLMClient:
-    """Client for local LLM service"""
-
-    def __init__(self):
-        self._http_client = httpx.AsyncClient(timeout=3600.0)
-
-    @traced()
-    async def create_chat_completion(
-        self, messages: List[Dict[str, str]], **kwargs: Any
-    ) -> Dict[str, Any]:
-        """Create chat completion using local service API"""
-        headers = {
-            "Content-Type": "application/json",
-            "Model-Name": get_llm_config().model_name,
-            "Entry-Point": get_llm_config().entry_point,
-            "Authorization": f"Bearer {get_llm_config().authorization_token}",
-        }
-
-        payload = {"messages": messages, **kwargs}
-
-        response = await self._http_client.post(
-            get_llm_config().base_url, headers=headers, json=payload
-        )
-
-        response.raise_for_status()
-        result = response.json()
-
-        return result
-
-    async def close(self):
-        """Close the HTTP client"""
-        await self._http_client.aclose()
-
-
 # ============================================================================
 # Token Usage Tracking
 # ============================================================================
@@ -363,12 +329,7 @@ class ChatCompletion(metaclass=SingletonMeta):
     T = TypeVar("T", bound=BaseModel)
 
     @api_retry
-    @rate_limiter.limit(
-        "llm",
-        "LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS",
-        "LLM_RATE_LIMIT",
-        "LLM_RATE_LIMIT_TIME_UNIT",
-    )
+    @rate_limiter.limit()
     @traced()
     async def complete(
         self,
@@ -470,122 +431,6 @@ class ChatCompletion(metaclass=SingletonMeta):
         """Close underlying client"""
         await self.client.close()
 
-
-class LocalChatService:
-    """Chat service for local LLM services"""
-
-    def __init__(self):
-        """Initialize with direct local client (no singleton)"""
-        self.client = LocalLLMClient()
-        self._logger = logging.getLogger(LoggerNames.CHAT)
-        self._token_tracker = TokenUsageTracker()
-
-        self._logger.info(
-            f"🔧 LocalChatService initialized with model: {get_llm_config().model_name}"
-        )
-
-    @rate_limiter.limit(
-        "llm",
-        "LLM_RATE_LIMIT_MIN_INTERVAL_SECONDS",
-        "LLM_RATE_LIMIT",
-        "LLM_RATE_LIMIT_TIME_UNIT",
-    )
-    @traced()
-    async def complete(
-        self,
-        prompt: str,
-        system_prompt: Optional[str] = None,
-        history_messages: Optional[List[Dict[str, str]]] = None,
-        **kwargs: Any,
-    ) -> str:
-        """
-        Complete a chat prompt using local service.
-
-        Args:
-            prompt: The user prompt
-            system_prompt: Optional system prompt
-            history_messages: Optional conversation history
-            **kwargs: Additional parameters for the API call
-
-        Returns:
-            The completion response as a string
-        """
-        model = get_llm_config().model_name
-        messages = self._build_messages(system_prompt, history_messages, prompt)
-
-        self._logger.info(
-            f"🔄 Processing chat completion with {len(messages)} messages"
-        )
-
-        response = await self.client.create_chat_completion(messages, **kwargs)
-
-        class UsageData:
-            def __init__(self, usage_dict):
-                self.prompt_tokens = usage_dict["prompt_tokens"]
-                self.completion_tokens = usage_dict["completion_tokens"]
-                self.total_tokens = usage_dict["total_tokens"]
-
-        usage_data = UsageData(response["usage"])
-        token_usage = self._token_tracker.track_usage(usage_data, model, prompt)
-        if get_envs().ENABLE_TOKEN_COUNT:
-            get_shared_variables().input_token_count_dict["llm"].value += (
-                token_usage.prompt_tokens
-                if token_usage.prompt_tokens is not None
-                else 0
-            )
-            get_shared_variables().output_token_count_dict["llm"].value += (
-                token_usage.completion_tokens
-                if token_usage.completion_tokens is not None
-                else 0
-            )
-        UsageRecorder.add_usage(
-            ModelIdentifier(
-                id=response.get("model", UnknownModelName),
-                provider=response.get("provider", ModelProvider.UNKNOWN.value),
-            ),
-            ModelUsage(
-                prompt_tokens=token_usage.prompt_tokens,
-                completion_tokens=token_usage.completion_tokens,
-            ),
-        )
-
-        return response["choices"][0]["message"]["content"]
-
-    def _build_messages(
-        self,
-        system_prompt: Optional[str],
-        history_messages: Optional[List[Dict[str, str]]],
-        prompt: str,
-    ) -> List[Dict[str, str]]:
-        """Build messages list for API call"""
-        messages = []
-
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-
-        if history_messages:
-            messages.extend(history_messages)
-
-        messages.append({"role": "user", "content": prompt})
-        return messages
-
-    def get_token_usage_stats(self) -> Dict[str, Union[int, float]]:
-        """Get cumulative token usage statistics"""
-        return self._token_tracker.get_stats()
-
-    def reset_token_usage_stats(self) -> None:
-        """Reset cumulative token usage statistics"""
-        self._token_tracker.reset_stats()
-
-    def log_final_stats(self) -> None:
-        """Log final token usage statistics summary"""
-        self._token_tracker.log_final_stats()
-
-    async def close(self):
-        """Close the underlying client"""
-        await self.client.close()
-
-
 # ============================================================================
 # Embedding Service
 # ============================================================================
@@ -598,7 +443,7 @@ class BatchProcessor:
         self._logger = logger
 
     async def process_with_adaptive_batching(
-        self, texts: List[str], batch_size: int, process_func, model: str
+        self, texts: List[str], batch_size: int, process_func 
     ) -> np.ndarray:
         """Process texts with adaptive batch sizing"""
         self._logger.info(
@@ -620,7 +465,7 @@ class BatchProcessor:
             )
 
             try:
-                batch_embeddings = await process_func(batch_texts, model)
+                batch_embeddings = await process_func(batch_texts, APIConstants.DEFAULT_EMBEDDING_MODEL)
                 all_embeddings.append(batch_embeddings)
 
                 self._logger.info("✅ Batch completed successfully")
@@ -728,17 +573,14 @@ class EmbeddingService(metaclass=SingletonMeta):
 
     @api_retry
     @rate_limiter.limit(
-        "embedding",
-        "EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS",
-        "EMBEDDING_RATE_LIMIT",
-        "EMBEDDING_RATE_LIMIT_TIME_UNIT",
+        "cloud-embedding"
     )
     async def _create_embeddings_batch(
-        self, texts: List[str], model: str = APIConstants.DEFAULT_EMBEDDING_MODEL
+        self, texts: List[str]
     ) -> np.ndarray:
         """Create embeddings for a single batch of texts (internal method)"""
         response = await self.client.embeddings.create(
-            model=model, input=texts, encoding_format="float"
+            model=APIConstants.DEFAULT_EMBEDDING_MODEL, input=texts, encoding_format="float"
         )
         token_usage = response.usage
         if get_envs().ENABLE_TOKEN_COUNT:
@@ -760,7 +602,6 @@ class EmbeddingService(metaclass=SingletonMeta):
     async def create_embeddings(
         self,
         texts: List[str],
-        model: str = APIConstants.DEFAULT_EMBEDDING_MODEL,
         batch_size: Optional[int] = None,
     ) -> np.ndarray:
         """
@@ -768,7 +609,6 @@ class EmbeddingService(metaclass=SingletonMeta):
 
         Args:
             texts: List of texts to embed
-            model: The embedding model to use (ignored for local service)
             batch_size: Maximum number of texts to process in a single API call (uses default if None)
 
         Returns:
@@ -790,10 +630,10 @@ class EmbeddingService(metaclass=SingletonMeta):
 
         # Embed valid texts (batched if necessary)
         if len(valid_texts) <= batch_size:
-            embeddings = await self._create_embeddings_batch(valid_texts, model)
+            embeddings = await self._create_embeddings_batch(valid_texts)
         else:
             embeddings = await self._batch_processor.process_with_adaptive_batching(
-                valid_texts, batch_size, self._create_embeddings_batch, model
+                valid_texts, batch_size, self._create_embeddings_batch
             )
 
         # If no empties, return directly
@@ -846,10 +686,7 @@ class LocalEmbeddingService:
         )
 
     @rate_limiter.limit(
-        "embedding",
-        "EMBEDDING_RATE_LIMIT_MIN_INTERVAL_SECONDS",
-        "EMBEDDING_RATE_LIMIT",
-        "EMBEDDING_RATE_LIMIT_TIME_UNIT",
+        "qwen3-embedding-local"
     )
     async def _create_embeddings_batch(
         self, texts: List[str], model: str = ""
@@ -945,17 +782,10 @@ def create_embedding_service(
         return EmbeddingService(default_batch_size)
 
 
-def create_chat_service() -> Union[ChatCompletion, LocalChatService]:
+def create_chat_service() -> ChatCompletion:
     """
     Factory function to create appropriate chat service.
 
-    For local services, returns LocalChatService.
     For OpenAI services, returns the singleton ChatCompletion.
     """
-    # Check service type from environment
-    service_type = get_llm_config().service_type.lower()
-
-    if service_type == "local":
-        return LocalChatService()
-    else:
-        return ChatCompletion()
+    return ChatCompletion()
