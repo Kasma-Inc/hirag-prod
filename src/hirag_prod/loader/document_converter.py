@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 import requests
 from docling_core.types import DoclingDocument
+from pydantic import BaseModel
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
@@ -20,7 +21,7 @@ from hirag_prod.configs.functions import (
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
-from hirag_prod.usage import ModelIdentifier, ModelProvider, ModelUsage, UsageRecorder
+from hirag_prod.usage import ModelIdentifier, ModelUsage, UsageRecorder
 
 rate_limiter = RateLimiter()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -132,11 +133,19 @@ def _poll_dots_job_status(
     return False
 
 
+class OCRTokenUsageItem(BaseModel):
+    model: str
+    provider: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+
+
 def _get_dots_token_usage(
     job_id: str,
     timeout: int = 10,
     retries: int = 3,
-) -> Optional[Dict[str, Any]]:
+) -> Optional[list[OCRTokenUsageItem]]:
     config = get_document_converter_config("dots_ocr")
     base_url = str(config.base_url)
 
@@ -154,7 +163,7 @@ def _get_dots_token_usage(
             status_data = response.json()
             logger.info(f"Token usage for job {job_id}: {status_data}")
             # Add data to token usage
-            return status_data
+            return [OCRTokenUsageItem(**item) for item in status_data]
 
         except Exception as e:
             if attempt < retries - 1:
@@ -294,7 +303,7 @@ def convert(
                     return None
 
                 logger.info(f"Job {job_id} completed successfully")
-                token_usage_dict = _get_dots_token_usage(
+                token_usage_list = _get_dots_token_usage(
                     job_id=job_id,
                     timeout=get_document_converter_config(converter_type).timeout,
                     retries=get_document_converter_config(
@@ -302,46 +311,27 @@ def convert(
                     ).polling_retries,
                 )
 
-                if not token_usage_dict:
+                if not token_usage_list:
                     logger.warning(f"Failed to retrieve token usage for job {job_id}")
                 else:
-                    dots_tokens = token_usage_dict.get("dotsocr", {})
-                    internal_tokens = token_usage_dict.get("InternVL3_5-2B", {})
-                    if get_envs().ENABLE_TOKEN_COUNT:
-                        get_shared_variables().input_token_count_dict[
-                            "dotsocr"
-                        ].value += dots_tokens.get("prompt_tokens", 0)
-                        get_shared_variables().output_token_count_dict[
-                            "dotsocr"
-                        ].value += dots_tokens.get("completion_tokens", 0)
-                        get_shared_variables().input_token_count_dict[
-                            "internvl"
-                        ].value += internal_tokens.get("prompt_tokens", 0)
-                        get_shared_variables().output_token_count_dict[
-                            "internvl"
-                        ].value += internal_tokens.get("completion_tokens", 0)
-                    UsageRecorder.add_usage(
-                        ModelIdentifier(
-                            id="dotsocr",
-                            provider=ModelProvider.INTERNAL.value,
-                        ),
-                        ModelUsage(
-                            prompt_tokens=dots_tokens.get("prompt_tokens", 0),
-                            completion_tokens=dots_tokens.get("completion_tokens", 0),
-                        ),
-                    )
-                    UsageRecorder.add_usage(
-                        ModelIdentifier(
-                            id="InternVL3_5-2B",
-                            provider=ModelProvider.INTERNAL.value,
-                        ),
-                        ModelUsage(
-                            prompt_tokens=internal_tokens.get("prompt_tokens", 0),
-                            completion_tokens=internal_tokens.get(
-                                "completion_tokens", 0
+                    for token_usage in token_usage_list:
+                        if get_envs().ENABLE_TOKEN_COUNT:
+                            get_shared_variables().input_token_count_dict[
+                                token_usage.model
+                            ].value += token_usage.prompt_tokens
+                            get_shared_variables().output_token_count_dict[
+                                token_usage.model
+                            ].value += token_usage.completion_tokens
+                        UsageRecorder.add_usage(
+                            ModelIdentifier(
+                                id=token_usage.model,
+                                provider=token_usage.provider,
                             ),
-                        ),
-                    )
+                            ModelUsage(
+                                prompt_tokens=token_usage.prompt_tokens,
+                                completion_tokens=token_usage.completion_tokens,
+                            ),
+                        )
 
             else:
                 raise ValueError("No job ID found in the response for async processing")
