@@ -472,11 +472,6 @@ class HiRAG:
 
     async def set_language(self, language: str) -> None:
         """Set the language for the HiRAG instance"""
-        if language not in get_config_manager().supported_languages:
-            raise ValueError(
-                f"Unsupported language: {language}. Supported languages: {get_config_manager().supported_languages}"
-            )
-
         get_config_manager().language = language
         self._kg_constructor.update_language_config()
 

@@ -76,19 +76,20 @@ def download_load_file(
 
 
 def create_s3_client(storage_type: Literal["s3", "oss"]) -> BaseClient:
-    config_dict: Dict = {
-        "aws_access_key_id": get_cloud_storage_config(storage_type).access_key_id,
-        "aws_secret_access_key": get_cloud_storage_config(
-            storage_type
-        ).access_key_secret,
-    }
-    if storage_type == "oss":
-        config_dict["endpoint_url"] = get_cloud_storage_config(storage_type).end_point
-        config_dict["config"] = Config(
-            s3={"addressing_style": "virtual"}, signature_version="v4"
-        )
-
-    return boto3.client("s3", **config_dict)
+    cloud_storage_config = get_cloud_storage_config(storage_type)
+    return boto3.client(
+        "s3",
+        aws_access_key_id=cloud_storage_config.access_key_id,
+        aws_secret_access_key=cloud_storage_config.secret_access_key.get_secret_value(),
+        region_name=cloud_storage_config.region,
+        endpoint_url=cloud_storage_config.endpoint,
+        config=Config(
+            s3={"addressing_style": "virtual"},
+            signature_version="v4",
+            request_checksum_calculation="when_required",
+            response_checksum_validation="when_required",
+        ),
+    )
 
 
 def exists_cloud_file(

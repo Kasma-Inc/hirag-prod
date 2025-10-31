@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from hirag_prod.configs.functions import get_envs, initialize_config_manager
+from hirag_prod.configs.functions import get_postgres_config, initialize_config_manager
 from hirag_prod.resources.functions import (
     get_db_session_maker,
     get_resource_manager,
@@ -48,8 +48,8 @@ async def test_update_job_status():
                 f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_schema = '{get_envs().POSTGRES_SCHEMA or 'public'}' 
-                    AND table_name = '{get_envs().POSTGRES_TABLE_NAME}'
+                    WHERE table_schema = '{get_postgres_config().table_schema}' 
+                    AND table_name = '{get_postgres_config().table_name}'
                 );
             """
             )
@@ -57,7 +57,7 @@ async def test_update_job_status():
             table_exists = result.first()[0]
             if not table_exists:
                 pytest.skip(
-                    f"Table {get_envs().POSTGRES_SCHEMA or 'public'}.{get_envs().POSTGRES_TABLE_NAME} does not exist"
+                    f"Table {get_postgres_config().table_schema}.{get_postgres_config().table_name} does not exist"
                 )
     except Exception:
         pytest.skip("Unable to check table existence")
@@ -68,8 +68,8 @@ async def test_update_job_status():
     print(f"\n=== DEBUG INFO ===")
     print(f"Test job ID: {temp_job_id}")
     print(f"Workspace ID: {workspace_id}")
-    print(f"Database schema: {get_envs().POSTGRES_SCHEMA or 'public'}")
-    print(f"Table name: {get_envs().POSTGRES_TABLE_NAME}")
+    print(f"Database schema: {get_postgres_config().table_schema}")
+    print(f"Table name: {get_postgres_config().table_name}")
 
     try:
         # Insert a test record
@@ -95,7 +95,7 @@ async def test_update_job_status():
             query = text(
                 f"""
                 SELECT "jobId", "workspaceId", "status", "updatedAt" 
-                FROM "{get_envs().POSTGRES_SCHEMA or 'public'}"."{get_envs().POSTGRES_TABLE_NAME}"
+                FROM "{get_postgres_config().table_schema}"."{get_postgres_config().table_name}"
                 WHERE "jobId" = '{temp_job_id}'
             """
             )
@@ -138,7 +138,7 @@ async def test_update_job_status():
         async with get_db_session_maker()() as session:
             query = text(
                 f"""
-                SELECT "status", "updatedAt" FROM "{get_envs().POSTGRES_SCHEMA or 'public'}"."{get_envs().POSTGRES_TABLE_NAME}"
+                SELECT "status", "updatedAt" FROM "{get_postgres_config().table_schema}"."{get_postgres_config().table_name}"
                 WHERE "jobId" = '{temp_job_id}'
             """
             )
@@ -164,7 +164,7 @@ async def test_update_job_status():
         async with get_db_session_maker()() as session:
             query = text(
                 f"""
-                SELECT "status", "updatedAt" FROM "{get_envs().POSTGRES_SCHEMA or 'public'}"."{get_envs().POSTGRES_TABLE_NAME}"
+                SELECT "status", "updatedAt" FROM "{get_postgres_config().table_schema}"."{get_postgres_config().table_name}"
                 WHERE "jobId" = '{temp_job_id}'
             """
             )
@@ -206,8 +206,8 @@ async def test_fetch_records():
                 f"""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_schema = '{get_envs().POSTGRES_SCHEMA or 'public'}' 
-                    AND table_name = '{get_envs().POSTGRES_TABLE_NAME}'
+                    WHERE table_schema = '{get_postgres_config().table_schema}' 
+                    AND table_name = '{get_postgres_config().table_name}'
                 );
             """
             )
@@ -215,7 +215,7 @@ async def test_fetch_records():
             table_exists = result.first()[0]
             if not table_exists:
                 pytest.skip(
-                    f"Table {get_envs().POSTGRES_SCHEMA or 'public'}.{get_envs().POSTGRES_TABLE_NAME} does not exist"
+                    f"Table {get_postgres_config().table_schema}.{get_postgres_config().table_name} does not exist"
                 )
     except Exception:
         pytest.skip("Unable to check table existence")

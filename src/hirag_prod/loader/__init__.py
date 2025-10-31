@@ -73,7 +73,7 @@ def check_cloud_health(
             "Model-Name": get_document_converter_config(
                 document_converter_type
             ).model_name,
-            "Authorization": f"Bearer {get_document_converter_config(document_converter_type).api_key}",
+            "Authorization": f"Bearer {get_document_converter_config(document_converter_type).api_key.get_secret_value()}",
         }
 
         resp = requests.get(health_url, headers=headers)

@@ -1,29 +1,21 @@
-from pydantic_settings import BaseSettings
+from typing import Optional
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class AWSConfig(BaseSettings):
-    """AWS cloud configuration"""
+class S3Config(BaseSettings):
+    """S3 configuration"""
 
     region: str
     access_key_id: str
-    access_key_secret: str
+    secret_access_key: SecretStr
     bucket_name: str
+    endpoint: Optional[str] = None
 
-    class Config:
-        alias_generator = lambda x: f"aws_{x}".upper()
-        populate_by_name = True
-        extra = "ignore"
-
-
-class OSSConfig(BaseSettings):
-    """OSS cloud configuration"""
-
-    access_key_id: str
-    access_key_secret: str
-    end_point: str
-    bucket_name: str
-
-    class Config:
-        alias_generator = lambda x: f"oss_{x}".upper()
-        populate_by_name = True
-        extra = "ignore"
+    model_config = SettingsConfigDict(
+        env_prefix="AWS_",  # for compatibility with common practices
+        alias_generator=lambda x: f"ofnil_stage_{x}".upper(),  # for integration with ofnil
+        populate_by_name=True,
+        extra="ignore",
+    )

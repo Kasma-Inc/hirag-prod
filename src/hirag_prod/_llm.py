@@ -143,7 +143,9 @@ class BaseAPIClient(ABC, metaclass=SingletonABCMeta):
     def __init__(self, config: Union[EmbeddingConfig, LLMConfig]):
         if not hasattr(self, "_initialized"):
             self._client = AsyncOpenAI(
-                api_key=config.api_key, base_url=config.base_url, max_retries=0
+                api_key=config.api_key.get_secret_value(),
+                base_url=config.base_url,
+                max_retries=0,
             )
             self._initialized = True
 
@@ -180,7 +182,7 @@ class LocalEmbeddingClient:
         self._logger = logging.getLogger(LoggerNames.EMBEDDING)
         self._client = AsyncOpenAI(
             base_url=get_embedding_config().base_url,
-            api_key=get_embedding_config().api_key,
+            api_key=get_embedding_config().api_key.get_secret_value(),
             max_retries=0,
         )
 
@@ -192,7 +194,7 @@ class LocalEmbeddingClient:
         headers = {
             "Model-Name": get_embedding_config().model_name,
             "Entry-Point": get_embedding_config().entry_point,
-            "Authorization": f"Bearer {get_embedding_config().api_key}",
+            "Authorization": f"Bearer {get_embedding_config().api_key.get_secret_value()}",
         }
 
         resp = await self._client.embeddings.create(

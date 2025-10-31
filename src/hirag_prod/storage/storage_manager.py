@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Union
 from sqlalchemy import select
 
 from hirag_prod._utils import log_error_info, retry_async
-from hirag_prod.configs.functions import get_hi_rag_config
+from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
 from hirag_prod.exceptions import StorageError
 from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import Chunk, File, Item, Relation
@@ -29,7 +29,7 @@ class StorageManager:
         """Initialize storage tables"""
         try:
             await self.vdb._init_vdb(
-                embedding_dimension=get_hi_rag_config().embedding_dimension
+                embedding_dimension=get_init_config().EMBEDDING_DIMENSION
             )
         except Exception as e:
             log_error_info(

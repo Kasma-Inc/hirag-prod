@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from hirag_prod.configs.functions import get_envs
+from hirag_prod.configs.functions import get_postgres_config
 
 
 async def update_job_status(
@@ -19,8 +19,8 @@ async def update_job_status(
     """Update job status and updatedAt by primary key id (jobId)."""
     # Format the datetime parameter if provided
 
-    table_name = table_name or get_envs().POSTGRES_TABLE_NAME
-    schema = schema or get_envs().POSTGRES_SCHEMA
+    table_name = table_name or get_postgres_config().table_name
+    schema = schema or get_postgres_config().table_schema
 
     updated_at_value = updated_at if updated_at is not None else datetime.now()
 

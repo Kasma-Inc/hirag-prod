@@ -1,6 +1,6 @@
-from typing import Literal, Optional
+from typing import Literal
 
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, Field, SecretStr
 from pydantic_settings import BaseSettings
 
 
@@ -8,35 +8,36 @@ class RerankConfig(BaseSettings):
     """Reranker configuration"""
 
     model_config = ConfigDict(
-        alias_generator=lambda x: x.upper(),
+        alias_generator=lambda x: f"reranker_{x}".upper(),
         populate_by_name=True,
         extra="ignore",
     )
 
     # Reranker type selection
-    reranker_type: Literal["api", "local"] = "local"
-
-    # API reranker settings
-    # TODO: Add API reranker settings
+    reranker_type: Literal["local"] = Field(
+        "local",
+        alias="RERANKER_SERVICE_TYPE",
+        description="The type of the reranker service.",
+    )
 
     # Local reranker settings
-    local_reranker_model_base_url: Optional[str] = None
-    local_reranker_model_name: str = "Qwen3-Reranker-8B"
-    local_reranker_model_entry_point: str = "/rerank"
-    local_reranker_model_authorization: Optional[str] = None
+    base_url: str = Field(description="The base URL of the reranker service.")
+    api_key: SecretStr = Field(description="The API key of the reranker service.")
+    entry_point: str = Field(
+        "/rerank", description="The entry point of the reranker service."
+    )
+    model_name: str = Field(
+        "Qwen3-Reranker-8B", description="The model name of the reranker service."
+    )
 
-    @model_validator(mode="after")
-    def validate_config_based_on_type(self) -> "RerankConfig":
-        if self.reranker_type == "api":
-            raise ValueError("API reranker is not supported temporarily")
-        elif self.reranker_type == "local":
-            if not self.local_reranker_model_base_url:
-                raise ValueError(
-                    "LOCAL_RERANKER_MODEL_BASE_URL is required when RERANKER_TYPE is local"
-                )
-            if not self.local_reranker_model_authorization:
-                raise ValueError(
-                    "LOCAL_RERANKER_MODEL_AUTHORIZATION is required when RERANKER_TYPE is local"
-                )
-
-        return self
+    # Rate limits
+    rate_limit: int = Field(
+        6000, description="The max number of requests per unit time."
+    )
+    rate_limit_time_unit: Literal["second", "minute", "hour"] = Field(
+        "minute", description="The time unit for the rate limit."
+    )
+    rate_limit_min_interval_seconds: float = Field(
+        0.1,
+        description="The min interval in seconds between requests to the embedding service.",
+    )
