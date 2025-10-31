@@ -2,7 +2,6 @@
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from rich.console import Console
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_hi_rag_config
@@ -12,7 +11,6 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-console = Console()
 
 
 async def get_chunk_info(
