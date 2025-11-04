@@ -72,15 +72,18 @@ async def cross_language_search(
                 )
             ]
 
-    sql_str: str = f"""SELECT *
+    sql_str: str = f"""SELECT * FROM
+(SELECT *
 FROM (
     SELECT "Items"."documentKey", "Items"."chunkIdx", "Items".text_normalized, "Items".has_traditional_chinese, "Items"."fileName", "Items".uri, "Items".type, "Items"."pageNumber", "Items"."chunkType", "Items"."pageWidth", "Items"."pageHeight", "Items".bbox{", search_by_search_list(:search_list_original, \"Items\".text_normalized, \"Items\".token_list, \"Items\".token_start_index_list, \"Items\".token_end_index_list, :search_list, \"Items\".translation_normalized, \"Items\".translation_token_list, \"Items\".translation_token_start_index_list, \"Items\".translation_token_end_index_list) AS search_result" if ai_search else ""}{f", least({', '.join([f'\"Items\".vector <=> :search_vector_{i}' for i in range(len(search_embedding_str_list))])}) AS cosine_distance" if ai_search and (search_embedding_str_list is not None) and (len(search_embedding_str_list) > 0) else ""}
     FROM "Items" 
     WHERE "Items"."workspaceId" = :workspace_id AND "Items"."knowledgeBaseId" = :knowledge_base_id{" AND text_normalized LIKE :search_content ESCAPE '\\'" if not ai_search else ""}{{start_point_where_clause_str}}
     ORDER BY "Items".type, "Items"."fileName", coalesce("Items"."pageNumber", -1), CASE WHEN ("Items".type IN ('pdf', 'image')) THEN -"Items".bbox[2] ELSE coalesce("Items".bbox[1], -1.0) END, CASE WHEN ("Items".type IN ('pdf', 'image')) THEN "Items".bbox[1] ELSE coalesce("Items".bbox[2], -1.0) END, -coalesce("Items".bbox[4], -1.0), coalesce("Items".bbox[3], -1.0), "Items"."chunkIdx"
-) AS sub_query
-{"WHERE sub_query.search_result IS NOT NULL" if ai_search else ""}{" OR (sub_query.cosine_distance < 0.4 AND sub_query.\"chunkType\" IN ('text', 'list', 'table') AND LENGTH(sub_query.text_normalized) > 12 AND NOT (REGEXP_REPLACE(sub_query.text_normalized, '\\s', '', 'g') ~ '^[0-9]+$'))" if ai_search and (search_embedding_str_list is not None) and (len(search_embedding_str_list) > 0) else ""}
+) AS sub_query_0
+{"WHERE sub_query_0.search_result IS NOT NULL" if ai_search else ""}{" OR (sub_query_0.cosine_distance < 0.3 AND LENGTH(sub_query_0.text_normalized) > 12 AND NOT (REGEXP_REPLACE(sub_query_0.text_normalized, '\\s', '', 'g') ~ '^[0-9]+$'))" if ai_search and (search_embedding_str_list is not None) and (len(search_embedding_str_list) > 0) else ""}
 LIMIT :batch_size
+) as sub_query_1
+ORDER BY sub_query_1.type, sub_query_1."fileName", coalesce(sub_query_1."pageNumber", -1), CASE WHEN (sub_query_1.type IN ('pdf', 'image')) THEN -sub_query_1.bbox[2] ELSE coalesce(sub_query_1.bbox[1], -1.0) END, CASE WHEN (sub_query_1.type IN ('pdf', 'image')) THEN sub_query_1.bbox[1] ELSE coalesce(sub_query_1.bbox[2], -1.0) END, -coalesce(sub_query_1.bbox[4], -1.0), coalesce(sub_query_1.bbox[3], -1.0), sub_query_1."chunkIdx"
 """
 
     sql_parameter_dict: Dict[str, Any] = {
@@ -321,7 +324,7 @@ LIMIT :batch_size
                             result[1],
                         )
                     )
-        embedding_search_result_list.sort(key=lambda x: x[1])
+        embedding_search_result_list.sort(key=lambda x: (x[0]["fileName"], x[1]))
         search_result_list.extend(
             [
                 embedding_search_result[0]
@@ -332,5 +335,7 @@ LIMIT :batch_size
             search_result_list[-1]["hasMore"] = True
             search_result_list[-1]["searchListOriginal"] = search_list_original
             search_result_list[-1]["searchList"] = search_list
+            search_result_list[-1]["lastDocumentKey"] = row_list[-1][0]
+            search_result_list[-1]["lastChunkIdx"] = row_list[-1][1]
         yield search_result_list
     del search_embedding_str_list
