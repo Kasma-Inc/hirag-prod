@@ -53,18 +53,18 @@ class TranslatorConfig(BaseSettings):
     )
     rate_limit_min_interval_seconds: float = Field(
         0.1,
-        description="The min interval in seconds between requests to the embedding service.",
+        description="The min interval in seconds between requests to the translator service.",
     )
 
     # TODO(tatiana): remove after Models table is refactored
     openai_base_url: Optional[str] = Field(
         None,
-        description="The base URL of the OpenAI embedding service."
+        description="The base URL of the OpenAI translator service."
         " Useful only when service type is openai.",
     )
     openai_api_key: Optional[SecretStr] = Field(
         None,
-        description="The API key of the OpenAI embedding service."
+        description="The API key of the OpenAI translator service."
         " Useful only when service type is openai.",
     )
 

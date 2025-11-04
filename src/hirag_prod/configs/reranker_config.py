@@ -27,7 +27,7 @@ class RerankConfig(BaseSettings):
         "/rerank", description="The entry point of the reranker service."
     )
     model_name: str = Field(
-        "Qwen3-Reranker-8B", description="The model name of the reranker service."
+        "Qwen3-Reranker-4B", description="The model name of the reranker service."
     )
 
     # Rate limits
@@ -39,5 +39,5 @@ class RerankConfig(BaseSettings):
     )
     rate_limit_min_interval_seconds: float = Field(
         0.1,
-        description="The min interval in seconds between requests to the embedding service.",
+        description="The min interval in seconds between requests to the reranker service.",
     )
