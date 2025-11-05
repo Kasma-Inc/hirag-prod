@@ -2,11 +2,9 @@
 Test script for querying by document keys in HiRAG system.
 Similar to main.py but focused on testing query_by_keys functionality.
 """
+
 import asyncio
-import json
 import logging
-import os
-from datetime import datetime
 
 from hirag_prod import HiRAG
 from hirag_prod.configs.cli_options import CliOptions
@@ -29,7 +27,7 @@ async def test_query_by_keys(save_json=False):
 
     workspace_id = "test_workspace"
     knowledge_base_id = "test_pg"
-    
+
     # Insert documents if not skipped
     file_ids = ["test_id"]
 
@@ -49,13 +47,13 @@ def main():
     """
     # Use CLI options for configuration
     cli_options = CliOptions()
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Query By Keys Test Configuration")
-    print("="*60)
+    print("=" * 60)
     print(f"Save JSON: {cli_options.save_json}")
-    print("="*60)
-    
+    print("=" * 60)
+
     asyncio.run(
         test_query_by_keys(
             save_json=cli_options.save_json,
