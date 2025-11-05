@@ -11,21 +11,11 @@ from redis.asyncio import ConnectionPool, Redis
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from hirag_prod._llm import (
-    ChatCompletion,
-    EmbeddingService,
-    LocalChatService,
-    LocalEmbeddingService,
-    create_chat_service,
-    create_embedding_service,
-)
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
     get_config_manager,
-    get_hi_rag_config,
-    get_translator_config,
 )
-from hirag_prod.reranker import Reranker, create_reranker
+from hirag_prod.reranker import Reranker
 from hirag_prod.resources.functions import timing_logger
 from hirag_prod.translator.local_translator import LocalTranslator
 from hirag_prod.translator.qwen_translator import QwenTranslator
@@ -63,10 +53,12 @@ class ResourceManager:
         )
 
         # Services
-        self._chat_service: Optional[Union[ChatCompletion, LocalChatService]] = None
-        self._embedding_service: Optional[
-            Union[EmbeddingService, LocalEmbeddingService]
-        ] = None
+        self._chat_service_dict: Optional[Dict[str, Any]] = (
+            resource_dict.get("chat_service_dict", None) if resource_dict else None
+        )
+        self._embedding_service_dict: Optional[Dict[str, Any]] = (
+            resource_dict.get("embedding_service_dict", None) if resource_dict else None
+        )
 
         # Chinese convertor
         self._chinese_convertor_simplified_to_hk_traditional: Optional[OpenCC] = (
@@ -141,12 +133,7 @@ class ResourceManager:
                     await self._initialize_database()
 
                 # Initialize services
-                if not self._chat_service:
-                    self._chat_service = create_chat_service()
-                if not self._embedding_service:
-                    self._embedding_service = create_embedding_service(
-                        default_batch_size=get_hi_rag_config().embedding_batch_size
-                    )
+                # TODO(klma): create service if not exists
 
                 # Chinese convertor
                 if not self._chinese_convertor_simplified_to_hk_traditional:
@@ -163,18 +150,6 @@ class ResourceManager:
                     self._sentence_tokenizer = hanlp.load(
                         hanlp.pretrained.tok.UD_TOK_MMINILMV2L12
                     )
-
-                # Initialize Translator
-                if not self._translator:
-                    self._translator = (
-                        LocalTranslator()
-                        if get_translator_config().service_type == "local"
-                        else QwenTranslator()
-                    )
-
-                # Initialize Reranker
-                if not self._reranker:
-                    self._reranker = create_reranker()
 
                 # Reverse the cleanup operation list to ensure proper cleanup
                 self._cleanup_operation_list.reverse()
@@ -315,19 +290,27 @@ class ResourceManager:
             raise RuntimeError("Redis not initialized. Call initialize() first.")
         return Redis(connection_pool=self._redis_pool, **kwargs)
 
-    def get_chat_service(self) -> Union[ChatCompletion, LocalChatService]:
+    def get_chat_service(self, provider: str) -> Any:
         """Get the chat service instance."""
-        if self._chat_service is None:
-            raise RuntimeError("Chat service not initialized. Call initialize() first.")
-        return self._chat_service
-
-    def get_embedding_service(self) -> Union[EmbeddingService, LocalEmbeddingService]:
-        """Get the embedding service instance."""
-        if self._embedding_service is None:
+        if (
+            self._chat_service_dict.get(provider, None) is None
+            or provider not in self._chat_service_dict
+        ):
             raise RuntimeError(
-                "Embedding service not initialized. Call initialize() first."
+                f"Chat service for provider '{provider}' not initialized. Call initialize() first."
             )
-        return self._embedding_service
+        return self._chat_service_dict[provider]
+
+    def get_embedding_service(self, provider: str) -> Any:
+        """Get the embedding service instance."""
+        if (
+            self._embedding_service_dict.get(provider, None) is None
+            or provider not in self._embedding_service_dict
+        ):
+            raise RuntimeError(
+                f"Embedding service for provider '{provider}' not initialized. Call initialize() first."
+            )
+        return self._embedding_service_dict[provider]
 
     def get_chinese_convertor(self, convertor_type: str = "s2hk") -> OpenCC:
         """Get the Chinese convertor instance."""

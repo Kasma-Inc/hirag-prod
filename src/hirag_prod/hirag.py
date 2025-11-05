@@ -18,7 +18,8 @@ from hirag_prod.configs.cli_options import CliOptions
 from hirag_prod.configs.functions import (
     get_config_manager,
     get_hi_rag_config,
-    get_llm_config,
+    get_llm_configs,
+    get_provider_key_configs,
     initialize_config_manager,
 )
 from hirag_prod.entity import BaseKG, VanillaKG
@@ -45,8 +46,8 @@ from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_chinese_convertor,
+    get_default_model_id,
     get_embedding_service,
-    get_translator,
     initialize_resource_manager,
 )
 from hirag_prod.schema import Chunk, File, Item, item_to_chunk
@@ -273,9 +274,10 @@ class DocumentProcessor:
                             table_content=table_item.text
                         )
                         try:
+                            # TODO(kaili): fix
                             caption = await get_chat_service().complete(
                                 prompt=system_prompt,
-                                model=get_llm_config().model_name,
+                                model=get_provider_key_configs().model_name,
                             )
                             items[idx].caption = caption
                         except Exception:
@@ -479,6 +481,7 @@ class HiRAG:
 
     async def _create_storage_manager(self, vdb: Optional[BaseVDB] = None) -> None:
         # Build VDB by type
+        # Todo(kaili): remove ofnil
         if vdb is None:
             if get_hi_rag_config().vdb_type == "pgvector":
                 vdb = PGVector.create(
@@ -511,9 +514,12 @@ class HiRAG:
             chunk_overlap=get_hi_rag_config().chunk_overlap,
         )
 
+        # Todo(kaili): remove openrouter and gpt-4o-mini
         self._kg_constructor = VanillaKG.create(
             extract_func=get_chat_service().complete,
-            llm_model_name=get_llm_config().model_name,
+            llm_model_name=get_llm_configs()[
+                get_default_model_id("chat_completion")
+            ].model_name,
         )
 
         # Initialize job tracker (no cache)

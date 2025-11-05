@@ -9,7 +9,6 @@ import pandas as pd
 import xlrd
 
 from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.configs.functions import get_llm_config
 from hirag_prod.exceptions import HiRAGException
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
@@ -32,6 +31,7 @@ async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
         sheet_name=sheet_name, latex=latex
     )
     try:
+        breakpoint()
         return await get_chat_service().complete(
             prompt=system_prompt, model=get_llm_config().model_name
         )

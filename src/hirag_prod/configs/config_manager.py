@@ -10,8 +10,8 @@ from hirag_prod.configs.document_loader_config import DotsOCRConfig
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.envs import Envs
 from hirag_prod.configs.hi_rag_config import HiRAGConfig
-from hirag_prod.configs.llm_config import LLMConfig
 from hirag_prod.configs.postgres_db_config import PostgresDBConfig
+from hirag_prod.configs.provider_key_config import ProviderKeyConfigs
 from hirag_prod.configs.reranker_config import RerankConfig
 from hirag_prod.configs.shared_variables import SharedVariables
 from hirag_prod.configs.translator_config import TranslatorConfig
@@ -45,34 +45,17 @@ class ConfigManager:
         )
         self.envs: Envs = Envs(**config_dict if config_dict is not None else {})
         self.hi_rag_config = HiRAGConfig(**self.envs.model_dump())
-        self.embedding_config: EmbeddingConfig = EmbeddingConfig(
-            **self.envs.model_dump()
-        )
         self.postgres_config: PostgresDBConfig = PostgresDBConfig(
             **self.envs.model_dump()
         )
-        self.llm_config: LLMConfig = LLMConfig(**self.envs.model_dump())
-        self._reranker_config: Optional[RerankConfig] = None
-        self._translator_config: Optional[TranslatorConfig] = None
-        self._dots_ocr_config: Optional[DotsOCRConfig] = None
-        self._s3_config: Optional[S3Config] = None
+        self.embedding_configs = config_dict["embedding_configs"]
+        self.reranker_configs = config_dict["reranker_configs"]
+        self.translator_configs = config_dict["translator_configs"]
+        self.ocr_configs = config_dict["ocr_configs"]
+        self.llm_configs = config_dict["llm_configs"]
+        self.default_model_ids = config_dict["default_model_ids"]
 
-        # add rate limit configs to self.envs to be compatible with the rate limiter impl
-        for model in [
-            self.llm_config,
-            self.reranker_config,
-            self.translator_config,
-            self.embedding_config,
-            self.dots_ocr_config,
-        ]:
-            for option in [
-                "rate_limit",
-                "rate_limit_time_unit",
-                "rate_limit_min_interval_seconds",
-            ]:
-                key = model.model_fields[option].alias
-                value = getattr(model, option)
-                setattr(self.envs, key, value)
+        self._s3_config: Optional[S3Config] = None
 
         self.shared_variables: SharedVariables = SharedVariables(
             self.is_main_process,
@@ -108,32 +91,11 @@ class ConfigManager:
         return self.postgres_config.postgres_url_sync
 
     @property
-    def translator_config(self) -> TranslatorConfig:
-        """Getter for translator_config"""
-        if not self._translator_config:
-            self._translator_config = TranslatorConfig(**self.envs.model_dump())
-        return self._translator_config
-
-    @property
-    def dots_ocr_config(self) -> DotsOCRConfig:
-        """Getter for dots_ocr_config"""
-        if not self._dots_ocr_config:
-            self._dots_ocr_config = DotsOCRConfig(**self.envs.model_dump())
-        return self._dots_ocr_config
-
-    @property
     def s3_config(self) -> S3Config:
         """Getter for s3_config"""
         if not self._s3_config:
             self._s3_config = S3Config(**self.envs.model_dump())
         return self._s3_config
-
-    @property
-    def reranker_config(self) -> RerankConfig:
-        """Getter for reranker_config"""
-        if not self._reranker_config:
-            self._reranker_config = RerankConfig(**self.envs.model_dump())
-        return self._reranker_config
 
     @classmethod
     def to_dotenv_example(
@@ -152,7 +114,7 @@ class ConfigManager:
             DotsOCRConfig,
             EmbeddingConfig,
             HiRAGConfig,
-            LLMConfig,
+            ProviderKeyConfigs,
             PostgresDBConfig,
             RerankConfig,
             TranslatorConfig,

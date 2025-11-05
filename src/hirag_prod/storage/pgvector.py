@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.configs.functions import get_hi_rag_config, get_translator_config
+from hirag_prod.configs.functions import get_hi_rag_config, get_translator_configs
 from hirag_prod.cross_language_search.functions import (
     has_traditional_chinese,
     normalize_tokenize_text,
@@ -18,6 +18,7 @@ from hirag_prod.cross_language_search.functions import (
 from hirag_prod.resources.functions import (
     get_db_engine,
     get_db_session_maker,
+    get_default_model_id,
     get_translator,
 )
 from hirag_prod.schema import Base as PGBase
@@ -109,7 +110,12 @@ class PGVector(BaseVDB):
             translations_text_list = None
 
             if with_translation:
-                if get_translator_config().service_type == "local":
+                if (
+                    get_translator_configs()[
+                        get_default_model_id("translator")
+                    ].db_table["type"]
+                    == "local"
+                ):
                     translated_list = await get_translator().translate(
                         texts_to_upsert, dest="en"
                     )
@@ -133,7 +139,12 @@ class PGVector(BaseVDB):
                         ) = normalize_tokenize_text(texts_to_upsert[i])
 
                     if with_translation:
-                        if get_translator_config().service_type == "local":
+                        if (
+                            get_translator_configs()[
+                                get_default_model_id("translator")
+                            ].db_table["type"]
+                            == "local"
+                        ):
                             row["translation"] = translations_text_list[i]
                         else:
                             row["translation"] = (

@@ -4,7 +4,7 @@ from typing import List, Set, Tuple, Union
 
 import numpy as np
 
-from hirag_prod.configs.functions import get_llm_config
+from hirag_prod.configs.functions import get_kb_model_configs
 from hirag_prod.cross_language_search.types import ProcessSearchResponse
 from hirag_prod.resources.functions import (
     get_chat_service,
@@ -51,10 +51,10 @@ The final result need to be **a JSON object with the following structure**:
   "is_english": true or false,
   "translation_list": ["translation1", "translation2", "translation3", "translation4", "translation5", "translation6", ...]
 }}""",
-        model=get_llm_config().model_name,
-        max_tokens=get_llm_config().max_tokens,
+        model=get_kb_model_configs()["search"]["model_name"],
+        max_tokens=get_kb_model_configs()["search"]["max_tokens"],
         response_format=ProcessSearchResponse,
-        timeout=get_llm_config().timeout,
+        timeout=get_kb_model_configs()["search"]["timeout"],
     )
 
     for synonym in process_search_response.synonym_list:

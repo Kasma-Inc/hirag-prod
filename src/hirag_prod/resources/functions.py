@@ -6,6 +6,11 @@ import time
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from hirag_prod._utils import log_error_info
+from hirag_prod.configs.functions import (
+    get_config_manager,
+    get_embedding_api_provider,
+    get_llm_api_provider,
+)
 
 if TYPE_CHECKING:
     from hirag_prod.resources.resource_manager import ResourceManager
@@ -113,17 +118,21 @@ def tokenize_sentence(sentence: str) -> Tuple[List[str], List[int], List[int]]:
         return result_list, token_start_index_list, token_end_index_list
 
 
-def get_translator():
-    return get_resource_manager().get_translator()
+def get_default_model_id(api_type: str) -> str:
+    if api_type not in get_config_manager().default_model_ids:
+        raise ValueError(f"API type {api_type} not found in default model ids")
+    return get_config_manager().default_model_ids[api_type]
 
 
-def get_reranker():
-    return get_resource_manager().get_reranker()
+def get_chat_service(model: Optional[str] = None):
+    if model is None:
+        model = get_default_model_id("chat_completion")
+    provider = get_llm_api_provider(model)
+    return get_resource_manager().get_chat_service(provider)
 
 
-def get_chat_service():
-    return get_resource_manager().get_chat_service()
-
-
-def get_embedding_service():
-    return get_resource_manager().get_embedding_service()
+def get_embedding_service(model: Optional[str] = None):
+    if model is None:
+        model = get_default_model_id("embedding")
+    provider = get_embedding_api_provider(model)
+    return get_resource_manager().get_embedding_service(provider)

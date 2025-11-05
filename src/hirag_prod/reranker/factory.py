@@ -1,9 +1,10 @@
 from typing import Optional
 
-from hirag_prod.configs.functions import get_reranker_config
+from hirag_prod.configs.functions import get_reranker_configs
 from hirag_prod.configs.reranker_config import RerankConfig
 from hirag_prod.reranker.base import Reranker
 from hirag_prod.reranker.local_reranker import LocalReranker
+from hirag_prod.resources.functions import get_default_model_id
 
 
 def create_reranker(
@@ -11,17 +12,13 @@ def create_reranker(
 ) -> Reranker:
     # Fallback to environment-based config if no config provided (for backward compatibility)
     if reranker_config is None:
-        reranker_config = get_reranker_config()
+        reranker_config = get_reranker_configs()[get_default_model_id("reranker")]
 
-    # Allow override of type if explicitly provided
-    if reranker_type is not None:
-        reranker_config.reranker_type = reranker_type.lower()
-
-    if reranker_config.reranker_type == "local":
+    if reranker_config.db_table["type"] == "local":
         return LocalReranker(
             reranker_config.base_url,
             reranker_config.model_name,
             reranker_config.entry_point,
             reranker_config.api_key.get_secret_value(),
         )
-    raise ValueError(f"Unsupported reranker type: {reranker_config.reranker_type}")
+    raise ValueError(f"Unsupported reranker type: {reranker_config.db_table['type']}")
