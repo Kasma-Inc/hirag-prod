@@ -946,8 +946,6 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
     content = "\n".join(b.get("markdown", "") for b in blocks if b.get("markdown"))
 
     return {
-        "fileName": file.fileName or "",
-        "markdownDocument": (file.text or ""),
         "hierarchy": {
             "content": content,
             "blocks": blocks,

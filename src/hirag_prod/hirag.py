@@ -1206,6 +1206,52 @@ class HiRAG:
 
         return query_results
 
+    async def query_by_keys(
+        self,
+        key_value: List[str],
+        table_name: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        key_column: str,
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Query items by keys"""
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        return await self._query_service.query_by_keys(
+            key_value=key_value,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            key_column=key_column,
+            columns_to_select=columns_to_select,
+        )
+
+    async def query_file_info(
+        self,
+        file_ids: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List[Dict[str, Any]]:
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        return await self.query_by_keys(
+            key_value=file_ids,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Files",
+            key_column="id",
+            columns_to_select=None,
+        )
+
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""
         if not self._storage:

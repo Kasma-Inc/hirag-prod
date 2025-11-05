@@ -214,9 +214,11 @@ class QueryService:
         res = {}
         try:
             rows = await self.storage.query_by_keys(
-                chunk_ids=chunk_ids,
+                key_value=chunk_ids,
                 workspace_id=workspace_id,
                 knowledge_base_id=knowledge_base_id,
+                table_name="Chunks",
+                key_column="documentKey",
                 columns_to_select=["documentKey", "vector"],
             )
             for row in rows:
@@ -247,9 +249,11 @@ class QueryService:
         if not chunk_ids:
             return []
         rows = await self.storage.query_by_keys(
-            chunk_ids=chunk_ids,
+            key_value=chunk_ids,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
+            table_name="Chunks",
+            key_column="documentKey",
             columns_to_select=columns_to_select,
         )
         # Build map for stable ordering
@@ -455,6 +459,26 @@ class QueryService:
             strategy=strategy,
             topk=topk,
             topn=topn,
+        )
+
+    @traced()
+    async def query_by_keys(
+        self,
+        key_value: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str = "Chunks",
+        key_column: str = "documentKey",
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Query chunks by document keys via unified storage"""
+        return await self.storage.query_by_keys(
+            key_value=key_value,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            key_column=key_column,
+            columns_to_select=columns_to_select,
         )
 
     @traced()
