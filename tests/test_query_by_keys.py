@@ -28,16 +28,21 @@ async def test_query_by_keys(save_json=False):
     workspace_id = "test_workspace"
     knowledge_base_id = "test_pg"
 
-    # Insert documents if not skipped
-    file_ids = ["test_id"]
+    file_list = await index.list_kb_files(
+        workspace_id=workspace_id,
+        knowledge_base_id=knowledge_base_id,
+    )
+    print(f"Files in knowledge base: {file_list}")
 
-    rows = await index.query_file_info(
+    file_ids = [file["id"] for file in file_list]
+
+    file_details = await index.query_file_by_ids(
         workspace_id=workspace_id,
         knowledge_base_id=knowledge_base_id,
         file_ids=file_ids,
     )
 
-    print(f"Query results: {rows}")
+    print(f"Query by file id results: {file_details}")
     print(f"{'='*60}\n")
 
 
