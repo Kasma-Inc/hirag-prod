@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any, Dict, List, Optional, Union
 
 from openai import AsyncOpenAI
@@ -227,16 +226,11 @@ class LocalTranslator:
     ) -> list[LocalTranslated]:
         if not texts:
             return []
-        sem = asyncio.Semaphore(max_concurrency)
-
-        async def worker(t: str):
-            async with sem:
-                return await self._translate_single(t, dest, src)
 
         from tqdm.asyncio import tqdm_asyncio
 
         results = await tqdm_asyncio.gather(
-            *[worker(t) for t in texts],
+            *[self._translate_single(t, dest, src) for t in texts],
             desc="Translating",
         )
         return results
