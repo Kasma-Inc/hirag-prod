@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional
 
@@ -58,3 +59,32 @@ class Chunk(Base):
     def __iter__(self):
         for column_name in self.__table__.columns.keys():
             yield column_name, getattr(self, column_name)
+
+
+@dataclass
+class DenseChunk:
+    """Dense/recursive chunk schema aligned to this module's style."""
+
+    chunk_idx: int = None
+    text: str = None
+    category: str = None
+    bbox: List[List[float]] = None
+    headings: List[str] = None
+    caption: Optional[str] = None
+    children: Optional[List[int]] = None
+    pages_span: List[int] = None
+    page_height: float = None
+    page_width: float = None
+    document_id: str = None
+    document_type: str = None
+    file_name: str = None
+    uri: str = None
+    private: bool = None
+    knowledge_base_id: str = None
+    workspace_id: str = None
+    created_at: datetime = None
+    updated_at: datetime = None
+    created_by: str = None
+    updated_by: str = None
+    id: str = None
+    extracted_timestamp: Optional[datetime] = None

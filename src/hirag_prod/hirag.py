@@ -324,7 +324,7 @@ class DocumentProcessor:
                         header_set=header_set,
                     )
                     if generated_md:
-                        generated_md.tableOfContents = build_rich_toc(
+                        generated_md.tableOfContents = await build_rich_toc(
                             items, generated_md
                         )
                         if extracted_timestamp:
@@ -537,7 +537,7 @@ class HiRAG:
     # Chat service methods
     # ========================================================================
 
-    # Helper function for similarity calcuation
+    # Helper function for similarity calculation
     @traced(record_args=[])
     async def calculate_similarity(
         self, sentence_embedding: List[float], references: Dict[str, List[float]]
