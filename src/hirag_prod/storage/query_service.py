@@ -261,6 +261,29 @@ class QueryService:
         return [by_id[cid] for cid in chunk_ids if cid in by_id]
 
     @traced()
+    async def query_by_terms(
+        self,
+        terms: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        column_to_search: str,
+        columns_to_select: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """Query chunks by terms via unified storage"""
+        limit = limit or get_hi_rag_config().default_query_top_k
+        return await self.storage.query_by_terms(
+            terms=terms,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            column_to_search=column_to_search,
+            columns_to_select=columns_to_select,
+            limit=limit,
+        )
+
+    @traced()
     async def pagerank_chunks(
         self,
         query: Union[str, List[str]],

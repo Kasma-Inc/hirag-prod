@@ -53,6 +53,19 @@ class BaseVDB(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def query_by_terms(
+        self,
+        terms: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        column_to_search: str = "content",
+        columns_to_select: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
     async def get_existing_document_keys(
         self,
         uri: str,

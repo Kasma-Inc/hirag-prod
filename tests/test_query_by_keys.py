@@ -1,8 +1,3 @@
-"""
-Test script for querying by document keys in HiRAG system.
-Similar to main.py but focused on testing query_by_keys functionality.
-"""
-
 import asyncio
 import logging
 
@@ -16,6 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(".env", override=True)
 
 
+# To avoid errors with not able to read .env, run in root folder chatbot/
 async def test_query_by_keys(save_json=False):
     """
     Test the query_by_keys functionality of HiRAG.
@@ -32,7 +28,8 @@ async def test_query_by_keys(save_json=False):
         workspace_id=workspace_id,
         knowledge_base_id=knowledge_base_id,
     )
-    print(f"Files in knowledge base: {file_list}")
+    print(f"Files in knowledge base: {[fn.get('fileName') for fn in file_list]}")
+    print(f"{'='*60}\n")
 
     file_ids = [file["id"] for file in file_list]
 
@@ -42,7 +39,32 @@ async def test_query_by_keys(save_json=False):
         file_ids=file_ids,
     )
 
-    print(f"Query by file id results: {file_details}")
+    print(
+        f"Query by file id results: {[{'fileName': fd.get('fileName'), 'ToC': fd.get('tableOfContents')} for fd in file_details]}"
+    )
+    print(f"{'='*60}\n")
+
+    # Randomly get tableOfContents that contain hierarchy.blocks.id
+    header_ids = []
+    for file in file_details:
+        toc = file.get("tableOfContents", [])
+        if toc:
+            blocks = toc.get("hierarchy", {}).get("blocks", [])
+            for block in blocks:
+                header_id = block.get("id")
+                if header_id:
+                    header_ids.append(header_id)
+
+    print(f"Header IDs extracted: {header_ids}")
+    print(f"{'='*60}\n")
+
+    chunks = await index.query_by_headers(
+        workspace_id=workspace_id,
+        knowledge_base_id=knowledge_base_id,
+        headers=header_ids,
+    )
+
+    print(f"Query by header IDs results: {chunks}")
     print(f"{'='*60}\n")
 
 
