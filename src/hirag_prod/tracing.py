@@ -11,7 +11,6 @@ from functools import wraps
 from inspect import signature
 from typing import AsyncGenerator, Optional
 
-# from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry import propagate, trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk import trace as trace_sdk
@@ -42,7 +41,7 @@ def _build_tracer_provider(
 
 
 def setup_tracing(
-    service_name: str = "dotsocr",
+    service_name: str = "rag",
     otel_exporter_otlp_traces_endpoint: Optional[str] = None,
     otel_exporter_otlp_traces_timeout: Optional[int] = None,
 ) -> trace.Tracer:
@@ -60,48 +59,6 @@ def setup_tracing(
     trace.set_tracer_provider(trace_provider)
 
     _tracer = trace.get_tracer(__name__)
-
-    from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
-
-    SQLAlchemyInstrumentor().instrument(
-        tracer_provider=trace.get_tracer_provider(),
-    )
-
-    from opentelemetry.instrumentation.openai import OpenAIInstrumentor
-
-    OpenAIInstrumentor().instrument()
-
-    from opentelemetry.instrumentation.requests import RequestsInstrumentor
-
-    # You can optionally pass a custom TracerProvider to instrument().
-    RequestsInstrumentor().instrument(excluded_urls="/health,/status")
-
-    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-
-    HTTPXClientInstrumentor().instrument()
-
-    try:
-        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
-
-        AsyncPGInstrumentor().instrument()
-    except ImportError:
-        pass  # asyncpg not installed
-
-    # try:
-    #     from opentelemetry.instrumentation.aio_pika import AioPikaInstrumentor
-
-    #     AioPikaInstrumentor().instrument()
-    # except ImportError:
-    #     pass  # aio-pika not installed
-
-    # try:
-    #     from opentelemetry.instrumentation.redis import RedisInstrumentor
-
-    #     RedisInstrumentor().instrument()
-    # except ImportError:
-    #     pass  # redis not installed
-
-    # propagate.set_global_textmap(TraceContextTextMapPropagator())
 
     return _tracer
 
