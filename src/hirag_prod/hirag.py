@@ -1277,7 +1277,7 @@ class HiRAG:
             knowledge_base_id=knowledge_base_id,
             table_name="Files",
             key_column="knowledgeBaseId",
-            columns_to_select=["id", "fileName", "pageNumber", "text"],
+            columns_to_select=None,
         )
 
     async def query_by_terms(
