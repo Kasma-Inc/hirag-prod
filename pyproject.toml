@@ -55,6 +55,9 @@ dependencies = [
     "openpyxl>=3.1.5",
 ]
 
+[tool.uv]
+exclude-dependencies = ["pynvml"]
+
 [tool.uv.sources]
 docling-core = { git = "https://github.com/Zachary260325/docling-core.git", branch = "main" }
 
