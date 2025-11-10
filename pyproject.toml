@@ -53,6 +53,7 @@ dependencies = [
     "sqlalchemy>=2.0.44",
     "requests>=2.32.5",
     "openpyxl>=3.1.5",
+    "nvidia-ml-py==13.580.82",
 ]
 
 [tool.uv]
