@@ -1045,7 +1045,7 @@ requires-dist = [
     { name = "networkx", specifier = "==3.3" },
     { name = "nltk", specifier = "==3.9.1" },
     { name = "numpy", specifier = ">=1.26.4" },
-    { name = "nvidia-ml-py", specifier = "==13.580.82" },
+    { name = "nvidia-ml-py", specifier = ">=13.580.82" },
     { name = "openai", specifier = "==1.61.0" },
     { name = "opencc", specifier = "==1.1.9" },
     { name = "openpyxl", specifier = ">=3.1.5" },
