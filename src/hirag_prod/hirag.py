@@ -143,16 +143,23 @@ class DocumentProcessor:
                         await self.job_status_tracker.set_job_status(
                             file_id=file_id, status=JobStatus.FAILED
                         )
-                        await self.clear_document(
-                            document_id=document_meta["documentKey"],
-                            workspace_id=workspace_id,
-                            knowledge_base_id=knowledge_base_id,
+                        # Guard against missing document metadata
+                        doc_key = (
+                            document_meta.get("documentKey")
+                            if isinstance(document_meta, dict)
+                            else None
                         )
+                        if doc_key:
+                            await self.clear_document(
+                                document_id=doc_key,
+                                workspace_id=workspace_id,
+                                knowledge_base_id=knowledge_base_id,
+                            )
 
                     except Exception as e:
                         log_error_info(
                             logging.ERROR,
-                            "Failed to saving job status (failed) to Postgres",
+                            "Failed to save job status (failed) to Postgres",
                             e,
                         )
                 return self.metrics.metrics
@@ -170,7 +177,7 @@ class DocumentProcessor:
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
-                        "Failed to saving job status (processing) to Postgres",
+                        "Failed to save job status (processing) to Postgres",
                         e,
                     )
 
@@ -193,7 +200,7 @@ class DocumentProcessor:
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
-                        "Failed to saving job status (completed) to Postgres",
+                        "Failed to save job status (completed) to Postgres",
                         e,
                     )
 
@@ -265,7 +272,7 @@ class DocumentProcessor:
                             loader_type="docling",
                         )
 
-                    # summarize each table into a concise caption using LLM
+                    # Summarize each table into a concise caption using an LLM
                     @traced()
                     async def summarize_table(idx: int):
                         table_item = items[idx]
@@ -284,7 +291,7 @@ class DocumentProcessor:
                                 f"Failed to summarize table {table_item.documentKey}"
                             )
 
-                    # Validate instance, as it may fall back to docling if cloud service unavailable
+                    # Validate instance, as it may fall back to Docling if the cloud service is unavailable
                     if isinstance(json_doc, list):
                         # Chunk the Dots OCR document
                         items, header_set, table_items_idx = chunk_dots_document(
@@ -324,7 +331,7 @@ class DocumentProcessor:
                         header_set=header_set,
                     )
                     if generated_md:
-                        generated_md.tableOfContents = build_rich_toc(
+                        generated_md.tableOfContents = await build_rich_toc(
                             items, generated_md
                         )
                         if extracted_timestamp:
@@ -478,6 +485,7 @@ class HiRAG:
         logger.info(f"Language set to {get_config_manager().language}")
 
     async def _create_storage_manager(self, vdb: Optional[BaseVDB] = None) -> None:
+        """Create and initialize the storage manager and underlying vector DB."""
         # Build VDB by type
         if vdb is None:
             if get_hi_rag_config().vdb_type == "pgvector":
@@ -537,7 +545,7 @@ class HiRAG:
     # Chat service methods
     # ========================================================================
 
-    # Helper function for similarity calcuation
+    # Helper function for similarity calculation
     @traced(record_args=[])
     async def calculate_similarity(
         self, sentence_embedding: List[float], references: Dict[str, List[float]]
@@ -937,9 +945,9 @@ class HiRAG:
 
         logger.info(f"🚀 Starting document processing: {document_path}")
         start_time = time.perf_counter()
-        document_uri = (
-            document_meta.get("uri", document_path) if document_meta else document_path
-        )
+        # Ensure document_meta is a dict before mutation
+        document_meta = document_meta or {}
+        document_uri = document_meta.get("uri", document_path)
         document_id = compute_mdhash_id(
             f"{document_uri}:{knowledge_base_id}:{workspace_id}", prefix="doc-"
         )
@@ -1019,7 +1027,7 @@ class HiRAG:
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
-                        "Failed to saving job status (failed) to Postgres",
+                        "Failed to save job status (failed) to Postgres",
                         e,
                     )
             raise
@@ -1205,6 +1213,139 @@ class HiRAG:
             query_results["summary"] = text_summary
 
         return query_results
+
+    async def query_by_keys(
+        self,
+        key_value: List[str],
+        table_name: str,
+        workspace_id: str,
+        knowledge_base_id: str,
+        key_column: str,
+        columns_to_select: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Query items by keys"""
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        return await self._query_service.query_by_keys(
+            key_value=key_value,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            key_column=key_column,
+            columns_to_select=columns_to_select,
+        )
+
+    async def query_file_by_ids(
+        self,
+        file_ids: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List[Dict[str, Any]]:
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        return await self.query_by_keys(
+            key_value=file_ids,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Files",
+            key_column="id",
+            columns_to_select=None,
+        )
+
+    async def list_kb_files(
+        self,
+        workspace_id: str,
+        knowledge_base_id: str,
+    ) -> List[Dict[str, Any]]:
+        """List files in knowledge base"""
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+
+        return await self.query_by_keys(
+            key_value=[knowledge_base_id],
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Files",
+            key_column="knowledgeBaseId",
+            columns_to_select=None,
+        )
+
+    async def query_by_terms(
+        self,
+        terms: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        column_to_search: str,
+        columns_to_select: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        if not self._query_service:
+            raise HiRAGException("HiRAG instance not properly initialized")
+        if not workspace_id:
+            raise HiRAGException("Workspace ID (workspace_id) is required")
+        if not knowledge_base_id:
+            raise HiRAGException("Knowledge base ID (knowledge_base_id) is required")
+        if not terms:
+            raise HiRAGException("At least one search term is required")
+        if not table_name:
+            raise HiRAGException("Table name is required")
+        if not column_to_search:
+            raise HiRAGException("Column to search is required")
+
+        return await self._query_service.query_by_terms(
+            terms=terms,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            column_to_search=column_to_search,
+            columns_to_select=columns_to_select,
+            limit=limit,
+        )
+
+    async def query_by_headers(
+        self,
+        headers: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query chunks by searching for headers.
+
+        This is a convenience method that queries the Chunks table
+        by the header column.
+
+        Args:
+            headers: List of header strings to search for
+            workspace_id: Workspace identifier
+            knowledge_base_id: Knowledge base identifier
+            limit: Maximum number of results to return (None = use default)
+
+        Returns:
+            List of matching chunk dictionaries
+        """
+        if not headers:
+            raise HiRAGException("At least one header is required")
+
+        return await self.query_by_terms(
+            terms=headers,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name="Chunks",
+            column_to_search="headers",
+            limit=limit,
+        )
 
     async def get_health_status(self) -> Dict[str, Any]:
         """Get system health status"""

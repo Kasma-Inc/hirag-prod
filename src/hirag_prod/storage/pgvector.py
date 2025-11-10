@@ -5,8 +5,10 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import networkx as nx
-from sqlalchemy import Subquery, delete, func, literal, select, text
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import Subquery, delete, func, literal, or_, select, text
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+from sqlalchemy.dialects.postgresql import JSONB, insert
+from sqlalchemy.sql.sqltypes import ARRAY as SA_ARRAY
 from tqdm import tqdm
 
 from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
@@ -638,7 +640,7 @@ class PGVector(BaseVDB):
             )
             return scored
 
-    @traced()
+    @traced(record_args=["table_name", "key_value", "key_column"])
     async def query_by_keys(
         self,
         key_value: List[str],
@@ -761,6 +763,90 @@ class PGVector(BaseVDB):
                         for return_value_name in additional_data_key:
                             rec[return_value_name] = r[index]
                             index += 1
+                out.append(rec)
+            return out
+
+    @traced(record_args=["table_name", "terms", "column_to_search"])
+    async def query_by_terms(
+        self,
+        terms: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        column_to_search: str = "headers",
+        columns_to_select: Optional[List[str]] = None,
+        order_by: Optional[List[Any]] = None,
+        limit: Optional[int] = None,
+    ) -> List[dict]:
+        model = self.get_model(table_name)
+        if columns_to_select is None:  # query all if nothing provided
+            columns_to_select = [
+                c for c in model.__table__.columns.keys() if c != "vector"
+            ]
+        # Short-circuit if no terms provided
+        if not terms:
+            return []
+
+        # Ensure the column exists
+        if not hasattr(model, column_to_search):
+            raise ValueError(
+                f"Column '{column_to_search}' not found on table '{table_name}'"
+            )
+
+        # Verify the column to search is a list-like (ARRAY or JSONB array)
+        search_col = getattr(model, column_to_search)
+        try:
+            col_type = model.__table__.c[column_to_search].type
+        except Exception:
+            col_type = None
+
+        where_clause = None
+        # Accept both generic SQLAlchemy ARRAY and PostgreSQL-specific ARRAY
+        if isinstance(col_type, (SA_ARRAY, PG_ARRAY)):
+            # Use PostgreSQL array overlap operator '&&' via generic op for compatibility
+            where_clause = search_col.op("&&")(terms)
+        elif isinstance(col_type, JSONB):
+            # JSONB array: use containment for any single element
+            # Build OR of: column @> '["term"]' for each term
+            term_clauses = [search_col.contains([t]) for t in terms]
+            where_clause = or_(*term_clauses)
+        else:
+            raise ValueError(
+                f"Column '{column_to_search}' must be list-like (ARRAY or JSONB array); got {type(col_type)}"
+            )
+
+        # Build select statement
+        entity_to_select_list: List[Any] = [
+            getattr(model, column_name) for column_name in columns_to_select
+        ]
+        stmt: Any = select(*entity_to_select_list)
+
+        # Apply workspace / knowledge base restrictions if columns exist
+        if workspace_id and hasattr(model, "workspaceId"):
+            stmt = stmt.where(model.workspaceId == workspace_id)
+        if knowledge_base_id and hasattr(model, "knowledgeBaseId"):
+            stmt = stmt.where(model.knowledgeBaseId == knowledge_base_id)
+
+        # Apply terms predicate
+        stmt = stmt.where(where_clause)
+
+        # Optional ordering and limit
+        if order_by is not None:
+            stmt = stmt.order_by(*order_by)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+
+        async with get_db_session_maker()() as session:
+            result = await session.execute(stmt)
+            rows = list(result.all())
+
+            out: List[dict] = []
+            for r in rows:
+                rec = {}
+                index: int = 0
+                for col in columns_to_select:
+                    rec[col] = r[index]
+                    index += 1
                 out.append(rec)
             return out
 

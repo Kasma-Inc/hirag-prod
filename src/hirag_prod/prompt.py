@@ -1153,6 +1153,44 @@ Example 3:
 """
 
 PROMPTS[
+    "summarize_toc"
+] = """
+You are an expert in summarizing document structures.
+Your task is to generate a concise summary of the document's structure based on the provided table of contents (TOC).
+## Input Format
+You will receive the TOC as a list of entries in a markdown-like format. Entries may include numbering, indentation, or bullet markers to indicate hierarchy.
+
+## Instructions
+- Write a single paragraph of 2-4 sentences that captures the document's overall organization and key thematic areas.
+- Highlight the primary sections and, when helpful, group related subsections to describe the flow without repeating every heading verbatim.
+- Paraphrase headings when the meaning is clear; quote the original wording only if it is necessary for clarity or contains specialized terminology.
+- Detect the primary language of the TOC and produce the summary in that same language; if the language cannot be determined, default to English.
+- Do not speculate beyond the provided TOC. If the TOC is empty or lacks sufficient detail, state that there is not enough information to summarize the structure.
+- Avoid lists, headings, or metacommentary in the output; keep the tone neutral and informative.
+
+## Example
+**Table of Contents:**
+1. 總覽
+  1.1 背景與目標
+2. 方法論
+  2.1 數據收集
+  2.2 分析工具
+3. 關鍵發現
+4. 建議與後續行動
+
+**Summary:**
+這份報告概述背景與目標，說明方法論中的數據收集流程及分析工具，呈現主要發現，最後提出建議與後續行動方向。
+
+## Input Data
+**Table of Contents:**
+{toc}
+
+## Output
+Return only the requested summary paragraph:
+**Summary:**
+"""
+
+PROMPTS[
     "locate_excel_cell_cn-t"
 ] = """
 你是一個嚴謹的 excel 定位助手。我將給你一段文本和其參考的 excel (Latex 格式)。
