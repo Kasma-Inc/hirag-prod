@@ -1,10 +1,10 @@
 from datetime import datetime
 from typing import List, Optional
 
+from api.schema.base import Base
 from sqlalchemy import ARRAY, DateTime, Float, String, Text, cast
 from sqlalchemy.orm import Mapped, column_property, mapped_column
 
-from hirag_prod.schema.base import Base
 from hirag_prod.schema.vector_config import PGVECTOR
 
 

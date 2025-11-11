@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Literal, Optional, get_args
 
+from api.schema.base import Base
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from hirag_prod.schema.base import Base
 
 file_types = Literal[
     "pdf",

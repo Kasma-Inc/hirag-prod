@@ -893,7 +893,6 @@ def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
 @traced()
 async def generate_summary_from_toc(blocks: List[Dict[str, Any]]) -> str:
     def _clean_blocks(blocks: List[Dict[str, Any]]) -> str:
-        cleaned = []
         combined_text = ""
         for b in blocks:
             raw_text = b.get("markdown", "").lstrip("#").strip()
@@ -906,15 +905,8 @@ async def generate_summary_from_toc(blocks: List[Dict[str, Any]]) -> str:
     prompt = PROMPTS["summarize_toc"].format(toc=cleaned_blocks_str)
 
     try:
-        chat_service = get_chat_service()
-
-        llm_config = get_config_manager().llm_config
-
-        response = await chat_service.complete(
+        response = await ChatCompletion().complete(
             prompt=prompt,
-            model=llm_config.model_name,
-            max_tokens=llm_config.max_tokens,
-            timeout=llm_config.timeout,
         )
 
         if response:

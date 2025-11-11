@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import threading
 from abc import ABC
 from typing import Optional, Tuple, Type
 
@@ -10,6 +11,8 @@ from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.loader import document_converter
 from hirag_prod.schema import File, create_file
 from hirag_prod.tracing import traced
+
+docking_lock: threading.Lock = threading.Lock()
 
 
 class BaseLoader(ABC):
@@ -74,9 +77,10 @@ class BaseLoader(ABC):
             File: the loaded document
         """
         assert document_meta.get("private") is not None, "private is required"
-        docling_doc: DoclingDocument = self.loader_docling.convert(
-            document_path
-        ).document
+        with docking_lock:
+            docling_doc: DoclingDocument = self.loader_docling.convert(
+                document_path
+            ).document
         file_type = document_meta.get("type", None)
         if file_type == "md" or file_type == "markdown":
             # For markdown files, use export_to_text to better match original pattern

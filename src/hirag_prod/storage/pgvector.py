@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import networkx as nx
+from api.schema.base import Base as PGBase
 from configs.functions import get_hi_rag_config
 from resources.functions import get_db_engine, get_db_session_maker
 from resources.translator_client import Translator
@@ -20,7 +21,6 @@ from hirag_prod.cross_language_search.functions import (
     has_traditional_chinese,
     normalize_tokenize_text,
 )
-from hirag_prod.schema import Base as PGBase
 from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, Triplets
 from hirag_prod.schema.graph import create_graph
 from hirag_prod.schema.node import create_node
