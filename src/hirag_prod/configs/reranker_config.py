@@ -14,7 +14,7 @@ class RerankConfig(BaseSettings):
     )
 
     # Reranker type selection
-    reranker_type: Literal["local"] = Field(
+    reranker_type: Literal["local", "aliyun"] = Field(
         "local",
         alias="RERANKER_SERVICE_TYPE",
         description="The type of the reranker service.",

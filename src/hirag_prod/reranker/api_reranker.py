@@ -10,17 +10,16 @@ from hirag_prod.usage import (
     ModelIdentifier,
     ModelProvider,
     ModelUsage,
-    UnknownModelName,
     UsageRecorder,
 )
 
 rate_limiter = RateLimiter()
 
 
-class ApiReranker(Reranker):
-    def __init__(self, api_key: str, endpoint: str, model: str) -> None:
+class AliyunReranker(Reranker):
+    def __init__(self, api_key: str, base_url: str, model: str) -> None:
         self.api_key = api_key
-        self.endpoint = endpoint
+        self.base_url = base_url
         self.model = model
 
     @rate_limiter.limit(
@@ -38,13 +37,16 @@ class ApiReranker(Reranker):
         }
 
         payload = {
-            "query": query,
-            "documents": documents,
             "model": self.model,
+            "input": {
+                "query": query,
+                "documents": documents,
+            },
+            "parameters": {"return_documents": False},
         }
 
         async with httpx.AsyncClient(timeout=3600.0) as client:
-            response = await client.post(self.endpoint, headers=headers, json=payload)
+            response = await client.post(self.base_url, headers=headers, json=payload)
 
             if response.status_code != 200:
                 error_text = response.text
@@ -59,14 +61,16 @@ class ApiReranker(Reranker):
                 ].value += result.get("usage", {}).get("total_tokens", 0)
             UsageRecorder.add_usage(
                 ModelIdentifier(
-                    id=result.get("model", UnknownModelName),
-                    provider=result.get("provider", ModelProvider.UNKNOWN.value),
+                    id=self.model,
+                    provider=ModelProvider.ALIYUN.value,
                 ),
                 ModelUsage(
                     prompt_tokens=result.get("usage", {}).get("total_tokens", 0),
                     completion_tokens=result.get("usage", {}).get(
-                        "completion_tokens", 0
+                        "total_tokens", 0  # aliyun doesn't return completion tokens
                     ),
                 ),
             )
-            return result.get("data", [])
+            res = result.get("output", {}).get("results", [])
+            res = [{**r, "text": documents[r.get("index")]} for r in res]
+            return res
