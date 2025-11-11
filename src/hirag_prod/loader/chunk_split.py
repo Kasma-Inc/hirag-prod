@@ -1,5 +1,4 @@
 import html
-import json
 import logging
 import re
 from datetime import datetime
@@ -12,6 +11,7 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import (
+    ModelJSONDecodeError,
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
@@ -480,7 +480,7 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                         except ValueError:
                             continue
 
-            except json.JSONDecodeError as e:
+            except ModelJSONDecodeError as e:
                 raise e
 
     except Exception as e:
