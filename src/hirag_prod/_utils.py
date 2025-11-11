@@ -330,7 +330,6 @@ class ModelJSONDecodeError(json.JSONDecodeError):
     """Custom JSONDecodeError for model response parsing errors."""
 
 
-
 # A safe JSON loader for model responses that attempts to repair malformed JSON strings
 def safe_model_json_loads(payload: str):
     if not payload:
