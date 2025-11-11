@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import tempfile
@@ -11,7 +12,7 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from docling_core.types import DoclingDocument
 
-from hirag_prod._utils import log_error_info, safe_json_loads
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import (
     get_cloud_storage_config,
     initialize_config_manager,
@@ -51,7 +52,7 @@ def download_load_file(
         with open(tmp_path, "r") as f:
             if file_type == "json":
                 if return_type == "dict":
-                    parsed_doc = safe_json_loads(f.read())
+                    parsed_doc = json.load(f)
                 else:
                     parsed_doc = DoclingDocument.from_json(f.read())
             else:

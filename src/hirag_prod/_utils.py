@@ -326,12 +326,20 @@ async def extract_ref_indices_from_markdown(
     return results, texts_to_cite
 
 
-def safe_json_loads(payload: str):
+class ModelJSONDecodeError(json.JSONDecodeError):
+    """Custom JSONDecodeError for model response parsing errors."""
+
+
+
+# A safe JSON loader for model responses that attempts to repair malformed JSON strings
+def safe_model_json_loads(payload: str):
+    if not payload:
+        raise ModelJSONDecodeError("Empty JSON payload", payload, 0)
     try:
         repaired_object = json_repair.loads(payload)
         if repaired_object:
             return repaired_object
         else:
-            raise json.JSONDecodeError("Empty JSON after repair", payload, 0)
-    except json.JSONDecodeError as e:
+            raise ModelJSONDecodeError("Empty JSON after repair", payload, 0)
+    except ModelJSONDecodeError as e:
         raise e

@@ -16,7 +16,7 @@ from hirag_prod._utils import (
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
     log_error_info,
-    safe_json_loads,
+    safe_model_json_loads,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.configs.functions import get_config_manager
@@ -459,7 +459,7 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                 response_text = response.strip()
 
                 # Parse JSON response
-                parsed_response = safe_json_loads(response_text.strip())
+                parsed_response = safe_model_json_loads(response_text.strip())
 
                 # Extract timestamp from JSON
                 timestamp_str = parsed_response.get("timestamp")
