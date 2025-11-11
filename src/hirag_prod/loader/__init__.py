@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Any, Literal, Optional, Tuple
 
-import requests
+import httpx
 
 from hirag_prod._utils import log_error_info
 from hirag_prod.configs.functions import get_document_converter_config
@@ -77,7 +77,7 @@ def check_cloud_health(
             "Authorization": f"Bearer {get_document_converter_config(document_converter_type).api_key.get_secret_value()}",
         }
 
-        resp = requests.get(health_url, headers=headers)
+        resp = httpx.get(health_url, headers=headers)
 
         # Check if response is empty/null (success case)
         if resp.status_code == 200 and not resp.text.strip():

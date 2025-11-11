@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, Literal, Optional, Union
 from urllib.parse import urlparse
 
-import requests
+import httpx
 from docling_core.types import DoclingDocument
 from pydantic import BaseModel
 
@@ -70,7 +70,7 @@ def _poll_dots_job_status(
 
     while time.time() - start_time < timeout:
         try:
-            response = requests.post(status_url, headers=headers, data=data, timeout=10)
+            response = httpx.post(status_url, headers=headers, data=data, timeout=10)
             response.raise_for_status()
 
             # Reset failure counter on successful request
@@ -94,7 +94,7 @@ def _poll_dots_job_status(
             time.sleep(polling_interval)
 
         # To avoid network issues causing immediate failure, but not a perfect solution
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             consecutive_failures += 1
             logger.warning(
                 f"Failed to check job status (attempt {consecutive_failures}/{max_consecutive_failures}): {e}"
@@ -158,7 +158,7 @@ def _get_dots_token_usage(
 
     for attempt in range(retries):
         try:
-            response = requests.get(status_url, headers=headers, timeout=timeout)
+            response = httpx.get(status_url, headers=headers, timeout=timeout)
             response.raise_for_status()
             status_data = response.json()
             logger.info(f"Token usage for job {job_id}: {status_data}")
@@ -211,7 +211,7 @@ def convert(
         ParsedDocument: The processed document
 
     Raises:
-        requests.exceptions.RequestException: If the API request fails
+        httpx.RequestError: If the API request fails
         ValueError: If the input parameters are invalid
         FileNotFoundError: If the output JSON file is not found
 
@@ -270,7 +270,7 @@ def convert(
         else:
             raise ValueError(f"Unsupported scheme: '{parsed_url.scheme}'")
 
-        response = requests.post(
+        response = httpx.post(
             get_document_converter_config(converter_type).base_url,
             headers=headers,
             files=files,
@@ -363,14 +363,14 @@ def convert(
                 "json", "docling_document", parsed_url, bucket_name, json_file_path
             )
 
-    except requests.exceptions.Timeout as e:
+    except httpx.TimeoutException as e:
         log_error_info(
             logging.ERROR,
             f"Request timeout after {get_document_converter_config(converter_type).timeout} seconds",
             e,
             raise_error=True,
         )
-    except requests.exceptions.RequestException as e:
+    except httpx.RequestError as e:
         log_error_info(
             logging.ERROR,
             f"Document conversion API request failed",
