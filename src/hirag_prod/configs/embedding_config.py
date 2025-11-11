@@ -86,6 +86,10 @@ class EmbeddingConfig(BaseSettings):
                 env_name = self.model_fields["openai_api_key"].alias
                 raise ValueError(f"{env_name} is required when service_type is openai")
 
+            # Only keep the openai_base_url and openai_api_key if service_type is openai
+            self.base_url = self.openai_base_url
+            self.api_key = self.openai_api_key
+
         return self
 
     @model_validator(mode="before")
