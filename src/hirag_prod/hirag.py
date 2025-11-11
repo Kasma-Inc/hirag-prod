@@ -8,20 +8,14 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 import numpy as np
 from docling_core.types.doc import DoclingDocument
 
-from hirag_prod._utils import (
-    compute_mdhash_id,
-    log_error_info,
-    run_sync_function_using_thread,
-)
-from hirag_prod.chunk import BaseChunk, FixTokenChunk
-from hirag_prod.configs.cli_options import CliOptions
-from hirag_prod.configs.functions import (
+from configs.functions import (
     get_config_manager,
     get_hi_rag_config,
-    get_llm_configs,
-    get_provider_key_configs,
-    initialize_config_manager,
 )
+from hirag_prod._utils import (
+    compute_mdhash_id,
+)
+from hirag_prod.chunk import BaseChunk, FixTokenChunk
 from hirag_prod.entity import BaseKG, VanillaKG
 from hirag_prod.exceptions import (
     DocumentProcessingError,
@@ -43,19 +37,17 @@ from hirag_prod.loader.excel_loader import load_and_chunk_excel
 from hirag_prod.metrics import MetricsCollector, ProcessingMetrics
 from hirag_prod.parser import DictParser, ReferenceParser
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import (
-    get_chat_service,
-    get_chinese_convertor,
-    get_default_model_id,
-    get_embedding_service,
-    initialize_resource_manager,
-)
 from hirag_prod.schema import Chunk, File, Item, item_to_chunk
 from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
 from hirag_prod.tracing import traced
+from resources.embedding_client import BatchEmbeddingService
+from resources.functions import get_chinese_convertor
+from resources.llm_client import ChatCompletion
+from resources.translator_client import Translator
+from utils.logging_utils import log_error_info
 
 # Configure Logging
 logging.basicConfig(
@@ -214,8 +206,7 @@ class DocumentProcessor:
             items = None
             try:
                 if content_type == "text/plain":
-                    _, generated_md = await run_sync_function_using_thread(
-                        load_document,
+                    _, generated_md = await load_document(
                         document_path=document_path,
                         content_type=content_type,
                         document_meta=document_meta,
@@ -247,8 +238,7 @@ class DocumentProcessor:
 
                 else:
                     if content_type in ["application/pdf", "multimodal/image"]:
-                        json_doc, generated_md = await run_sync_function_using_thread(
-                            load_document,
+                        json_doc, generated_md = await load_document(
                             document_path=document_path,
                             content_type=content_type,
                             document_meta=document_meta,
@@ -257,8 +247,7 @@ class DocumentProcessor:
                         )
 
                     else:
-                        json_doc, generated_md = await run_sync_function_using_thread(
-                            load_document,
+                        json_doc, generated_md = await load_document(
                             document_path=document_path,
                             content_type=content_type,
                             document_meta=document_meta,
@@ -275,9 +264,8 @@ class DocumentProcessor:
                         )
                         try:
                             # TODO(kaili): fix
-                            caption = await get_chat_service().complete(
+                            caption = await ChatCompletion().complete(
                                 prompt=system_prompt,
-                                model=get_provider_key_configs().model_name,
                             )
                             items[idx].caption = caption
                         except Exception:
@@ -457,17 +445,9 @@ class HiRAG:
     @classmethod
     async def create(
         cls,
-        cli_options_dict: Optional[Dict] = None,
-        config_dict: Optional[Dict] = None,
-        shared_variable_dict: Optional[Dict] = None,
-        resource_dict: Optional[Dict] = None,
         **kwargs,
     ) -> "HiRAG":
         """Create HiRAG instance"""
-        if not cli_options_dict:
-            cli_options_dict: Dict = CliOptions().to_dict()
-        initialize_config_manager(cli_options_dict, config_dict, shared_variable_dict)
-        await initialize_resource_manager(resource_dict)
         instance = cls()
         await instance._initialize(**kwargs)
         return instance
@@ -485,7 +465,7 @@ class HiRAG:
         if vdb is None:
             if get_hi_rag_config().vdb_type == "pgvector":
                 vdb = PGVector.create(
-                    embedding_func=get_embedding_service().create_embeddings,
+                    embedding_func=BatchEmbeddingService().create_embeddings,
                     vector_type="halfvec",
                 )
 
@@ -514,13 +494,7 @@ class HiRAG:
             chunk_overlap=get_hi_rag_config().chunk_overlap,
         )
 
-        # Todo(kaili): remove openrouter and gpt-4o-mini
-        self._kg_constructor = VanillaKG.create(
-            extract_func=get_chat_service().complete,
-            llm_model_name=get_llm_configs()[
-                get_default_model_id("chat_completion")
-            ].model_name,
-        )
+        self._kg_constructor = VanillaKG.create()
 
         # Initialize job tracker (no cache)
         job_status_tracker = kwargs.get("job_status_tracker")
@@ -543,7 +517,7 @@ class HiRAG:
     # Chat service methods
     # ========================================================================
 
-    # Helper function for similarity calcuation
+    # Helper function for similarity calculation
     @traced(record_args=[])
     async def calculate_similarity(
         self, sentence_embedding: List[float], references: Dict[str, List[float]]
@@ -563,24 +537,6 @@ class HiRAG:
                     {"documentKey": entity_key, "similarity": similarity}
                 )
         return similar_refs
-
-    @traced(record_return=True)
-    async def chat_complete(self, prompt: str, **kwargs: Any) -> str:
-        """Chat with the user"""
-        try:
-            response = await get_chat_service().complete(
-                prompt=prompt,
-                **kwargs,
-            )
-            return response
-        except Exception as e:
-            log_error_info(
-                logging.ERROR,
-                "Chat completion failed",
-                e,
-                raise_error=True,
-                new_error_class=HiRAGException,
-            )
 
     @traced()
     async def extract_references(
@@ -616,7 +572,7 @@ class HiRAG:
 
         # Only embed non-empty sentences
         if non_empty_sentences:
-            sentence_embeddings = await get_embedding_service().create_embeddings(
+            sentence_embeddings = await BatchEmbeddingService().create_embeddings(
                 texts=non_empty_sentences
             )
         else:
@@ -692,11 +648,8 @@ class HiRAG:
             )
 
             try:
-                summary = await self.chat_complete(
+                summary = await ChatCompletion().complete(
                     prompt=prompt,
-                    max_tokens=get_llm_config().max_tokens,
-                    timeout=get_llm_config().timeout,
-                    model=get_llm_config().model_name,
                 )
             except Exception as e:
                 log_error_info(
@@ -732,7 +685,7 @@ class HiRAG:
 
             # Only embed non-empty sentences
             if non_empty_sentences:
-                sentence_embeddings = await get_embedding_service().create_embeddings(
+                sentence_embeddings = await BatchEmbeddingService().create_embeddings(
                     texts=non_empty_sentences
                 )
             else:
@@ -870,11 +823,8 @@ class HiRAG:
             )
 
             try:
-                summary = await self.chat_complete(
+                summary = await ChatCompletion.complete(
                     prompt=summary_prompt,
-                    max_tokens=get_llm_config().max_tokens,
-                    timeout=get_llm_config().timeout,
-                    model=get_llm_config().model_name,
                 )
 
                 total_time = time.perf_counter() - start_time
@@ -1081,7 +1031,7 @@ class HiRAG:
         self, original_query: str, translation: List[str]
     ) -> List[str]:
         # Get translator from resource manager
-        translator = get_translator()
+        translator = Translator()
         translation = (
             translation.copy() if isinstance(translation, list) else translation
         )
@@ -1325,7 +1275,7 @@ class HiRAG:
         chunk_matrix = np.array(
             [chunk_vec_map[cid] for cid in filtered_ids], dtype=np.float32
         )
-        query_vec = await get_embedding_service().create_embeddings([query])
+        query_vec = await BatchEmbeddingService().create_embeddings([query])
         # embedding services return numpy array (n, d); take first row
         if hasattr(query_vec, "shape"):
             query_vec = np.array(query_vec[0], dtype=np.float32)

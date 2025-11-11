@@ -1,8 +1,0 @@
-from pydantic_settings import BaseSettings
-
-
-class TranslatorConfig(BaseSettings):
-    """Translator configuration"""
-
-    class Config:
-        extra = "allow"

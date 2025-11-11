@@ -3,7 +3,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from hirag_prod.reranker import ApiReranker, LocalReranker, create_reranker
+from resources.reranker import ApiReranker, LocalReranker, create_reranker
 
 load_dotenv(override=True)
 

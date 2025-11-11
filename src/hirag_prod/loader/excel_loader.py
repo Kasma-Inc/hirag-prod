@@ -12,7 +12,6 @@ from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.exceptions import HiRAGException
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import (
     Chunk,
     File,
@@ -22,6 +21,7 @@ from hirag_prod.schema import (
     item_to_chunk,
 )
 from hirag_prod.tracing import traced
+from resources.llm_client import ChatCompletion
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,7 @@ async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
     )
     try:
         breakpoint()
-        return await get_chat_service().complete(
-            prompt=system_prompt, model=get_llm_config().model_name
-        )
+        return await ChatCompletion().complete(prompt=system_prompt)
     except Exception as e:
         raise HiRAGException(f"Failed to summarize excel sheet {sheet_name}") from e
 

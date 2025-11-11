@@ -4,7 +4,7 @@ from typing import Optional
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from hirag_prod.configs.functions import get_postgres_config
+from configs.functions import get_postgres_config
 
 
 async def update_job_status(

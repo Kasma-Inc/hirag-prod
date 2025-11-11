@@ -19,7 +19,7 @@ class BaseLoader(ABC):
     loader_langchain: Type[LangchainBaseLoader]
 
     @traced()
-    def load_dots_ocr(
+    async def load_dots_ocr(
         self, document_path: str, document_meta: Optional[dict] = None
     ) -> Tuple[File, File]:
         """Load document and set the metadata of the split chunks
@@ -36,7 +36,7 @@ class BaseLoader(ABC):
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
         workspace_id = document_meta.get("workspaceId", None)
         knowledge_base_id = document_meta.get("knowledgeBaseId", None)
-        processed_doc = document_converter.convert(
+        processed_doc = await document_converter.convert(
             "dots_ocr",
             document_path,
             workspace_id=workspace_id,

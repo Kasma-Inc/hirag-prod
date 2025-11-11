@@ -8,13 +8,13 @@ import pytest
 import pytest_asyncio
 from sqlalchemy import text
 
-from hirag_prod.configs.functions import get_postgres_config, initialize_config_manager
-from hirag_prod.resources.functions import (
+from configs.functions import get_postgres_config, initialize_config_manager
+from hirag_prod.storage.pg_utils import insert_job, update_job_status
+from resources.functions import (
     get_db_session_maker,
     get_resource_manager,
     initialize_resource_manager,
 )
-from hirag_prod.storage.pg_utils import insert_job, update_job_status
 
 
 @pytest_asyncio.fixture(autouse=True)

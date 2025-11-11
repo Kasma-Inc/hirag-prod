@@ -12,15 +12,13 @@ from botocore.config import Config
 from botocore.exceptions import ClientError
 from docling_core.types import DoclingDocument
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import (
-    get_cloud_storage_config,
-    initialize_config_manager,
-)
+from configs.functions import get_cloud_storage_config, \
+    initialize_config_manager
 from hirag_prod.tracing import traced
+from utils.logging_utils import log_error_info
 
-S3_DOWNLOAD_DIR = "/chatbot/files/s3"
-OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
+S3_DOWNLOAD_DIR = "./files/s3"
+OSS_DOWNLOAD_DIR = "./files/oss"
 
 logger: logging.Logger = logging.getLogger(__name__)
 

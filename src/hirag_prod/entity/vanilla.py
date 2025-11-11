@@ -1,19 +1,20 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Callable, List, Tuple
+from typing import List, Tuple
 
 import json_repair
 
+from configs.functions import get_config_manager
 from hirag_prod._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
-    log_error_info,
 )
-from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.entity.base import BaseKG
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.schema import Chunk, Entity, Relation
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
 
 
 @dataclass
@@ -21,10 +22,6 @@ class VanillaKG(BaseKG):
     """
     Production-ready knowledge graph construction pipeline using LLM models.
     """
-
-    # === Core Components ===
-    llm_model_name: str = field(default="gpt-4o")
-    extract_func: Callable
 
     # === Entity Extraction Configuration ===
     entity_extract_prompt: str = field(init=False)
@@ -118,8 +115,7 @@ class VanillaKG(BaseKG):
 
             entity_prompt = self.entity_extract_prompt.format(input_text=chunk.text)
 
-            entity_result = await self.extract_func(
-                model=self.llm_model_name,
+            entity_result = await ChatCompletion().complete(
                 prompt=entity_prompt,
             )
 
@@ -217,8 +213,7 @@ class VanillaKG(BaseKG):
             )
 
             # Step 1: Initial relation extraction
-            relation_result = await self.extract_func(
-                model=self.llm_model_name,
+            relation_result = await ChatCompletion().complete(
                 prompt=relation_prompt,
             )
 

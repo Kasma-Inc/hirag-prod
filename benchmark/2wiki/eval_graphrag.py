@@ -6,9 +6,9 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
+from configs.functions import get_hi_rag_config
 from hirag_prod import HiRAG
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_hi_rag_config
+from utils.logging_utils import log_error_info
 
 # Configure logging with more detailed format
 logging.basicConfig(

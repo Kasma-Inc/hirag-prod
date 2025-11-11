@@ -4,15 +4,11 @@ from typing import List, Set, Tuple, Union
 
 import numpy as np
 
-from hirag_prod.configs.functions import get_kb_model_configs
 from hirag_prod.cross_language_search.types import ProcessSearchResponse
-from hirag_prod.resources.functions import (
-    get_chat_service,
-    get_chinese_convertor,
-    get_embedding_service,
-    tokenize_sentence,
-)
 from hirag_prod.tracing import traced
+from resources.embedding_client import BatchEmbeddingService
+from resources.functions import get_chinese_convertor, tokenize_sentence
+from resources.llm_client import ChatCompletion
 
 
 def has_traditional_chinese(text: str) -> bool:
@@ -40,7 +36,7 @@ async def get_synonyms_and_validate_and_translate(
 ) -> Tuple[List[str], np.ndarray, bool, List[str], np.ndarray]:
     synonym_set: Set[str] = set()
 
-    process_search_response: ProcessSearchResponse = await get_chat_service().complete(
+    process_search_response: ProcessSearchResponse = await ChatCompletion().complete(
         prompt=f"""Please complete the following two tasks according to the search keyword or sentence **{search}**, then output the final result according to the format provided below:
 Task 1: Please provide some synonyms for the search keyword or sentence **{search}**. The synonyms need to be **in the same language with the search**. Please give at least 5 different synonyms and output them as a JSON list.
 Task 2: Please identify if the search only includes English, return a JSON value of **true** or **false**.
@@ -51,10 +47,7 @@ The final result need to be **a JSON object with the following structure**:
   "is_english": true or false,
   "translation_list": ["translation1", "translation2", "translation3", "translation4", "translation5", "translation6", ...]
 }}""",
-        model=get_kb_model_configs()["search"]["model_name"],
-        max_tokens=get_kb_model_configs()["search"]["max_tokens"],
         response_format=ProcessSearchResponse,
-        timeout=get_kb_model_configs()["search"]["timeout"],
     )
 
     for synonym in process_search_response.synonym_list:
@@ -68,7 +61,7 @@ The final result need to be **a JSON object with the following structure**:
     except KeyError:
         pass
     synonym_list: List[str] = list(synonym_set)
-    embedding_np_array: np.ndarray = await get_embedding_service().create_embeddings(
+    embedding_np_array: np.ndarray = await BatchEmbeddingService().create_embeddings(
         synonym_list + process_search_response.translation_list + [search]
     )
     if len(synonym_list) == 0:

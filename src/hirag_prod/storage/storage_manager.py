@@ -3,14 +3,15 @@ from typing import Any, Dict, List, Optional, Union
 
 from sqlalchemy import select
 
-from hirag_prod._utils import log_error_info, retry_async
-from hirag_prod.configs.functions import get_hi_rag_config, get_init_config
+from configs.functions import get_envs, get_hi_rag_config
+from hirag_prod._utils import retry_async
 from hirag_prod.exceptions import StorageError
-from hirag_prod.resources.functions import get_resource_manager
 from hirag_prod.schema import Chunk, File, Item, Relation
 from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.tracing import traced
+from resources.functions import get_db_session_maker
+from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 
@@ -29,8 +30,7 @@ class StorageManager:
         """Initialize storage tables"""
         try:
             await self.vdb._init_vdb(
-                embedding_dimension=get_init_config().EMBEDDING_DIMENSION
-            )
+                embedding_dimension=get_envs().EMBEDDING_DIMENSION)
         except Exception as e:
             log_error_info(
                 logging.ERROR,
@@ -233,7 +233,7 @@ class StorageManager:
         health: Dict[str, bool] = {}
         try:
             if isinstance(self.vdb, PGVector):
-                async with get_resource_manager().get_session_maker()() as s:
+                async with get_db_session_maker()() as s:
                     await s.execute(select(1))
             health["vdb"] = True
         except Exception as e:

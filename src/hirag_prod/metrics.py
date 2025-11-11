@@ -12,7 +12,7 @@ from opentelemetry.metrics import (  # Observation,
 )
 from opentelemetry.metrics._internal import NoOpMeterProvider
 
-from hirag_prod._utils import log_error_info
+from utils.logging_utils import log_error_info
 
 # from opentelemetry.sdk.metrics import MeterProvider
 # from opentelemetry.sdk.metrics._internal.export import ConsoleMetricExporter

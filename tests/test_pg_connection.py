@@ -3,8 +3,8 @@ import pytest_asyncio
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-from hirag_prod.configs.functions import initialize_config_manager
-from hirag_prod.resources.functions import (
+from configs.functions import initialize_config_manager
+from resources.functions import (
     get_db_engine,
     get_resource_manager,
     initialize_resource_manager,

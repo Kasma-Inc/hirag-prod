@@ -15,14 +15,13 @@ from hirag_prod._utils import (
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
-    log_error_info,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
-from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
 from hirag_prod.tracing import traced
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
 
 logger = logging.getLogger(__name__)
 
@@ -424,8 +423,6 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
 
     # Use LLM to extract the most relevant timestamp
     try:
-        chat_service = get_chat_service()
-
         prompt = PROMPTS["extract_timestamp"].format(
             filename=items[0].fileName if items else "unknown",
             header_footer_content=(
@@ -441,13 +438,8 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
             today_date=datetime.now().strftime("%Y-%m-%d"),
         )
 
-        llm_config = get_config_manager().llm_config
-
-        response = await chat_service.complete(
+        response = await ChatCompletion().complete(
             prompt=prompt,
-            model=llm_config.model_name,
-            max_tokens=llm_config.max_tokens,
-            timeout=llm_config.timeout,
         )
 
         # Parse the JSON response to extract timestamp

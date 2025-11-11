@@ -9,24 +9,22 @@ from sqlalchemy import Subquery, delete, func, literal, select, text
 from sqlalchemy.dialects.postgresql import insert
 from tqdm import tqdm
 
-from hirag_prod._utils import AsyncEmbeddingFunction, log_error_info
-from hirag_prod.configs.functions import get_hi_rag_config, get_translator_configs
+from configs.functions import get_hi_rag_config
+from hirag_prod._utils import AsyncEmbeddingFunction
 from hirag_prod.cross_language_search.functions import (
     has_traditional_chinese,
     normalize_tokenize_text,
 )
-from hirag_prod.resources.functions import (
-    get_db_engine,
-    get_db_session_maker,
-    get_default_model_id,
-    get_translator,
-)
 from hirag_prod.schema import Base as PGBase
-from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, Triplets
+from hirag_prod.schema import Chunk, Entity, File, Graph, Item, Node, Relation, \
+    Triplets
 from hirag_prod.schema.graph import create_graph
 from hirag_prod.schema.node import create_node
 from hirag_prod.storage.base_vdb import BaseVDB
 from hirag_prod.tracing import traced
+from resources.functions import get_db_engine, get_db_session_maker
+from resources.translator_client import Translator
+from utils.logging_utils import log_error_info
 
 logger = logging.getLogger(__name__)
 
@@ -110,16 +108,10 @@ class PGVector(BaseVDB):
             translations_text_list = None
 
             if with_translation:
-                if (
-                    get_translator_configs()[
-                        get_default_model_id("translator")
-                    ].db_table["type"]
-                    == "local"
-                ):
-                    translated_list = await get_translator().translate(
-                        texts_to_upsert, dest="en"
-                    )
-                    translations_text_list = [t.text for t in translated_list]
+                translated_list = await Translator().translate(
+                    texts_to_upsert, dest="en"
+                )
+                translations_text_list = [t.text for t in translated_list]
 
             with tqdm(
                 total=len(properties_list), desc="Processing texts", leave=False
@@ -139,19 +131,7 @@ class PGVector(BaseVDB):
                         ) = normalize_tokenize_text(texts_to_upsert[i])
 
                     if with_translation:
-                        if (
-                            get_translator_configs()[
-                                get_default_model_id("translator")
-                            ].db_table["type"]
-                            == "local"
-                        ):
-                            row["translation"] = translations_text_list[i]
-                        else:
-                            row["translation"] = (
-                                await get_translator().translate(
-                                    texts_to_upsert[i], dest="en"
-                                )
-                            ).text
+                        row["translation"] = translations_text_list[i]
 
                         if with_tokenization:
                             (
