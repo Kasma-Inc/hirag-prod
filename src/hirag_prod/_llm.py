@@ -49,7 +49,7 @@ class APIConstants:
     DEFAULT_RATE_LIMIT = 20
     DEFAULT_RATE_PERIOD = 1
     DEFAULT_BATCH_SIZE = 1000
-    DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+    DEFAULT_EMBEDDING_MODEL = "text-embedding-v4"
 
     # Error keywords for batch size reduction
     BATCH_SIZE_ERROR_KEYWORDS = [
@@ -738,7 +738,10 @@ class EmbeddingService(metaclass=SingletonMeta):
     ) -> np.ndarray:
         """Create embeddings for a single batch of texts (internal method)"""
         response = await self.client.embeddings.create(
-            model=model, input=texts, encoding_format="float"
+            model=model,
+            input=texts,
+            encoding_format="float",
+            dimensions=get_init_config().EMBEDDING_DIMENSION,
         )
         token_usage = response.usage
         if get_envs().ENABLE_TOKEN_COUNT:
@@ -754,7 +757,12 @@ class EmbeddingService(metaclass=SingletonMeta):
             ModelUsage(prompt_tokens=token_usage.prompt_tokens),
         )
 
-        return np.array([dp.embedding for dp in response.data])
+        if hasattr(response.data, "index"):
+            embs = sorted(response.data, key=lambda x: x.index)
+        else:
+            embs = response.data
+        embs = [emb.embedding for emb in embs]
+        return np.array(embs)
 
     @traced()
     async def create_embeddings(
