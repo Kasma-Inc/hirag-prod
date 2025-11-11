@@ -74,7 +74,7 @@ def download_load_file(
 
 
 def create_s3_client(storage_type: Literal["s3", "oss"]) -> BaseClient:
-    cloud_storage_config = get_cloud_storage_config(storage_type)
+    cloud_storage_config = get_cloud_storage_config()
     return boto3.client(
         "s3",
         aws_access_key_id=cloud_storage_config.access_key_id,
@@ -120,11 +120,11 @@ def list_cloud_files(storage_type: Literal["s3", "oss"], prefix: str = None) -> 
     try:
         if prefix is None:
             response = s3_client.list_objects_v2(
-                Bucket=get_cloud_storage_config(storage_type).bucket_name
+                Bucket=get_cloud_storage_config().bucket_name
             )
         else:
             response = s3_client.list_objects_v2(
-                Bucket=get_cloud_storage_config(storage_type).bucket_name, Prefix=prefix
+                Bucket=get_cloud_storage_config().bucket_name, Prefix=prefix
             )
 
         if "Contents" in response:

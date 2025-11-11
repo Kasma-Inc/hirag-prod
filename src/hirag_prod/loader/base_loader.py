@@ -27,7 +27,6 @@ class BaseLoader(ABC):
         Args:
             document_path (str): The document path for loader to use.
             document_meta (Optional[dict]): The document metadata to set to the output.
-            loader_args (dict): The arguments for the loader.
 
         Returns:
             Tuple[File, File]: the loaded document

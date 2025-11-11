@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from configs.functions import get_hi_rag_config
 from hirag_prod import HiRAG
+from resources.embedding_client import BatchEmbeddingService
 from utils.logging_utils import log_error_info
 
 # Configure logging with more detailed format
@@ -191,7 +192,8 @@ async def rerank_chunks_with_query(
             )
 
             # Get query embedding for vector search
-            query_embeddings = await index.embedding_service.create_embeddings([query])
+            query_embeddings = await BatchEmbeddingService().create_embeddings(
+                [query])
             query_embedding = query_embeddings[0].tolist()
 
             # Create vector query on existing chunks table
