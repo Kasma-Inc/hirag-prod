@@ -6,12 +6,17 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
-from docling_core.types.doc import DoclingDocument
-
 from configs.functions import (
     get_config_manager,
     get_hi_rag_config,
 )
+from docling_core.types.doc import DoclingDocument
+from resources.embedding_client import BatchEmbeddingService
+from resources.functions import get_chinese_convertor
+from resources.llm_client import ChatCompletion
+from resources.translator_client import Translator
+from utils.logging_utils import log_error_info
+
 from hirag_prod._utils import (
     compute_mdhash_id,
 )
@@ -43,11 +48,6 @@ from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.storage.query_service import QueryService
 from hirag_prod.storage.storage_manager import StorageManager
 from hirag_prod.tracing import traced
-from resources.embedding_client import BatchEmbeddingService
-from resources.functions import get_chinese_convertor
-from resources.llm_client import ChatCompletion
-from resources.translator_client import Translator
-from utils.logging_utils import log_error_info
 
 # Configure Logging
 logging.basicConfig(

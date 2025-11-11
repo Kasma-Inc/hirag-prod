@@ -11,7 +11,6 @@ from opentelemetry.metrics import (  # Observation,
     set_meter_provider,
 )
 from opentelemetry.metrics._internal import NoOpMeterProvider
-
 from utils.logging_utils import log_error_info
 
 # from opentelemetry.sdk.metrics import MeterProvider

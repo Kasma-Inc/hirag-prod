@@ -1,14 +1,13 @@
 import numpy as np
 import pytest
 import pytest_asyncio
+from configs.functions import initialize_config_manager
+from resources.functions import get_resource_manager, initialize_resource_manager
+
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_embedding_service,
 )
-
-from configs.functions import initialize_config_manager
-from resources.functions import get_resource_manager, \
-    initialize_resource_manager
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 

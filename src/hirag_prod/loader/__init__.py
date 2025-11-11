@@ -1,6 +1,10 @@
 import logging
 from typing import Any, Optional, Tuple
 
+from resources.ocr_client import OCR
+from utils.logging_utils import log_error_info
+from utils.sync_function_utils import run_sync_function_using_thread
+
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.html_loader import HTMLLoader
 from hirag_prod.loader.image_loader import ImageLoader
@@ -12,9 +16,6 @@ from hirag_prod.loader.utils import route_file_path, validate_document_path
 from hirag_prod.loader.word_loader import WordLoader
 from hirag_prod.schema import File, LoaderType
 from hirag_prod.tracing import traced
-from resources.ocr_client import OCR
-from utils.logging_utils import log_error_info
-from utils.sync_function_utils import run_sync_function_using_thread
 
 # Configure Logging
 logging.basicConfig(
@@ -98,8 +99,7 @@ async def load_document(
             cloud_check = await OCR().health_check()
             if not cloud_check:
                 raise RuntimeError(f"Cloud health check failed for dots_ocr.")
-            json_doc, doc_md = await loader.load_dots_ocr(document_path,
-                                                          document_meta)
+            json_doc, doc_md = await loader.load_dots_ocr(document_path, document_meta)
             return json_doc, doc_md
         except Exception as e:
             log_error_info(

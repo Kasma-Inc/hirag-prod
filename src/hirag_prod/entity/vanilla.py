@@ -4,8 +4,10 @@ from dataclasses import dataclass, field
 from typing import List, Tuple
 
 import json_repair
-
 from configs.functions import get_config_manager
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
+
 from hirag_prod._utils import (
     _limited_gather_with_factory,
     compute_mdhash_id,
@@ -13,8 +15,6 @@ from hirag_prod._utils import (
 from hirag_prod.entity.base import BaseKG
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.schema import Chunk, Entity, Relation
-from resources.llm_client import ChatCompletion
-from utils.logging_utils import log_error_info
 
 
 @dataclass

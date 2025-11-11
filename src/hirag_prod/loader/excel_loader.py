@@ -7,6 +7,7 @@ from urllib.parse import unquote, urlparse
 import openpyxl
 import pandas as pd
 import xlrd
+from resources.llm_client import ChatCompletion
 
 from hirag_prod._utils import compute_mdhash_id
 from hirag_prod.exceptions import HiRAGException
@@ -21,7 +22,6 @@ from hirag_prod.schema import (
     item_to_chunk,
 )
 from hirag_prod.tracing import traced
-from resources.llm_client import ChatCompletion
 
 logger = logging.getLogger(__name__)
 

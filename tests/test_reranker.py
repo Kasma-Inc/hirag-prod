@@ -2,7 +2,6 @@ import os
 
 import pytest
 from dotenv import load_dotenv
-
 from resources.reranker import ApiReranker, LocalReranker, create_reranker
 
 load_dotenv(override=True)

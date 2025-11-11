@@ -1,9 +1,7 @@
 import pytest
-from dotenv import load_dotenv
-
 from configs.functions import initialize_config_manager
-from resources.functions import get_resource_manager, \
-    initialize_resource_manager
+from dotenv import load_dotenv
+from resources.functions import get_resource_manager, initialize_resource_manager
 
 load_dotenv("../.env", override=True)
 

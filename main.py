@@ -11,9 +11,9 @@ from configs.functions import (
     initialize_config_manager,
     initialize_shared_variables,
 )
+from resources.functions import get_resource_manager, initialize_resource_manager
+
 from hirag_prod import HiRAG
-from resources.functions import get_resource_manager, \
-    initialize_resource_manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

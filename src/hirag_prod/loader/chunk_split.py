@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Union
 from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
 
 from hirag_prod._utils import (
     compute_mdhash_id,
@@ -20,8 +22,6 @@ from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.schema import Chunk, File, Item
 from hirag_prod.tracing import traced
-from resources.llm_client import ChatCompletion
-from utils.logging_utils import log_error_info
 
 logger = logging.getLogger(__name__)
 

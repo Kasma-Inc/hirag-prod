@@ -1,9 +1,8 @@
 from typing import List, Union
 
+from configs.functions import get_envs
 from pgvector import HalfVector, Vector
 from pgvector.sqlalchemy import HALFVEC, VECTOR
-
-from configs.functions import get_envs
 
 PGVector = Union[HalfVector, Vector, List[float]]
 PGVECTOR = (

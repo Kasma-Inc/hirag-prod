@@ -8,12 +8,12 @@ from typing import Any, Dict, Literal, Optional, Union
 from urllib.parse import urlparse
 
 from docling_core.types import DoclingDocument
-
-from hirag_prod.loader.utils import download_load_file, exists_cloud_file
-from hirag_prod.tracing import traced
 from resources.ocr_client import OCR
 from utils.logging_utils import log_error_info
 from utils.sync_function_utils import run_sync_function_using_thread
+
+from hirag_prod.loader.utils import download_load_file, exists_cloud_file
+from hirag_prod.tracing import traced
 
 logger: logging.Logger = logging.getLogger(__name__)
 

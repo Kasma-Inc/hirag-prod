@@ -21,11 +21,10 @@ from typing import (
 
 import numpy as np
 import tiktoken
-from dotenv import load_dotenv
-from tqdm.asyncio import tqdm
-
 from configs.functions import get_hi_rag_config
+from dotenv import load_dotenv
 from resources.reranker import Reranker
+from tqdm.asyncio import tqdm
 from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")

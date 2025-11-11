@@ -1,17 +1,17 @@
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-from sqlalchemy import select
-
 from configs.functions import get_envs, get_hi_rag_config
+from resources.functions import get_db_session_maker
+from sqlalchemy import select
+from utils.logging_utils import log_error_info
+
 from hirag_prod._utils import retry_async
 from hirag_prod.exceptions import StorageError
 from hirag_prod.schema import Chunk, File, Item, Relation
 from hirag_prod.storage import BaseVDB
 from hirag_prod.storage.pgvector import PGVector
 from hirag_prod.tracing import traced
-from resources.functions import get_db_session_maker
-from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 
@@ -29,8 +29,7 @@ class StorageManager:
     async def initialize(self) -> None:
         """Initialize storage tables"""
         try:
-            await self.vdb._init_vdb(
-                embedding_dimension=get_envs().EMBEDDING_DIMENSION)
+            await self.vdb._init_vdb(embedding_dimension=get_envs().EMBEDDING_DIMENSION)
         except Exception as e:
             log_error_info(
                 logging.ERROR,

@@ -4,13 +4,13 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
-
 from configs.functions import get_envs, get_hi_rag_config
+from resources.reranker.utils import apply_reranking
+from utils.logging_utils import log_error_info
+
 from hirag_prod.cluster import HierarchicalClustering
 from hirag_prod.storage.storage_manager import StorageManager
 from hirag_prod.tracing import traced
-from resources.reranker.utils import apply_reranking
-from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 

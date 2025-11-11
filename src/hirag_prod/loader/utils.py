@@ -10,12 +10,11 @@ import boto3
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from configs.functions import get_cloud_storage_config, initialize_config_manager
 from docling_core.types import DoclingDocument
-
-from configs.functions import get_cloud_storage_config, \
-    initialize_config_manager
-from hirag_prod.tracing import traced
 from utils.logging_utils import log_error_info
+
+from hirag_prod.tracing import traced
 
 S3_DOWNLOAD_DIR = "./files/s3"
 OSS_DOWNLOAD_DIR = "./files/oss"

@@ -3,12 +3,12 @@ import string
 from typing import List, Set, Tuple, Union
 
 import numpy as np
-
-from hirag_prod.cross_language_search.types import ProcessSearchResponse
-from hirag_prod.tracing import traced
 from resources.embedding_client import BatchEmbeddingService
 from resources.functions import get_chinese_convertor, tokenize_sentence
 from resources.llm_client import ChatCompletion
+
+from hirag_prod.cross_language_search.types import ProcessSearchResponse
+from hirag_prod.tracing import traced
 
 
 def has_traditional_chinese(text: str) -> bool:

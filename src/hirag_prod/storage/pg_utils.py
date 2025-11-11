@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
+from configs.functions import get_postgres_config
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
-
-from configs.functions import get_postgres_config
 
 
 async def update_job_status(
