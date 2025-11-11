@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import threading
@@ -20,6 +21,7 @@ from typing import (
     TypeVar,
 )
 
+import json_repair
 import numpy as np
 import tiktoken
 from dotenv import load_dotenv
@@ -322,3 +324,21 @@ async def extract_ref_indices_from_markdown(
             results.append([best] if best is not None else [])
 
     return results, texts_to_cite
+
+
+class ModelJSONDecodeError(json.JSONDecodeError):
+    """Custom JSONDecodeError for model response parsing errors."""
+
+
+# A safe JSON loader for model responses that attempts to repair malformed JSON strings
+def safe_model_json_loads(payload: str):
+    if not payload:
+        raise ModelJSONDecodeError("Empty JSON payload", payload, 0)
+    try:
+        repaired_object = json_repair.loads(payload)
+        if repaired_object:
+            return repaired_object
+        else:
+            raise ModelJSONDecodeError("Empty JSON after repair", payload, 0)
+    except ModelJSONDecodeError as e:
+        raise e
