@@ -16,6 +16,7 @@ from hirag_prod._utils import (
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
     log_error_info,
+    safe_json_loads,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.configs.functions import get_config_manager
@@ -457,16 +458,8 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                 # The response might be wrapped in markdown code blocks, so extract JSON
                 response_text = response.strip()
 
-                # Remove markdown code block formatting if present
-                if response_text.startswith("```json"):
-                    response_text = response_text[7:]  # Remove ```json
-                if response_text.startswith("```"):
-                    response_text = response_text[3:]  # Remove ```
-                if response_text.endswith("```"):
-                    response_text = response_text[:-3]  # Remove ending ```
-
                 # Parse JSON response
-                parsed_response = json.loads(response_text.strip())
+                parsed_response = safe_json_loads(response_text.strip())
 
                 # Extract timestamp from JSON
                 timestamp_str = parsed_response.get("timestamp")
@@ -487,28 +480,8 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
                         except ValueError:
                             continue
 
-            except (json.JSONDecodeError, KeyError, AttributeError) as e:
-                print(f"Error parsing JSON response: {e}")
-                print(f"Response was: {response}")
-                # Fallback: try to find timestamp in raw response
-                if "timestamp:" in response.lower():
-                    timestamp_str = response.split("timestamp:")[-1].strip()
-                    # Remove quotes and commas if present
-                    timestamp_str = timestamp_str.split(",")[0].strip().strip("\"'")
-
-                    for fmt in [
-                        "%Y-%m-%d",
-                        "%Y/%m/%d",
-                        "%Y-%m",
-                        "%Y/%m",
-                        "%Y",
-                    ]:
-                        try:
-                            timestamp_extracted = datetime.strptime(timestamp_str, fmt)
-                            logger.info(f"Extracted timestamp: {timestamp_extracted}")
-                            return timestamp_extracted
-                        except ValueError:
-                            continue
+            except json.JSONDecodeError as e:
+                raise e
 
     except Exception as e:
         log_error_info(
