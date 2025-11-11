@@ -1,4 +1,5 @@
 import asyncio
+import contextvars
 import json
 import logging
 import re
@@ -56,10 +57,14 @@ def log_error_info(
 async def run_sync_function_using_thread(function: Callable, *args, **kwargs) -> Any:
     loop: AbstractEventLoop = asyncio.get_event_loop()
     future: Future[Any] = loop.create_future()
+    # Capture the current contextvars context
+    ctx = contextvars.copy_context()
 
     def run_async_function():
         try:
-            loop.call_soon_threadsafe(future.set_result, function(*args, **kwargs))
+            # Run the function in the captured context to ensure contextvars are propagated
+            result = ctx.run(lambda: function(*args, **kwargs))
+            loop.call_soon_threadsafe(future.set_result, result)
         except Exception as e:
             loop.call_soon_threadsafe(future.set_exception, e)
 
