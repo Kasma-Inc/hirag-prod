@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Any, Optional, Tuple
 
 from resources.ocr_client import OCR
@@ -60,6 +61,8 @@ DEFAULT_LOADER_CONFIGS = {
     },
 }
 
+
+docling_lock: asyncio.Lock = asyncio.Lock()
 
 @traced()
 async def load_document(
@@ -124,9 +127,10 @@ async def load_document(
     validate_document_path(document_path)
 
     if loader_type == "docling":
-        docling_doc, doc_md = await run_sync_function_using_thread(
-            loader.load_docling, document_path, document_meta
-        )
+        async with docling_lock:
+            docling_doc, doc_md = await run_sync_function_using_thread(
+                loader.load_docling, document_path, document_meta
+            )
         return docling_doc, doc_md
 
     if loader_type == "langchain":

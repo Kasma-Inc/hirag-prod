@@ -11,9 +11,11 @@ from docling_core.types import DoclingDocument
 from resources.ocr_client import OCR
 from utils.logging_utils import log_error_info
 from utils.sync_function_utils import run_sync_function_using_thread
+from pydantic import BaseModel
 
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 from hirag_prod.tracing import traced
+from hirag_prod.usage import ModelIdentifier, ModelUsage, UsageRecorder
 
 logger: logging.Logger = logging.getLogger(__name__)
 

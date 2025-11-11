@@ -5,49 +5,28 @@ description = "Toward Production-ready RAG"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "autoflake>=2.3.1",
-    "black>=25.1.0",
-    "blackdoc>=0.3.9",
-    "future==1.0.0",
-    "graspologic==3.4.1",
-    "hnswlib==0.7.0",
-    "isort>=6.0.1",
-    "jsonlines==3.1.0",
     "langchain-text-splitters>=0.3.8",
     "matplotlib==3.10.0",
     "mcp[cli]>=1.6.0",
-    "mypy-extensions>=1.0.0",
-    "nest-asyncio==1.6.0",
     "networkx==3.3",
-    "numpy==1.26.4",
+    "numpy>=1.26.4",
     "openai==1.61.0",
     "pandas==2.2.3",
     "pydantic==2.10.6",
-    "pypdf>=5.4.0",
-    "pytest>=8.3.5",
-    "pytest-asyncio>=0.26.0",
+    "pydantic-settings>=2.11.0",
     "scikit-learn==1.6.1",
-    "seaborn==0.13.2",
-    "setuptools==73.0.1",
     "tenacity==9.0.0",
     "tiktoken==0.9.0",
     "tqdm==4.66.5",
-    "transformers==4.53.0",
-    "umap-learn==0.5.6",
-    "xxhash==3.5.0",
     "docling==2.41.0",
     "docling-core",
-    "voyageai==0.3.2",
-    "pdfdeal==1.0.2",
     "redis==6.2.0",
     "boto3==1.40.9",
+    "botocore>=1.40.63",
     "json-repair==0.48.0",
     "sqlmodel==0.0.24",
-    "asyncpg==0.30.0",
     "pgvector==0.4.1",
-    "boto3-stubs==1.40.21",
     "nltk==3.9.1",
-    "googletrans==4.0.2",
     "rapidfuzz==3.14.1",
     "opencc==1.1.9",
     "hanlp==2.1.2",
@@ -57,18 +36,40 @@ dependencies = [
     "opentelemetry-sdk==1.37.0",
     "pyhumps==3.8.0",
     "opentelemetry-exporter-otlp==1.37.0",
+    "opentelemetry-exporter-prometheus==0.58b0",
     "opentelemetry-instrumentation-fastapi==0.58b0",
     "opentelemetry-instrumentation-sqlalchemy==0.58b0",
     "opentelemetry-instrumentation-requests==0.58b0",
     "opentelemetry-instrumentation-httpx==0.58b0",
     "opentelemetry-instrumentation-asyncpg==0.58b0",
     "opentelemetry-instrumentation-openai==0.47.3",
+    "opentelemetry-instrumentation-threading==0.58b0",
+    "prometheus-fastapi-instrumentator==7.1.0",
     # "opentelemetry-instrumentation-aio-pika==0.58b0",
     # "opentelemetry-instrumentation-redis==0.58b0",
+    "dotenv>=0.9.9",
+    "httpx>=0.28.1",
+    "scipy>=1.16.3",
+    "sqlalchemy>=2.0.44",
+    "requests>=2.32.5",
+    "openpyxl>=3.1.5",
+    "nvidia-ml-py>=13.580.82",
 ]
+
+[tool.uv]
+exclude-dependencies = ["pynvml"]
 
 [tool.uv.sources]
 docling-core = { git = "https://github.com/Zachary260325/docling-core.git", branch = "main" }
 
 [project.scripts]
 mcp-hirag-tool = "hirag_prod.server:main"
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [{ include-group = "lint" }, { include-group = "test" }]
+lint = ["black>=25.1.0", "blackdoc>=0.3.9", "isort>=6.0.1", "autoflake>=2.3.1"]
+test = ["pytest>=8.3.5", "pytest-asyncio>=0.26.0"]

@@ -314,6 +314,7 @@ def _build_doc_pages_map(doc: DoclingDocument) -> dict[int, tuple[float, float]]
     return size_map
 
 
+@traced()
 async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
     """
     Extract timestamp from document items following priority order:
@@ -889,7 +890,46 @@ def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
     return ToC
 
 
-def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
+@traced()
+async def generate_summary_from_toc(blocks: List[Dict[str, Any]]) -> str:
+    def _clean_blocks(blocks: List[Dict[str, Any]]) -> str:
+        cleaned = []
+        combined_text = ""
+        for b in blocks:
+            raw_text = b.get("markdown", "").lstrip("#").strip()
+            level = b.get("hierarchyLevel", 0)
+            text = ("  " * (level)) + raw_text
+            combined_text += text + "\n"
+        return combined_text
+
+    cleaned_blocks_str = _clean_blocks(blocks)
+    prompt = PROMPTS["summarize_toc"].format(toc=cleaned_blocks_str)
+
+    try:
+        chat_service = get_chat_service()
+
+        llm_config = get_config_manager().llm_config
+
+        response = await chat_service.complete(
+            prompt=prompt,
+            model=llm_config.model_name,
+            max_tokens=llm_config.max_tokens,
+            timeout=llm_config.timeout,
+        )
+
+        if response:
+            return response.strip()
+    except Exception as e:
+        log_error_info(
+            logging.ERROR,
+            "Failed to generate summary from ToC using LLM",
+            e,
+        )
+
+
+async def build_rich_toc(
+    items: List[Item], file: File, summary: bool = True
+) -> Dict[str, Any]:
     id2item = {i.documentKey: i for i in items}
     tree = get_toc_from_items(items)
     blocks: List[Dict[str, Any]] = []
@@ -936,10 +976,12 @@ def build_rich_toc(items: List[Item], file: File) -> Dict[str, Any]:
         visit(root, 0)
 
     content = "\n".join(b.get("markdown", "") for b in blocks if b.get("markdown"))
+    summary_text = "No Summary Generated."
+    if summary:
+        summary_text = await generate_summary_from_toc(blocks)
 
     return {
-        "fileName": file.fileName or "",
-        "markdownDocument": (file.text or ""),
+        "summary": summary_text,
         "hierarchy": {
             "content": content,
             "blocks": blocks,

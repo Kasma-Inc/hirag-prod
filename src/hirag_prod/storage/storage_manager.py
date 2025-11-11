@@ -212,18 +212,42 @@ class StorageManager:
     @traced()
     async def query_by_keys(
         self,
-        chunk_ids: List[str],
+        key_value: List[str],
         workspace_id: str,
         knowledge_base_id: str,
+        table_name: str,
+        key_column: str,
         columns_to_select: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         rows = await self.vdb.query_by_keys(
-            key_value=chunk_ids,
+            key_value=key_value,
             workspace_id=workspace_id,
             knowledge_base_id=knowledge_base_id,
-            table_name="Chunks",
-            key_column="documentKey",
+            table_name=table_name,
+            key_column=key_column,
             columns_to_select=columns_to_select,
+        )
+        return rows
+
+    @traced()
+    async def query_by_terms(
+        self,
+        terms: List[str],
+        workspace_id: str,
+        knowledge_base_id: str,
+        table_name: str,
+        column_to_search: str,
+        columns_to_select: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        rows = await self.vdb.query_by_terms(
+            terms=terms,
+            workspace_id=workspace_id,
+            knowledge_base_id=knowledge_base_id,
+            table_name=table_name,
+            column_to_search=column_to_search,
+            columns_to_select=columns_to_select,
+            limit=limit,
         )
         return rows
 

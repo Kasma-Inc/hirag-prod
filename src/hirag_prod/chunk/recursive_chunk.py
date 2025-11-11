@@ -1,40 +1,10 @@
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from hirag_prod._utils import encode_string_by_tiktoken
+from hirag_prod.schema.chunk import DenseChunk
 from hirag_prod.schema.item import Item
 
 ITEM_MERGE_TOKEN_THRESHOLD = 100
-
-
-@dataclass
-class DenseChunk:
-    """Dense/recursive chunk schema aligned to this module's style."""
-
-    chunk_idx: int = None
-    text: str = None
-    category: str = None
-    bbox: List[List[float]] = None
-    headings: List[int] = None
-    caption: Optional[str] = None
-    children: Optional[List[int]] = None
-    pages_span: List[int] = None
-    page_height: float = None
-    page_width: float = None
-    document_id: str = None
-    document_type: str = None
-    file_name: str = None
-    uri: str = None
-    private: bool = None
-    knowledge_base_id: str = None
-    workspace_id: str = None
-    created_at: datetime = None
-    updated_at: datetime = None
-    created_by: str = None
-    updated_by: str = None
-    id: str = None
-    extracted_timestamp: Optional[datetime] = None
 
 
 class UnifiedRecursiveChunker:
@@ -153,9 +123,60 @@ class UnifiedRecursiveChunker:
             extracted_timestamp=reference_item.extractedTimestamp,
         )
 
+    def _create_chunk_from_items(
+        self,
+        non_header_items: List[Item],
+        header_ids: Optional[set[str]],
+        id2item: Dict[str, Item],
+        chunk_idx: int,
+        reference_item: Item,
+    ) -> DenseChunk:
+        """Create a chunk from a list of items with the same headers."""
+        if not non_header_items:
+            raise ValueError("Cannot create chunk from empty items list")
+
+        if not header_ids:  # No headers for this group
+            merged_text = "\n".join(n.text for n in non_header_items)
+            non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
+            bbox_list, pages_span = self._build_bbox_list_for_pages(
+                non_header_items, non_header_pages
+            )
+
+            chunk = self._create_dense_chunk(
+                chunk_idx=chunk_idx,
+                text=merged_text,
+                bbox_list=bbox_list,
+                pages_span=pages_span,
+                reference_item=reference_item,
+            )
+            chunk.headings = None
+            return chunk
+
+        # Has headers - prepend header texts and convert set to list
+        header_items = [id2item[hid] for hid in header_ids if hid in id2item]
+        non_header_texts = [no_h.text for no_h in non_header_items]
+        header_texts = [h.text for h in header_items]
+        merged_text = "\n".join(header_texts + non_header_texts)
+
+        non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
+        bbox_list, pages_span = self._build_bbox_list_for_pages(
+            non_header_items, non_header_pages
+        )
+
+        chunk = self._create_dense_chunk(
+            chunk_idx=chunk_idx,
+            text=merged_text,
+            bbox_list=bbox_list,
+            pages_span=pages_span,
+            reference_item=reference_item,
+        )
+        chunk.headings = list(header_ids)
+        return chunk
+
     def _build_separate_chunk(
         self, id2item: Dict[str, Item], item: Item, chunk_idx: int, category: str
     ) -> DenseChunk:
+        # item.headers is already a list from Item schema
         headers = item.headers or []
         cap = item.caption or ""
         header_texts = [id2item[h].text for h in headers if h in id2item]
@@ -175,7 +196,7 @@ class UnifiedRecursiveChunker:
             pages_span=[item.pageNumber],
             children=None,
             caption=merged_caption,
-            headings=None,
+            headings=headers if headers else None,  # Store as list of item IDs
             page_height=item.pageHeight,
             page_width=item.pageWidth,
             document_id=item.documentId,
@@ -231,9 +252,11 @@ class UnifiedRecursiveChunker:
                 i += 1
                 continue
 
-            # Second Loop: Handle abundant text items until hitting a header item
+            # Second Loop: Handle abundant text items, grouping by same headers
             non_header_items = []
             accumulated_text_tokens = 0
+            current_header_ids = set()
+
             while i < len(items):
                 cur_item = items[i]
                 # Break if hitting a header item
@@ -243,6 +266,21 @@ class UnifiedRecursiveChunker:
                 elif self._is_table(cur_item.chunkType) or self._is_picture(
                     cur_item.chunkType
                 ):
+                    # Before processing table/picture, flush any accumulated non-header items
+                    if non_header_items:
+                        chunk = self._create_chunk_from_items(
+                            non_header_items,
+                            current_header_ids,
+                            id2item,
+                            chunk_idx,
+                            item,
+                        )
+                        chunks.append(chunk)
+                        chunk_idx += 1
+                        non_header_items = []
+                        accumulated_text_tokens = 0
+                        current_header_ids = set()
+
                     merged_item = self._build_separate_chunk(
                         id2item=id2item,
                         item=cur_item,
@@ -259,6 +297,30 @@ class UnifiedRecursiveChunker:
                         "page_header",
                         "footnote",
                     ]:
+                        # Check if headers are different from current group
+                        item_header_ids = (
+                            set(cur_item.headers) if cur_item.headers else None
+                        )
+
+                        if not current_header_ids:
+                            # First item in the group
+                            current_header_ids = item_header_ids
+                        elif current_header_ids != item_header_ids:
+                            # Headers changed - create chunk for previous group
+                            if non_header_items:
+                                chunk = self._create_chunk_from_items(
+                                    non_header_items,
+                                    current_header_ids,
+                                    id2item,
+                                    chunk_idx,
+                                    item,
+                                )
+                                chunks.append(chunk)
+                                chunk_idx += 1
+                                non_header_items = []
+                                accumulated_text_tokens = 0
+                            current_header_ids = item_header_ids
+
                         item_text = cur_item.text or ""
                         non_header_items.append(cur_item)
                         # set a threshold to merge items into a single chunk
@@ -270,52 +332,12 @@ class UnifiedRecursiveChunker:
                             break
                     i += 1
 
-            if not non_header_items:
-                continue
-
-            first_non = non_header_items[0]
-            header_ids = first_non.headers
-
-            if not header_ids:  # the first non-header items block
-                merged_text = "\n".join(n.text for n in non_header_items)
-                non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
-                pages_span = [p for p in non_header_pages]
-                bbox_list, pages_span = self._build_bbox_list_for_pages(
-                    non_header_items, non_header_pages
+            # Flush remaining non_header_items
+            if non_header_items:
+                chunk = self._create_chunk_from_items(
+                    non_header_items, current_header_ids, id2item, chunk_idx, item
                 )
-
-                merged_item = self._create_dense_chunk(
-                    chunk_idx=chunk_idx,
-                    text=merged_text,
-                    bbox_list=bbox_list,
-                    pages_span=pages_span,
-                    reference_item=item,
-                )
-
-                chunks.append(merged_item)
+                chunks.append(chunk)
                 chunk_idx += 1
-                continue
-
-            header_items = [id2item[hid] for hid in header_ids if hid in id2item]
-            non_header_texts = [no_h.text for no_h in non_header_items]
-            header_texts = [h.text for h in header_items]
-            merged_text = "\n".join(header_texts + non_header_texts)
-
-            non_header_pages = sorted(set(n.pageNumber for n in non_header_items))
-
-            non_header_bbox_list, pages_span = self._build_bbox_list_for_pages(
-                non_header_items, non_header_pages
-            )
-
-            merged_item = self._create_dense_chunk(
-                chunk_idx=chunk_idx,
-                text=merged_text,
-                bbox_list=non_header_bbox_list,
-                pages_span=pages_span,
-                reference_item=item,
-            )
-
-            chunks.append(merged_item)
-            chunk_idx += 1
 
         return chunks
