@@ -11,15 +11,14 @@ from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from hirag_prod._utils import (
-    ModelJSONDecodeError,
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
     log_error_info,
-    safe_model_json_loads,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
 from hirag_prod.configs.functions import get_config_manager
+from hirag_prod.json_utils import ModelJSONDecodeError, safe_model_json_loads
 from hirag_prod.prompt import PROMPTS
 from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
