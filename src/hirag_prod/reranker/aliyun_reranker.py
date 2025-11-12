@@ -66,9 +66,7 @@ class AliyunReranker(Reranker):
                 ),
                 ModelUsage(
                     prompt_tokens=result.get("usage", {}).get("total_tokens", 0),
-                    completion_tokens=result.get("usage", {}).get(
-                        "total_tokens", 0  # aliyun doesn't return completion tokens
-                    ),
+                    completion_tokens=0,  # aliyun doesn't return completion tokens
                 ),
             )
             res = result.get("output", {}).get("results", [])
