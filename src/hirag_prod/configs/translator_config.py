@@ -84,13 +84,3 @@ class TranslatorConfig(BaseSettings):
                 raise ValueError(f"{env_name} is required when service_type is openai")
 
         return self
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_service_type_config(cls, data):
-        if isinstance(data, dict):
-            if "service_type" in data:
-                if data["service_type"] == "openai":
-                    data["base_url"] = data.get("openai_base_url")
-                    data["api_key"] = data.get("openai_api_key")
-        return data
