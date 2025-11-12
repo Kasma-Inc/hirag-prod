@@ -2,6 +2,7 @@ from typing import Optional
 
 from hirag_prod.configs.functions import get_reranker_config
 from hirag_prod.configs.reranker_config import RerankConfig
+from hirag_prod.reranker.aliyun_reranker import AliyunReranker
 from hirag_prod.reranker.base import Reranker
 from hirag_prod.reranker.local_reranker import LocalReranker
 
@@ -23,5 +24,11 @@ def create_reranker(
             reranker_config.model_name,
             reranker_config.entry_point,
             reranker_config.api_key.get_secret_value(),
+        )
+    elif reranker_config.reranker_type == "aliyun":
+        return AliyunReranker(
+            api_key=reranker_config.api_key.get_secret_value(),
+            base_url=reranker_config.base_url,
+            model=reranker_config.model_name,
         )
     raise ValueError(f"Unsupported reranker type: {reranker_config.reranker_type}")

@@ -13,6 +13,7 @@ UnknownModelName = "unknown"
 
 class ModelProvider(Enum):
     INTERNAL = "ofnil"
+    ALIYUN = "aliyun"
     UNKNOWN = "unknown"
 
 

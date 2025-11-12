@@ -25,12 +25,12 @@ class SharedVariables:
             from hirag_prod import _llm
             from hirag_prod.loader import document_converter
             from hirag_prod.rate_limiter import RATE_LIMITER_NAME_SET
-            from hirag_prod.reranker import api_reranker, local_reranker
+            from hirag_prod.reranker import aliyun_reranker, local_reranker
             from hirag_prod.translator import qwen_translator
 
             RATE_LIMITER_NAME_SET.update(_llm.rate_limiter.rate_limiter_name_set)
             RATE_LIMITER_NAME_SET.update(
-                api_reranker.rate_limiter.rate_limiter_name_set
+                aliyun_reranker.rate_limiter.rate_limiter_name_set
             )
             RATE_LIMITER_NAME_SET.update(
                 local_reranker.rate_limiter.rate_limiter_name_set
