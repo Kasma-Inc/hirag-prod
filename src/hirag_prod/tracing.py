@@ -292,7 +292,9 @@ def traced_async_gen(
             arg_names_to_record = record_args or bound.arguments.keys()
             for arg_name in arg_names_to_record:
                 if arg_name in bound.arguments:
-                    attributes[f"arg.{arg_name}"] = bound.arguments[arg_name]
+                    attributes[f"param.{arg_name}"] = json.dumps(
+                        bound.arguments[arg_name], default=str
+                    )
 
             with _tracer.start_as_current_span(
                 span_name, attributes=attributes
