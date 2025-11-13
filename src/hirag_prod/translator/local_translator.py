@@ -16,7 +16,7 @@ from hirag_prod.usage import (
     ModelProvider,
     ModelUsage,
     UnknownModelName,
-    UsageRecorder,
+    UsageCollector,
 )
 
 rate_limiter = RateLimiter()
@@ -185,7 +185,7 @@ class LocalTranslator:
                     and ("completion_tokens" in response["usage"])
                     else 0
                 )
-            UsageRecorder.add_usage(
+            UsageCollector.add_usage(
                 ModelIdentifier(
                     id=response.get("model", UnknownModelName),
                     provider=response.get("provider", ModelProvider.UNKNOWN.value),

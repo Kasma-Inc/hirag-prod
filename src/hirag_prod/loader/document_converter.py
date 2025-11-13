@@ -21,7 +21,7 @@ from hirag_prod.configs.functions import (
 from hirag_prod.loader.utils import download_load_file, exists_cloud_file
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
-from hirag_prod.usage import ModelIdentifier, ModelUsage, UsageRecorder
+from hirag_prod.usage import ModelIdentifier, ModelUsage, UsageCollector
 
 rate_limiter = RateLimiter()
 logger: logging.Logger = logging.getLogger(__name__)
@@ -322,7 +322,7 @@ def convert(
                             get_shared_variables().output_token_count_dict[
                                 token_usage.model
                             ].value += token_usage.completion_tokens
-                        UsageRecorder.add_usage(
+                        UsageCollector.add_usage(
                             ModelIdentifier(
                                 id=token_usage.model,
                                 provider=token_usage.provider,

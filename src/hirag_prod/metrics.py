@@ -81,7 +81,7 @@ def cleanup_prometheus_multiproc_dir():
     dir = os.environ.get(PROMETHEUS_MULTIPROC_DIR, None)
     if dir and os.path.exists(dir):
         try:
-            os.removedirs(dir)
+            shutil.rmtree(dir)
             logger.info(f"Cleaned up Prometheus multiproc dir: {dir}")
         except Exception as e:
             logger.error(f"Failed to clean up Prometheus multiproc dir: {e}")
