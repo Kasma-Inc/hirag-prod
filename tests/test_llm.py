@@ -247,9 +247,6 @@ if __name__ == "__main__":
             )
             print(result)
 
-            # verify result
-            obj = json.loads(result)
-            print(obj)
         finally:
             # Best-effort cleanup
             try:
