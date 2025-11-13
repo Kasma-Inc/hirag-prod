@@ -6,7 +6,6 @@ from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import httpx
 import numpy as np
-from jsonschema import SchemaError, validate
 from openai import APIConnectionError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel
 from tenacity import (
@@ -16,7 +15,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from hirag_prod._utils import log_error_info, safe_model_json_loads
+from hirag_prod._utils import log_error_info
 from hirag_prod.configs.embedding_config import EmbeddingConfig
 from hirag_prod.configs.functions import (
     get_embedding_config,
@@ -26,6 +25,13 @@ from hirag_prod.configs.functions import (
     get_shared_variables,
 )
 from hirag_prod.configs.llm_config import LLMConfig
+from hirag_prod.json_utils import (
+    ModelJSONDecodeError,
+    ModelJSONSchemaValidationError,
+    json_schema_validation,
+    openai_json_response_format_validation,
+    safe_model_json_loads,
+)
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
 from hirag_prod.usage import (
@@ -429,12 +435,12 @@ class ChatCompletion(metaclass=SingletonMeta):
                     "Unsupported string response_format. Use 'json_object' or provide a Pydantic model/dict."
                 )
         elif isinstance(response_format, dict):
-            if "json_schema" not in response_format:
-                response_format = {
-                    "type": "json_schema",
-                    "json_schema": response_format,
-                }
-            # Pass-through JSON schema per OpenAI API (supports strict json_schema)
+            # Support both a bare JSON Schema dict and a full OpenAI response_format wrapper
+            if not openai_json_response_format_validation(response_format):
+                raise ValueError(
+                    "Provided response_format is invalid: expected {type:'json_schema', json_schema:{name:str, strict:bool, schema:dict}} with a valid JSON Schema"
+                )
+
             response = await self.client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -477,13 +483,29 @@ class ChatCompletion(metaclass=SingletonMeta):
             response_content = response.choices[0].message.content
             if used_json_format:
                 try:
-                    parsed_json = safe_model_json_loads(response_content)
                     if isinstance(response_format, dict):
+                        # Validate against provided JSON schema using our safe validator util
                         json_schema = response_format.get("json_schema", {}).get(
                             "schema", {}
                         )
-                        validate(instance=parsed_json, schema=json_schema)
-                    return parsed_json
+                        return json_schema_validation(response_content, json_schema)
+                    # For "json_object" (no schema), safely parse/repair JSON
+                    return safe_model_json_loads(response_content)
+
+                except ModelJSONSchemaValidationError as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "❌ LLM response failed JSON schema validation",
+                        e,
+                        raise_error=True,
+                    )
+                except ModelJSONDecodeError as e:
+                    log_error_info(
+                        logging.ERROR,
+                        "❌ Failed to parse LLM response as JSON",
+                        e,
+                        raise_error=True,
+                    )
                 except Exception as e:
                     log_error_info(
                         logging.ERROR,
@@ -491,6 +513,8 @@ class ChatCompletion(metaclass=SingletonMeta):
                         e,
                         raise_error=True,
                     )
+            else:
+                return response_content
 
     def _build_messages(
         self,

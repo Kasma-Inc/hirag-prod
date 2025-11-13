@@ -1,7 +1,9 @@
 import json
+from typing import Any
 
 import json_repair
 from jsonschema import ValidationError, validate
+from jsonschema.validators import validator_for
 
 
 class ModelJSONDecodeError(json.JSONDecodeError):
@@ -28,7 +30,7 @@ class ModelJSONSchemaValidationError(Exception):
 
 
 # A safe JSON loader for model responses that attempts to repair malformed JSON strings
-def safe_model_json_loads(payload: str):
+def safe_model_json_loads(payload: str) -> Any:
     if not payload:
         raise ModelJSONDecodeError("Empty JSON payload", payload, 0)
 
@@ -39,7 +41,7 @@ def safe_model_json_loads(payload: str):
         raise ModelJSONDecodeError("Empty JSON after repair", payload, 0)
 
 
-def json_schema_validation(payload: str, schema: dict):
+def json_schema_validation(payload: str, schema: dict) -> Any:
     """Validate JSON payload against a given schema."""
     try:
         data = safe_model_json_loads(payload)
@@ -53,3 +55,68 @@ def json_schema_validation(payload: str, schema: dict):
         ) from e
     except ModelJSONDecodeError:
         raise
+
+
+# Convenience helpers for OpenAI-style strict JSON generation
+def build_openai_json_response_format(
+    schema: dict,
+    *,
+    name: str = "response",
+    strict: bool = True,
+) -> dict:
+    """Build OpenAI chat.completions response_format for a JSON Schema.
+
+    Returns a dict like:
+    {
+        "type": "json_schema",
+        "json_schema": {"name": name, "strict": strict, "schema": schema}
+    }
+
+    for schema pls refer to: https://json-schema.org/understanding-json-schema/about
+    """
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": name,
+            "strict": strict,
+            "schema": schema,
+        },
+    }
+
+
+def openai_json_response_format_validation(response_format: dict) -> bool:
+    """Validate an OpenAI chat.completions JSON response_format wrapper.
+
+    Expects a dict of the form:
+    {
+        "type": "json_schema",
+        "json_schema": {"name": str, "strict": bool, "schema": dict}
+    }
+
+    Returns True if both the wrapper structure and the inner JSON Schema are valid.
+    """
+    try:
+        if not isinstance(response_format, dict):
+            return False
+        if response_format.get("type") != "json_schema":
+            return False
+        js = response_format.get("json_schema")
+        if not isinstance(js, dict):
+            return False
+        name = js.get("name")
+        strict = js.get("strict")
+        schema = js.get("schema")
+        if (
+            not isinstance(name, str)
+            or not isinstance(strict, bool)
+            or not isinstance(schema, dict)
+        ):
+            return False
+
+        # Validate the inner JSON Schema itself using jsonschema
+        validator_cls = validator_for(schema)
+        validator_cls.check_schema(schema)
+
+        return True
+    except Exception:
+        return False
