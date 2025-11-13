@@ -1,12 +1,10 @@
 import contextvars
+import functools
 from dataclasses import dataclass
 from enum import Enum
-from typing import Awaitable, Callable, Optional
+from typing import Optional
 
-from pydantic import BaseModel
-
-# Type alias for an async reporter callback function
-AsyncReporter = Callable[["UsageRecorder", bool], Awaitable[None]]
+from pydantic import BaseModel, Field
 
 UnknownModelName = "unknown"
 
@@ -41,7 +39,15 @@ class ModelUsage(BaseModel):
 
 
 class AggregateUsage(BaseModel):
-    model_to_usages: dict[ModelIdentifier, ModelUsage] = {}
+    model_to_usages: dict[ModelIdentifier, ModelUsage] = Field(default_factory=dict)
+
+    @property
+    def count(self) -> int:
+        """Return the number of unique model usages recorded."""
+        count = 0
+        for _, usage in self.model_to_usages.items():
+            count += usage.count
+        return count
 
     def add_usage(self, model_ident: ModelIdentifier, usage: ModelUsage) -> None:
         """Add usage for a specific model."""
@@ -56,43 +62,46 @@ class AggregateUsage(BaseModel):
             self.add_usage(model_ident, usage)
 
 
-_current_recorder: contextvars.ContextVar[Optional["UsageRecorder"]] = (
-    contextvars.ContextVar("current_usage_recorder", default=None)
+_current_collector: contextvars.ContextVar[Optional["UsageCollector"]] = (
+    contextvars.ContextVar("current_usage_collector", default=None)
 )
 
 
-class UsageRecorder:
+class UsageCollector:
     """
-    UsageRecorder tracks model usage in a context (async/sync).
+    UsageCollector provides a context-aware mechanism for tracking model usage
+    (e.g., token consumption and request counts) within asynchronous or synchronous workflows.
 
-    Features:
-    - Supports async context management
-    - Allows global add_usage calls
-    - Automatically aggregates usage
+    It acts as a lightweight, context-bound accumulator of usage data,
+    supporting both direct and indirect (static) updates within the same logical context.
+
+    Key features:
+    - Maintains a per-context global usage collector via `contextvars`.
+    - Supports both async context management (`async with UsageCollector():`) and direct method calls.
+    - Aggregates usage data across multiple models or providers through `AggregateUsage`.
+    - Designed to be extended for customized behaviors like reporting.
+
+    Typical use case:
+    ```python
+    async with UsageCollector() as collector:
+        UsageCollector.add_usage(model_ident, usage)
+        ...
+        total = collector.get_usage()
+    ```
+
+    Attributes:
+        _usage (AggregateUsage): The aggregated usage across models.
+        _add_count (int): The total number of usage additions.
+        has_error (bool): Indicates whether an error occurred during collection.
+        _token (Optional[contextvars.Token]): Used internally for context variable management.
     """
 
     def __init__(
         self,
-        user_id: str,
-        workspace_id: str,
-        chat_id: Optional[str] = None,
-        msg_id: Optional[str] = None,
-        reporter: Optional[AsyncReporter] = None,
     ) -> None:
         """
-        Initialize a UsageRecorder.
-
-        :param user_id: ID of the user
-        :param workspace_id: ID of the workspace
-        :param chat_id: Optional chat session ID
-        :param msg_id: Optional message ID
-        :param reporter: Optional async callback for reporting usage on exit
+        Initialize a UsageCollector.
         """
-        self.user_id: str = user_id
-        self.workspace_id: str = workspace_id
-        self.chat_id: Optional[str] = chat_id
-        self.msg_id: Optional[str] = msg_id
-        self._reporter = reporter
         self._usage = AggregateUsage()
         self._add_count = 0
         self.has_error = False
@@ -101,8 +110,8 @@ class UsageRecorder:
     # -------------------------
     # Async context management
     # -------------------------
-    async def __aenter__(self) -> "UsageRecorder":
-        self._token = _current_recorder.set(self)
+    async def __aenter__(self) -> "UsageCollector":
+        self._token = _current_collector.set(self)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -112,12 +121,10 @@ class UsageRecorder:
             await self._finalize()
         finally:
             if self._token is not None:
-                _current_recorder.reset(self._token)
+                _current_collector.reset(self._token)
 
     async def _finalize(self) -> None:
-        """Call the async reporter on exit if provided."""
-        if self._reporter:
-            await self._reporter(self, self.has_error)
+        pass
 
     # -------------------------
     # Accessors
@@ -142,12 +149,54 @@ class UsageRecorder:
         self._usage.add_usage(model_ident, usage)
         self._add_count += 1
 
+    def merge(self, agg_usage: AggregateUsage) -> None:
+        """Add usage for a specific model instance."""
+        self._usage.merge(agg_usage)
+        self._add_count += agg_usage.count
+
     # -------------------------
     # Static method
     # -------------------------
     @staticmethod
     def add_usage(model_ident: ModelIdentifier, usage: ModelUsage) -> None:
         """Add usage to the current recorder, if any."""
-        recorder = _current_recorder.get()
-        if recorder is not None:
-            recorder.add(model_ident, usage)
+        if (collector := _current_collector.get()) is not None:
+            collector.add(model_ident, usage)
+
+    @staticmethod
+    def merge_usage(agg_usage: AggregateUsage) -> None:
+        """Add usage to the current recorder, if any."""
+        if (collector := _current_collector.get()) is not None:
+            collector.merge(agg_usage)
+
+    @staticmethod
+    def current_collector() -> Optional["UsageCollector"]:
+        """Return the current UsageCollector in context, if any."""
+        return _current_collector.get()
+
+
+def with_usage_collector():
+    """
+    Decorator that automatically wraps an async function with UsageCollector.
+
+    Example:
+        @with_usage_collector()
+        async def on_message(...):
+            ...
+
+    Equivalent to:
+        async def on_message(...):
+            async with UsageCollector():
+                ...
+    """
+
+    def decorator(func):
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            async with UsageCollector():
+                return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

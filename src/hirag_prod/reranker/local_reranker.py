@@ -14,7 +14,7 @@ from hirag_prod.usage import (
     ModelProvider,
     ModelUsage,
     UnknownModelName,
-    UsageRecorder,
+    UsageCollector,
 )
 
 rate_limiter = RateLimiter()
@@ -93,7 +93,7 @@ class LocalReranker(Reranker):
                 get_shared_variables().input_token_count_dict[
                     "reranker"
                 ].value += result.get("usage", {}).get("total_tokens", 0)
-            UsageRecorder.add_usage(
+            UsageCollector.add_usage(
                 ModelIdentifier(
                     id=result.get("model", UnknownModelName),
                     provider=result.get("provider", ModelProvider.UNKNOWN.value),

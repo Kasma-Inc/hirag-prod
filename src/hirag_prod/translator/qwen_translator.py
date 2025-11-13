@@ -10,7 +10,7 @@ from hirag_prod.configs.functions import (
 )
 from hirag_prod.rate_limiter import RateLimiter
 from hirag_prod.tracing import traced
-from hirag_prod.usage import ModelIdentifier, ModelProvider, ModelUsage, UsageRecorder
+from hirag_prod.usage import ModelIdentifier, ModelProvider, ModelUsage, UsageCollector
 
 rate_limiter = RateLimiter()
 
@@ -145,7 +145,7 @@ class QwenTranslator:
                     if response.usage.completion_tokens is not None
                     else 0
                 )
-            UsageRecorder.add_usage(
+            UsageCollector.add_usage(
                 ModelIdentifier(
                     id=response.model,
                     provider=getattr(response, "provider", ModelProvider.UNKNOWN.value),

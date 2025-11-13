@@ -32,7 +32,7 @@ from hirag_prod.usage import (
     ModelProvider,
     ModelUsage,
     UnknownModelName,
-    UsageRecorder,
+    UsageCollector,
 )
 
 # ============================================================================
@@ -207,7 +207,7 @@ class LocalEmbeddingClient:
             get_shared_variables().input_token_count_dict["embedding"].value += (
                 resp.usage.prompt_tokens if resp.usage.prompt_tokens is not None else 0
             )
-        UsageRecorder.add_usage(
+        UsageCollector.add_usage(
             ModelIdentifier(
                 id=resp.model,
                 provider=getattr(resp, "provider", ModelProvider.UNKNOWN.value),
@@ -420,7 +420,7 @@ class ChatCompletion(metaclass=SingletonMeta):
                 if token_usage.completion_tokens is not None
                 else 0
             )
-        UsageRecorder.add_usage(
+        UsageCollector.add_usage(
             ModelIdentifier(
                 id=response.model,
                 provider=getattr(response, "provider", ModelProvider.UNKNOWN.value),
@@ -538,7 +538,7 @@ class LocalChatService:
                 if token_usage.completion_tokens is not None
                 else 0
             )
-        UsageRecorder.add_usage(
+        UsageCollector.add_usage(
             ModelIdentifier(
                 id=response.get("model", UnknownModelName),
                 provider=response.get("provider", ModelProvider.UNKNOWN.value),
@@ -749,7 +749,7 @@ class EmbeddingService(metaclass=SingletonMeta):
             get_shared_variables().input_token_count_dict[
                 "embedding"
             ].value += token_usage.prompt_tokens
-        UsageRecorder.add_usage(
+        UsageCollector.add_usage(
             ModelIdentifier(
                 id=response.model,
                 provider=getattr(response, "provider", ModelProvider.UNKNOWN.value),
