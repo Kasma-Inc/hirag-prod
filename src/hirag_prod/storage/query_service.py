@@ -4,12 +4,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
+from configs.functions import get_envs, get_hi_rag_config
+from resources.reranker.utils import apply_reranking
+from utils.logging_utils import log_error_info
 
-from hirag_prod._utils import log_error_info
 from hirag_prod.cluster import HierarchicalClustering
-from hirag_prod.configs.functions import get_hi_rag_config
-from hirag_prod.reranker.utils import apply_reranking
-from hirag_prod.schema.vector_config import use_halfvec
 from hirag_prod.storage.storage_manager import StorageManager
 from hirag_prod.tracing import traced
 
@@ -228,7 +227,7 @@ class QueryService:
                 elif key:
                     logger.warning(f"Chunk {key} has no vector data")
                     res[key] = None
-            if use_halfvec:
+            if get_envs().USE_HALF_VECTOR:
                 # Convert HalfVector to List[float] for JSON serialization
                 for k in res:
                     if res[k] is not None:

@@ -4,14 +4,14 @@ import json
 import numpy as np
 import pytest
 import pytest_asyncio
+from configs.functions import initialize_config_manager
+from resources.functions import get_resource_manager, initialize_resource_manager
 from pydantic import BaseModel
 
 from hirag_prod.configs.functions import get_llm_config, initialize_config_manager
 from hirag_prod.resources.functions import (
     get_chat_service,
     get_embedding_service,
-    get_resource_manager,
-    initialize_resource_manager,
 )
 
 pytestmark = [
@@ -37,7 +37,7 @@ class TestConfig:
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def setup_env():
     """Initialize config/resources once per module, and cleanup once."""
-    initialize_config_manager(cli_options_dict={"debug": False})
+    initialize_config_manager()
     await initialize_resource_manager()
     chat_service = get_chat_service()
     embedding_service = get_embedding_service()

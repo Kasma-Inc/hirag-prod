@@ -1,4 +1,5 @@
 #! /usr/bin/env python3
+import threading
 from abc import ABC
 from typing import Optional, Tuple, Type
 
@@ -11,6 +12,8 @@ from hirag_prod.loader import document_converter
 from hirag_prod.schema import File, create_file
 from hirag_prod.tracing import traced
 
+docking_lock: threading.Lock = threading.Lock()
+
 
 class BaseLoader(ABC):
     """Base class for all loaders"""
@@ -19,7 +22,7 @@ class BaseLoader(ABC):
     loader_langchain: Type[LangchainBaseLoader]
 
     @traced()
-    def load_dots_ocr(
+    async def load_dots_ocr(
         self, document_path: str, document_meta: Optional[dict] = None
     ) -> Tuple[File, File]:
         """Load document and set the metadata of the split chunks
@@ -27,7 +30,6 @@ class BaseLoader(ABC):
         Args:
             document_path (str): The document path for loader to use.
             document_meta (Optional[dict]): The document metadata to set to the output.
-            loader_args (dict): The arguments for the loader.
 
         Returns:
             Tuple[File, File]: the loaded document
@@ -36,7 +38,7 @@ class BaseLoader(ABC):
         assert document_path.startswith("s3://") or document_path.startswith("oss://")
         workspace_id = document_meta.get("workspaceId", None)
         knowledge_base_id = document_meta.get("knowledgeBaseId", None)
-        processed_doc = document_converter.convert(
+        processed_doc = await document_converter.convert(
             "dots_ocr",
             document_path,
             workspace_id=workspace_id,
@@ -75,9 +77,10 @@ class BaseLoader(ABC):
             File: the loaded document
         """
         assert document_meta.get("private") is not None, "private is required"
-        docling_doc: DoclingDocument = self.loader_docling.convert(
-            document_path
-        ).document
+        with docking_lock:
+            docling_doc: DoclingDocument = self.loader_docling.convert(
+                document_path
+            ).document
         file_type = document_meta.get("type", None)
         if file_type == "md" or file_type == "markdown":
             # For markdown files, use export_to_text to better match original pattern

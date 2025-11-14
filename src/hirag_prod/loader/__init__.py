@@ -1,11 +1,10 @@
 import logging
-import threading
-from typing import Any, Literal, Optional, Tuple
+from typing import Any, Optional, Tuple
 
-import httpx
+from resources.ocr_client import OCR
+from utils.logging_utils import log_error_info
+from utils.sync_function_utils import run_sync_function_using_thread
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_document_converter_config
 from hirag_prod.loader.csv_loader import CSVLoader
 from hirag_prod.loader.html_loader import HTMLLoader
 from hirag_prod.loader.image_loader import ImageLoader
@@ -62,50 +61,8 @@ DEFAULT_LOADER_CONFIGS = {
 }
 
 
-def check_cloud_health(
-    document_converter_type: Literal["dots_ocr"],
-) -> bool:
-    """Check the health of the cloud service"""
-    try:
-        health_url = f"{get_document_converter_config(document_converter_type).base_url.rstrip('/')}/health"
-
-        headers = {
-            "Content-Type": "application/json",
-            "Model-Name": get_document_converter_config(
-                document_converter_type
-            ).model_name,
-            "Authorization": f"Bearer {get_document_converter_config(document_converter_type).api_key.get_secret_value()}",
-        }
-
-        resp = httpx.get(health_url, headers=headers)
-
-        # Check if response is empty/null (success case)
-        if resp.status_code == 200 and not resp.text.strip():
-            return True
-
-        # Try to parse JSON response
-        try:
-            data = resp.json()
-            # Return True if the JSON response indicates success
-            if data.get("success") == "true":
-                return True
-            # Otherwise False
-            return False
-        except Exception as e:
-            # If we can't parse JSON but got a response, treat as failure
-            log_error_info(logging.ERROR, "Failed to parse JSON response", e)
-            return False
-
-    except Exception as e:
-        log_error_info(logging.ERROR, "Failed to check cloud health", e)
-        return False
-
-
-docling_lock: threading.Lock = threading.Lock()
-
-
 @traced()
-def load_document(
+async def load_document(
     document_path: str,
     content_type: str,
     loader_type: LoaderType,
@@ -139,10 +96,10 @@ def load_document(
     # Dots OCR doesn't require routing, so handle it separately
     if loader_type == "dots_ocr":
         try:
-            cloud_check = check_cloud_health("dots_ocr")
+            cloud_check = await OCR().health_check()
             if not cloud_check:
                 raise RuntimeError(f"Cloud health check failed for dots_ocr.")
-            json_doc, doc_md = loader.load_dots_ocr(document_path, document_meta)
+            json_doc, doc_md = await loader.load_dots_ocr(document_path, document_meta)
             return json_doc, doc_md
         except Exception as e:
             log_error_info(
@@ -154,7 +111,9 @@ def load_document(
 
     # Route for local loaders
     try:
-        document_path = route_file_path(document_path)
+        document_path = await run_sync_function_using_thread(
+            route_file_path, document_path
+        )
     except Exception as e:
         log_error_info(
             logging.WARNING,
@@ -165,12 +124,15 @@ def load_document(
     validate_document_path(document_path)
 
     if loader_type == "docling":
-        with docling_lock:
-            docling_doc, doc_md = loader.load_docling(document_path, document_meta)
+        docling_doc, doc_md = await run_sync_function_using_thread(
+            loader.load_docling, document_path, document_meta
+        )
         return docling_doc, doc_md
 
     if loader_type == "langchain":
-        langchain_doc = loader.load_langchain(document_path, document_meta)
+        langchain_doc = await run_sync_function_using_thread(
+            loader.load_langchain, document_path, document_meta
+        )
         return None, langchain_doc
 
     raise ValueError(f"Unsupported loader type: {loader_type}")

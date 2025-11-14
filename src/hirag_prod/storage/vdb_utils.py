@@ -2,8 +2,9 @@
 import logging
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_hi_rag_config
+from configs.functions import get_hi_rag_config
+from utils.logging_utils import log_error_info
+
 from hirag_prod.storage.pgvector import PGVector
 
 logging.basicConfig(

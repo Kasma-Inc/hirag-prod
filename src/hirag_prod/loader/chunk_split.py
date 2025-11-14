@@ -9,18 +9,17 @@ from typing import Any, Dict, List, Optional, Union
 from docling_core.transforms.chunker import HierarchicalChunker
 from docling_core.types.doc import DocItemLabel, DoclingDocument
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
 
 from hirag_prod._utils import (
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
     encode_string_by_tiktoken,
-    log_error_info,
 )
 from hirag_prod.chunk import DotsHierarchicalChunker, UnifiedRecursiveChunker
-from hirag_prod.configs.functions import get_config_manager
 from hirag_prod.json_utils import ModelJSONDecodeError, safe_model_json_loads
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import Chunk, File, Item
 from hirag_prod.tracing import traced
 
@@ -425,8 +424,6 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
 
     # Use LLM to extract the most relevant timestamp
     try:
-        chat_service = get_chat_service()
-
         prompt = PROMPTS["extract_timestamp"].format(
             filename=items[0].fileName if items else "unknown",
             header_footer_content=(
@@ -442,13 +439,8 @@ async def extract_timestamp_from_items(items: List[Item]) -> Optional[datetime]:
             today_date=datetime.now().strftime("%Y-%m-%d"),
         )
 
-        llm_config = get_config_manager().llm_config
-
-        response = await chat_service.complete(
+        response = await ChatCompletion().complete(
             prompt=prompt,
-            model=llm_config.model_name,
-            max_tokens=llm_config.max_tokens,
-            timeout=llm_config.timeout,
         )
 
         # Parse the JSON response to extract timestamp
@@ -873,7 +865,6 @@ def get_toc_from_items(items: List[Item]) -> List[Dict[str, Any]]:
 @traced()
 async def generate_summary_from_toc(blocks: List[Dict[str, Any]]) -> str:
     def _clean_blocks(blocks: List[Dict[str, Any]]) -> str:
-        cleaned = []
         combined_text = ""
         for b in blocks:
             raw_text = b.get("markdown", "").lstrip("#").strip()
@@ -886,15 +877,8 @@ async def generate_summary_from_toc(blocks: List[Dict[str, Any]]) -> str:
     prompt = PROMPTS["summarize_toc"].format(toc=cleaned_blocks_str)
 
     try:
-        chat_service = get_chat_service()
-
-        llm_config = get_config_manager().llm_config
-
-        response = await chat_service.complete(
+        response = await ChatCompletion().complete(
             prompt=prompt,
-            model=llm_config.model_name,
-            max_tokens=llm_config.max_tokens,
-            timeout=llm_config.timeout,
         )
 
         if response:

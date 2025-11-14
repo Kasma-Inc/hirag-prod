@@ -6,8 +6,9 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List
 
+from utils.logging_utils import log_error_info
+
 from hirag_prod import HiRAG
-from hirag_prod._utils import log_error_info
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

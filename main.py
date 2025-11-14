@@ -1,12 +1,19 @@
 # This is a quickstart script for the HiRAG system.
+import argparse
 import asyncio
 import json
 import logging
 import os
+from argparse import ArgumentParser
 from datetime import datetime
 
+from configs.functions import (
+    initialize_config_manager,
+    initialize_shared_variables,
+)
+from resources.functions import get_resource_manager, initialize_resource_manager
+
 from hirag_prod import HiRAG
-from hirag_prod.configs.cli_options import CliOptions
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -383,25 +390,64 @@ async def index(test_id="2", summary=True, save_json=False, no_insert=False):
             print("\n\n")
 
 
-def main():
-    # Use the integrated CLI options instead of a separate argument parser
-    cli_options = CliOptions()
+def _parse_bool_string(value: str) -> bool:
+    """Convert string representation to boolean."""
+    return value.lower() in ["t", "true"]
+
+
+async def main():
+    parser: ArgumentParser = argparse.ArgumentParser(description="HiRAG test")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--test",
+        default="2",
+        help="Test to run. Options: 1/wiki_subcorpus, 2/s3: small_pdf (default), 3/oss: U.S.Health, 4/md-itinerary, 5/md-wiki",
+    )
+    parser.add_argument(
+        "--summary",
+        type=str,
+        default="T",
+        choices=["T", "F", "True", "False", "true", "false"],
+        help="Whether to generate a summary of the query results (default: T). Options: T/F, True/False, true/false",
+    )
+    parser.add_argument(
+        "--save-json",
+        type=str,
+        default="F",
+        choices=["T", "F", "True", "False", "true", "false"],
+        help="Whether to save retrieved chunks to JSON file (default: F). Options: T/F, True/False, true/false",
+    )
+    parser.add_argument(
+        "--no-insert",
+        action="store_true",
+        help="Skip document insertion to knowledge base (default: False). Use this to only perform queries without inserting documents.",
+    )
+
+    args: argparse.Namespace = parser.parse_args()
+    test: str = args.test
+    summary: bool = _parse_bool_string(args.summary)
+    save_json: bool = _parse_bool_string(args.save_json)
+    no_insert: bool = args.no_insert
+
+    initialize_config_manager()
+    initialize_shared_variables()
+    await initialize_resource_manager()
 
     # Print available tests for user reference
-    print(f"\nRunning test: {cli_options.test}")
-    print(f"Summary: {cli_options.summary}")
-    print(f"Save JSON: {cli_options.save_json}")
-    print(f"No Insert: {cli_options.no_insert}\n")
+    print(f"\nRunning test: {test}")
+    print(f"Summary: {summary}")
+    print(f"Save JSON: {save_json}")
+    print(f"No Insert: {no_insert}\n")
 
-    asyncio.run(
-        index(
-            cli_options.test,
-            cli_options.summary,
-            cli_options.save_json,
-            cli_options.no_insert,
-        )
+    await index(
+        test,
+        summary,
+        save_json,
+        no_insert,
     )
+
+    await get_resource_manager().cleanup()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

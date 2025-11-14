@@ -12,8 +12,7 @@ from opentelemetry.metrics import (  # Observation,
     set_meter_provider,
 )
 from opentelemetry.metrics._internal import NoOpMeter
-
-from hirag_prod._utils import log_error_info
+from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 

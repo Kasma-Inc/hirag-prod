@@ -16,40 +16,21 @@ from typing import (
     List,
     Optional,
     Tuple,
-    Type,
     TypeAlias,
     TypeVar,
 )
 
 import numpy as np
 import tiktoken
+from configs.functions import get_hi_rag_config
 from dotenv import load_dotenv
+from resources.reranker import Reranker
 from tqdm.asyncio import tqdm
-
-from hirag_prod.configs.functions import get_config_manager, get_hi_rag_config
+from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 ENCODER = None
 load_dotenv("/chatbot/.env")
-
-
-def log_error_info(
-    level: int,
-    message: str,
-    error: BaseException,
-    debug_only: bool = False,
-    exc_info: Optional[bool] = None,
-    raise_error: bool = False,
-    new_error_class: Optional[Type[Any]] = None,
-):
-    if (not debug_only) or get_config_manager().debug:
-        logger.log(
-            level,
-            f"{message}: {error}",
-            exc_info=get_config_manager().debug if exc_info is None else exc_info,
-        )
-    if raise_error:
-        raise new_error_class(message) if new_error_class is not None else error
 
 
 async def run_sync_function_using_thread(function: Callable, *args, **kwargs) -> Any:
@@ -285,9 +266,7 @@ async def extract_ref_indices_from_markdown(
     if not texts_to_cite or not chunk_list:
         return [[] for _ in texts_to_cite], texts_to_cite
 
-    from hirag_prod.resources.functions import get_reranker
-
-    reranker = get_reranker()
+    reranker = Reranker()
 
     items = [{"text": c["text"], "list_index": i} for i, c in enumerate(chunk_list)]
 

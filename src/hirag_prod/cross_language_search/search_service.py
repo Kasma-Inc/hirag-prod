@@ -2,6 +2,8 @@ import re
 from typing import Any, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from pgvector import HalfVector
+from resources.embedding_client import BatchEmbeddingService
+from resources.functions import get_chinese_convertor, get_db_session_maker
 from sqlalchemy import CursorResult, Row, text
 
 from hirag_prod.cross_language_search.functions import (
@@ -18,11 +20,6 @@ from hirag_prod.cross_language_search.types import (
     MarkdownHighlight,
     PDFBbox,
     PDFHighlight,
-)
-from hirag_prod.resources.functions import (
-    get_chinese_convertor,
-    get_db_session_maker,
-    get_embedding_service,
 )
 from hirag_prod.tracing import traced_async_gen
 
@@ -67,7 +64,7 @@ async def cross_language_search(
         else:
             search_embedding_str_list = [
                 HalfVector(embedding).to_text()
-                for embedding in await get_embedding_service().create_embeddings(
+                for embedding in await BatchEmbeddingService().create_embeddings(
                     search_list_original + search_list
                 )
             ]

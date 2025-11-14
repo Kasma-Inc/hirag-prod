@@ -1,11 +1,7 @@
 import pytest
+from configs.functions import initialize_config_manager
 from dotenv import load_dotenv
-
-from hirag_prod.configs.functions import initialize_config_manager
-from hirag_prod.resources.functions import (
-    get_resource_manager,
-    initialize_resource_manager,
-)
+from resources.functions import get_resource_manager, initialize_resource_manager
 
 load_dotenv("../.env", override=True)
 

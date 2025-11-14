@@ -3,14 +3,14 @@ from typing import Dict, List, Optional, Tuple
 from urllib.parse import unquote, urlparse
 
 import json_repair
+from configs.functions import get_envs
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
+from resources.llm_client import ChatCompletion
+from utils.logging_utils import log_error_info
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import get_config_manager, get_llm_config
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import get_chat_service
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +81,10 @@ async def _extract_excel_cell_coord_by_llm(
 ) -> Tuple[Optional[str], Optional[str]]:
     try:
         locate_excel_cell_prompt = PROMPTS[
-            "locate_excel_cell_" + get_config_manager().language
+            "locate_excel_cell_" + get_envs().language
         ].format(text_to_be_cited=text_to_be_cited, excel_latex=excel_latex)
-        excel_cell_coord_result = await get_chat_service().complete(
+        excel_cell_coord_result = await ChatCompletion().complete(
             prompt=locate_excel_cell_prompt,
-            model=get_llm_config().model_name,
-            timeout=get_llm_config().timeout,
-            max_tokens=get_llm_config().max_tokens,
         )
         decoded_obj = json_repair.repair_json(
             excel_cell_coord_result, return_objects=True

@@ -1,14 +1,13 @@
 import pytest
 import pytest_asyncio
+from configs.functions import initialize_config_manager
 from dotenv import load_dotenv
-from sqlalchemy import text
-
-from hirag_prod.configs.functions import initialize_config_manager
-from hirag_prod.resources.functions import (
+from resources.functions import (
     get_db_engine,
     get_resource_manager,
     initialize_resource_manager,
 )
+from sqlalchemy import text
 
 load_dotenv()
 

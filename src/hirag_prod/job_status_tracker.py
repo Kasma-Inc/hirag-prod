@@ -2,8 +2,9 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.resources.functions import get_db_session_maker
+from resources.functions import get_db_session_maker
+from utils.logging_utils import log_error_info
+
 from hirag_prod.storage.pg_utils import update_job_status
 
 logger = logging.getLogger(__name__)

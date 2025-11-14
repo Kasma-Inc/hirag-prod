@@ -7,13 +7,12 @@ from urllib.parse import unquote, urlparse
 import openpyxl
 import pandas as pd
 import xlrd
+from resources.llm_client import ChatCompletion
 
 from hirag_prod._utils import compute_mdhash_id
-from hirag_prod.configs.functions import get_llm_config
 from hirag_prod.exceptions import HiRAGException
 from hirag_prod.loader.utils import route_file_path
 from hirag_prod.prompt import PROMPTS
-from hirag_prod.resources.functions import get_chat_service
 from hirag_prod.schema import (
     Chunk,
     File,
@@ -32,9 +31,8 @@ async def _summarize_excel_sheet(sheet_name: str, latex: str) -> str:
         sheet_name=sheet_name, latex=latex
     )
     try:
-        return await get_chat_service().complete(
-            prompt=system_prompt, model=get_llm_config().model_name
-        )
+        breakpoint()
+        return await ChatCompletion().complete(prompt=system_prompt)
     except Exception as e:
         raise HiRAGException(f"Failed to summarize excel sheet {sheet_name}") from e
 

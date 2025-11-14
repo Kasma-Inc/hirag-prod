@@ -1,11 +1,12 @@
 from typing import List, Union
 
+from configs.functions import get_envs
 from pgvector import HalfVector, Vector
 from pgvector.sqlalchemy import HALFVEC, VECTOR
 
-from hirag_prod.configs.functions import get_init_config
-
-INIT_ENVS = get_init_config()
-dim, use_halfvec = INIT_ENVS.EMBEDDING_DIMENSION, INIT_ENVS.USE_HALF_VEC
 PGVector = Union[HalfVector, Vector, List[float]]
-PGVECTOR = HALFVEC(dim) if use_halfvec else VECTOR(dim)
+PGVECTOR = (
+    HALFVEC(get_envs().EMBEDDING_DIMENSION)
+    if get_envs().USE_HALF_VECTOR
+    else VECTOR(get_envs().EMBEDDING_DIMENSION)
+)

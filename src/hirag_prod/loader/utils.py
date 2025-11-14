@@ -10,17 +10,14 @@ import boto3
 from botocore.client import BaseClient
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from configs.functions import get_cloud_storage_config, initialize_config_manager
 from docling_core.types import DoclingDocument
+from utils.logging_utils import log_error_info
 
-from hirag_prod._utils import log_error_info
-from hirag_prod.configs.functions import (
-    get_cloud_storage_config,
-    initialize_config_manager,
-)
 from hirag_prod.tracing import traced
 
-S3_DOWNLOAD_DIR = "/chatbot/files/s3"
-OSS_DOWNLOAD_DIR = "/chatbot/files/oss"
+S3_DOWNLOAD_DIR = "./files/s3"
+OSS_DOWNLOAD_DIR = "./files/oss"
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -76,7 +73,7 @@ def download_load_file(
 
 
 def create_s3_client(storage_type: Literal["s3", "oss"]) -> BaseClient:
-    cloud_storage_config = get_cloud_storage_config(storage_type)
+    cloud_storage_config = get_cloud_storage_config()
     return boto3.client(
         "s3",
         aws_access_key_id=cloud_storage_config.access_key_id,
@@ -122,11 +119,11 @@ def list_cloud_files(storage_type: Literal["s3", "oss"], prefix: str = None) -> 
     try:
         if prefix is None:
             response = s3_client.list_objects_v2(
-                Bucket=get_cloud_storage_config(storage_type).bucket_name
+                Bucket=get_cloud_storage_config().bucket_name
             )
         else:
             response = s3_client.list_objects_v2(
-                Bucket=get_cloud_storage_config(storage_type).bucket_name, Prefix=prefix
+                Bucket=get_cloud_storage_config().bucket_name, Prefix=prefix
             )
 
         if "Contents" in response:
