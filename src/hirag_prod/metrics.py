@@ -1,21 +1,24 @@
 import logging
+import os
+import shutil
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import (  # Observation,
     Meter,
     get_meter_provider,
     set_meter_provider,
 )
 from opentelemetry.metrics._internal import NoOpMeter
-from opentelemetry.sdk.metrics import MeterProvider
+
 from utils.logging_utils import log_error_info
 
 logger = logging.getLogger("HiRAG")
 
+# environment variable for Prometheus multiprocess mode
+PROMETHEUS_MULTIPROC_DIR = "PROMETHEUS_MULTIPROC_DIR"
 
 _meter: Meter = NoOpMeter("")
 
@@ -26,9 +29,22 @@ def setup_metrics(enable_metrics: bool) -> Meter:
     global _meter
 
     if enable_metrics:
+
         # Exporter to export metrics to Prometheus
-        reader = PrometheusMetricReader(False)
-        provider = MeterProvider(metric_readers=[reader])
+        if PROMETHEUS_MULTIPROC_DIR in os.environ:
+            # If running in multiprocess mode, use the multiprocess provider
+            from opentelemetry.sdk.extension.prometheus_multiprocess import (
+                PrometheusMeterProvider,
+            )
+
+            provider = PrometheusMeterProvider()
+        else:
+            from opentelemetry.exporter.prometheus import PrometheusMetricReader
+            from opentelemetry.sdk.metrics import MeterProvider
+
+            reader = PrometheusMetricReader(False)
+            provider = MeterProvider(metric_readers=[reader])
+
         set_meter_provider(provider)
         _meter = get_meter_provider().get_meter(__name__)
 
@@ -38,6 +54,37 @@ def setup_metrics(enable_metrics: bool) -> Meter:
 def get_meter() -> Meter:
     """Get the global meter instance."""
     return _meter
+
+
+def prepare_prometheus_multiproc_dir():
+    if PROMETHEUS_MULTIPROC_DIR not in os.environ:
+        logger.info(
+            f"{PROMETHEUS_MULTIPROC_DIR} not set, will start in single process mode."
+        )
+        return
+
+    dir = os.environ[PROMETHEUS_MULTIPROC_DIR]
+
+    logger.info(f"Using Prometheus multiproc dir: {dir}")
+
+    if os.path.exists(dir):
+        shutil.rmtree(dir)
+
+    try:
+        os.makedirs(dir, exist_ok=False)
+    except Exception as e:
+        logger.error(f"Failed to create Prometheus multiproc dir: {e}")
+        raise
+
+
+def cleanup_prometheus_multiproc_dir():
+    dir = os.environ.get(PROMETHEUS_MULTIPROC_DIR, None)
+    if dir and os.path.exists(dir):
+        try:
+            shutil.rmtree(dir)
+            logger.info(f"Cleaned up Prometheus multiproc dir: {dir}")
+        except Exception as e:
+            logger.error(f"Failed to clean up Prometheus multiproc dir: {e}")
 
 
 @dataclass
